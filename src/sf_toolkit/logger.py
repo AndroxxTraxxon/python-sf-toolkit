@@ -1,6 +1,7 @@
 import logging
 
-pkg_root = logging.getLogger("sf_toolkit")
+pkg_root = logging.getLogger("sftk")
+
 
 def getLogger(name: str | None):
     if not name:

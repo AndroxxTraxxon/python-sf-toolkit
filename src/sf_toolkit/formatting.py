@@ -1,4 +1,4 @@
-""" Formatting helpers that perform quoting and escaping """
+"""Formatting helpers that perform quoting and escaping"""
 
 import urllib.parse
 from datetime import date, datetime, timezone

@@ -1,23 +1,34 @@
-
 # import jwt
+from collections.abc import Generator
 import json
 import os
 from pathlib import Path
 from shutil import which
 from subprocess import run as subprocess_run
-from typing import Callable, NamedTuple
+import typing
+
+import httpx
 
 from .logger import getLogger
 
 LOGGER = getLogger("auth")
 
-class SfSessionId(NamedTuple):
+
+class SalesforceToken(typing.NamedTuple):
     instance: str
-    session_id: str
+    token: str
 
-SalesforceAuth = Callable[[], SfSessionId]
 
-def cli_login(alias_or_username: str | None = None, sf_exec_path: str | Path | None = None):
+SalesforceLogin = typing.Callable[
+    [], Generator[httpx.Request | None, httpx.Response, SalesforceToken]
+]
+
+TokenRefreshCallback = typing.Callable[[SalesforceToken], typing.Any]
+
+
+def cli_login(
+    alias_or_username: str | None = None, sf_exec_path: str | Path | None = None
+) -> SalesforceLogin:
     if not sf_exec_path:
         sf_exec_path = which("sf") or which("sfdx")
         if not sf_exec_path:
@@ -27,7 +38,8 @@ def cli_login(alias_or_username: str | None = None, sf_exec_path: str | Path | N
 
     def _cli_login():
         """Fetches the authentication credentials from sf or sfdx command line tools."""
-
+        LOGGER.info("Logging in via SF CLI at %s", sf_exec_path)
+        yield  # yield to make this a generator
         command: list[str] = [sf_exec_path, "org", "display", "--json"]
         if alias_or_username:
             command.extend(["-o", alias_or_username])
@@ -54,7 +66,9 @@ def cli_login(alias_or_username: str | None = None, sf_exec_path: str | Path | N
                 "Failed to get credentials for org "
                 + (alias_or_username or "[default]")
                 + ":\n"
-                + output["message"].encode("raw_unicode_escape").decode("unicode_escape")
+                + output["message"]
+                .encode("raw_unicode_escape")
+                .decode("unicode_escape")
             )
         token_result = output["result"]
         if token_result["connectedStatus"] != "Connected":
@@ -71,6 +85,63 @@ def cli_login(alias_or_username: str | None = None, sf_exec_path: str | Path | N
         instance_url = token_result["instanceUrl"]
         sf_instance = instance_url.replace("http://", "").replace("https://", "")
 
-        return SfSessionId(sf_instance, session_id)
+        return SalesforceToken(sf_instance, session_id)
 
     return _cli_login
+
+
+class SalesforceAuth(httpx.Auth):
+    login: SalesforceLogin | None
+    callback: TokenRefreshCallback | None
+    token: SalesforceToken | None
+
+    def __init__(
+        self,
+        login: SalesforceLogin | None = None,
+        session_token: SalesforceToken | None = None,
+        callback: TokenRefreshCallback | None = None,
+    ):
+        self.login = login
+        self.token = session_token
+        self.callback = callback
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> typing.Generator[httpx.Request, httpx.Response, None]:
+        if self.token is None:
+            assert self.login is not None, "No login method provided"
+            try:
+                for login_request in (login_flow := self.login()):
+                    if isinstance(login_request, httpx.Request):
+                        login_response = yield login_request
+                        login_flow.send(login_response)
+
+            except StopIteration as login_result:
+                new_token: SalesforceToken = login_result.value
+                self.token = new_token
+                if self.callback is not None:
+                    self.callback(new_token)
+            assert self.token is not None, "Failed to perform initial login"
+
+        request.headers["Authorization"] = f"Bearer {self.token.token}"
+        response = yield request
+
+        if (
+            response.status_code == 401
+            and self.login
+            and response.json()[0]["errorDetails"] == "INVALID_SESSION_ID"
+        ):
+            try:
+                for login_request in (login_flow := self.login()):
+                    if login_request is not None:
+                        login_response = yield login_request
+                        login_flow.send(login_response)
+
+            except StopIteration as login_result:
+                new_token: SalesforceToken = login_result.value
+                self.token = new_token
+                if self.callback is not None:
+                    self.callback(new_token)
+
+            request.headers["Authorization"] = f"Bearer {self.token.token}"
+            response = yield request

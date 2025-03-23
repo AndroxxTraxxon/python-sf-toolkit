@@ -1,4 +1,3 @@
-
 from typing import Literal, NamedTuple
 from datetime import datetime, date
 
@@ -6,6 +5,7 @@ from sf_toolkit.formatting import quote_soql_value
 
 BooleanOperator = Literal["AND", "OR"]
 Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES"]
+
 
 class Comparison:
     property: str
@@ -21,14 +21,14 @@ class Comparison:
         return f"{self.property} {self.operator} {quote_soql_value(self.value)}"
 
 
-
 class BooleanOperation(NamedTuple):
     operator: BooleanOperator
     conditions: list["Comparison | BooleanOperation"]
 
     def __str__(self):
         formatted_conditions = [
-            str(condition) if isinstance(condition, Comparison)
+            str(condition)
+            if isinstance(condition, Comparison)
             else "(" + str(condition) + ")"
             for condition in self.conditions
         ]
@@ -41,12 +41,14 @@ class Negation(NamedTuple):
     def __str__(self):
         return f"NOT ({str(self.condition)})"
 
+
 class Order(NamedTuple):
     field: str
     direction: Literal["ASC", "DESC"]
 
     def __str__(self):
         return f"{self.field} {self.direction}"
+
 
 class SoqlSelect:
     fields: list[str]
@@ -59,23 +61,13 @@ class SoqlSelect:
     order: list[Order] | None
 
     def __str__(self):
-        segments = [
-            "SELECT",
-            ", ".join(self.fields),
-            f"FROM {self.sobject}"
-        ]
+        segments = ["SELECT", ", ".join(self.fields), f"FROM {self.sobject}"]
         if self.where:
             segments.append(str(self.where))
         if self.grouping:
-            segments.extend([
-                "GROUP BY",
-                ", ".join(self.grouping)
-            ])
+            segments.extend(["GROUP BY", ", ".join(self.grouping)])
         if self.having:
             if self.grouping is None:
                 raise TypeError("Cannot use HAVING statement without GROUP BY")
-
-        if
-
 
         return " ".join(segments)
