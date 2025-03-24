@@ -1,7 +1,7 @@
 from typing import Literal, NamedTuple
 from datetime import datetime, date
 
-from sf_toolkit.formatting import quote_soql_value
+from ..formatting import quote_soql_value
 
 BooleanOperator = Literal["AND", "OR"]
 Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES"]

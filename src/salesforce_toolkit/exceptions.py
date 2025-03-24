@@ -2,6 +2,7 @@
 
 import httpx
 
+
 class SalesforceError(Exception):
     """Base Salesforce API exception"""
 
@@ -28,7 +29,9 @@ class SalesforceError(Exception):
         super().__init__(str(self))
 
     def __str__(self):
-        return self.message.format(status_code=self.status_code, url=self.url_path, content=self.content)
+        return self.message.format(
+            status_code=self.status_code, url=self.url_path, content=self.content
+        )
 
     def __repr__(self):
         return f"{type(self).__name__}: {str(self)}"
@@ -65,7 +68,9 @@ class SalesforceRecordNotModifiedSince(SalesforceError):
 
     def __str__(self):
         return self.message.format(
-            url=self.url_path, content=self.content, modified_since=self.if_modified_since
+            url=self.url_path,
+            content=self.content,
+            modified_since=self.if_modified_since,
         )
 
 
@@ -76,7 +81,9 @@ class SalesforceMalformedRequest(SalesforceError):
     contains an error.
     """
 
-    message = "({status_code}) Malformed request {url_path}. Response content: {content}"
+    message = (
+        "({status_code}) Malformed request {url_path}. Response content: {content}"
+    )
 
 
 class SalesforceExpiredSession(SalesforceError):
@@ -86,7 +93,9 @@ class SalesforceExpiredSession(SalesforceError):
     body contains the message and errorCode.
     """
 
-    message = "({status_code}) Expired session for {url_path}. Response content: {content}"
+    message = (
+        "({status_code}) Expired session for {url_path}. Response content: {content}"
+    )
 
 
 class SalesforceRefusedRequest(SalesforceError):
@@ -96,7 +105,9 @@ class SalesforceRefusedRequest(SalesforceError):
     appropriate permissions.
     """
 
-    message = "({status_code}) Request refused for {url_path}. Response content: {content}"
+    message = (
+        "({status_code}) Request refused for {url_path}. Response content: {content}"
+    )
 
 
 class SalesforceResourceNotFound(SalesforceError):
@@ -110,7 +121,10 @@ class SalesforceResourceNotFound(SalesforceError):
 
     def __str__(self):
         return self.message.format(
-            status_code=self.status_code, name=self.resource_name, url=self.url_path, content=self.content
+            status_code=self.status_code,
+            name=self.resource_name,
+            url=self.url_path,
+            content=self.content,
         )
 
 
@@ -144,7 +158,9 @@ class SalesforceResourceRemoved(SalesforceError):
     Delete or update any references to the resource.
     """
 
-    message = "({status_code}) Resource removed from {url_path}. Response content: {content}"
+    message = (
+        "({status_code}) Resource removed from {url_path}. Response content: {content}"
+    )
 
 
 class SalesforceInvalidHeaderPreconditions(SalesforceError):
@@ -157,9 +173,7 @@ class SalesforceInvalidHeaderPreconditions(SalesforceError):
     but the data was modified after the specified date.
     """
 
-    message = (
-        "({status_code}) Invalid Header Preconditions for {url_path}. Response content: {content}"
-    )
+    message = "({status_code}) Invalid Header Preconditions for {url_path}. Response content: {content}"
 
 
 class SalesforceUriLimitExceeded(SalesforceError):
@@ -169,7 +183,9 @@ class SalesforceUriLimitExceeded(SalesforceError):
     The length of the URI exceeds the 16,384-byte limit.
     """
 
-    message = "({status_code}) URI Limit Exceeded for {url_path}. Response content: {content}"
+    message = (
+        "({status_code}) URI Limit Exceeded for {url_path}. Response content: {content}"
+    )
 
 
 class SalesforceUnsupportedFormat(SalesforceError):
@@ -215,9 +231,7 @@ class SalesforceHeaderLimitExceeded(SalesforceError):
     The combined length of the URI and headers exceeds the 16,384-byte limit.
     """
 
-    message = (
-        "({status_code}) URI and Header exceeded 16kb limit for {url_path}.Response content: {content}"
-    )
+    message = "({status_code}) URI and Header exceeded 16kb limit for {url_path}.Response content: {content}"
 
 
 class SalesforceServerError(SalesforceError):
@@ -255,9 +269,7 @@ class SalesforceServerUnavailable(SalesforceError):
     for maintenance or is overloaded.
     """
 
-    message = (
-        "({status_code}) Salesforce Server Unavailable for {url_path}. Response content: {content}"
-    )
+    message = "({status_code}) Salesforce Server Unavailable for {url_path}. Response content: {content}"
 
 
 class SalesforceAuthenticationFailed(Exception):

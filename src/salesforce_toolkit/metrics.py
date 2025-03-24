@@ -2,16 +2,30 @@
 Utility functions and types to assist in parsing API usage metadata
 """
 
-from typing import TypedDict
-from collections import namedtuple
+from typing import NamedTuple
 import re
 
-Usage = namedtuple("Usage", "used total")
-PerAppUsage = namedtuple("PerAppUsage", "used total name")
 
-ApiUsage = TypedDict(
-    "ApiUsage", {"api-usage": Usage, "per-app-api-usage": PerAppUsage}, total=False
+class Usage(NamedTuple):
+    used: int
+    total: int
+
+
+class PerAppUsage(NamedTuple):
+    used: int
+    total: int
+    name: str
+
+
+app_usage_pattern = re.compile(r"[^-]?api-usage=(?P<used>\d+)/(?P<tot>\d+)")
+per_app_usage_pattern = re.compile(
+    r".+per-app-api-usage=(?P<u>\d+)/(?P<t>\d+)\(appName=(?P<n>.+)\)"
 )
+
+
+class ApiUsage(NamedTuple):
+    api_usage: Usage | None
+    per_app_api_usage: PerAppUsage | None
 
 
 def parse_api_usage(sforce_limit_info: str):
@@ -23,20 +37,17 @@ def parse_api_usage(sforce_limit_info: str):
         Example 2: 'api-usage=25/5000;
             per-app-api-usage=17/250(appName=sample-connected-app)'
     """
-    result: ApiUsage = {}
+    app_usage, per_app_usage = None, None
+    if (match := app_usage_pattern.match(sforce_limit_info)) and (
+        groups := match.groups()
+    ):
+        app_usage = Usage(used=int(groups[0]), total=int(groups[1]))
 
-    api_usage = re.match(
-        r"[^-]?api-usage=(?P<used>\d+)/(?P<tot>\d+)", sforce_limit_info
-    )
-    pau = r".+per-app-api-usage=(?P<u>\d+)/(?P<t>\d+)\(appName=(?P<n>.+)\)"
-    per_app_api_usage = re.match(pau, sforce_limit_info)
-
-    if api_usage and api_usage.groups():
-        groups = api_usage.groups()
-        result["api-usage"] = Usage(used=int(groups[0]), total=int(groups[1]))
-    if per_app_api_usage and per_app_api_usage.groups():
-        groups = per_app_api_usage.groups()
-        result["per-app-api-usage"] = PerAppUsage(
+    if (match := per_app_usage_pattern.match(sforce_limit_info)) and (
+        groups := match.groups()
+    ):
+        per_app_usage = PerAppUsage(
             used=int(groups[0]), total=int(groups[1]), name=groups[2]
         )
-    return result
+
+    return ApiUsage(app_usage, per_app_usage)
