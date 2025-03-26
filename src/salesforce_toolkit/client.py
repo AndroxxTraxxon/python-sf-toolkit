@@ -66,7 +66,7 @@ class AsyncSalesforceClient(
         login: SalesforceLogin | None = None,
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
-        has_sync_parent: bool = False
+        sync_parent: "SalesforceClient | None" = None
     ):
         assert login or token, (
             "Either auth or session parameters are required.\n"
@@ -76,7 +76,7 @@ class AsyncSalesforceClient(
         if token:
             self.derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
-        self.has_sync_parent = has_sync_parent
+        self.sync_parent = sync_parent
 
     async def __aenter__(self):
         if self._state == ClientState.UNOPENED:
@@ -96,7 +96,7 @@ class AsyncSalesforceClient(
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
-        if self.has_sync_parent:
+        if self.sync_parent:
             return None
         return await super().__aexit__(exc_type, exc_value, traceback)
 
@@ -160,6 +160,7 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
             login=self.auth.login,
             token=self.auth.token,
             token_refresh_callback=self.handle_async_clone_token_refresh,
+            sync_parent = self
         )
 
     def __enter__(self):
@@ -180,7 +181,9 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
         traceback: TracebackType | None = None,
     ) -> None:
         if self.as_async._state == ClientState.OPENED:
+            self.as_async.sync_parent = None
             asyncio.run(self.as_async.__aexit__())
+            del self.as_async
         return super().__exit__(exc_type, exc_value, traceback)
 
     def request(
