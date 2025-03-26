@@ -13,7 +13,6 @@ from more_itertools import chunked
 
 from salesforce_toolkit.concurrency import run_with_concurrency
 
-ALL_FIELDS = "ALL FIELDS"
 _sObject = TypeVar("_sObject", bound="SObject")
 
 
@@ -127,6 +126,10 @@ class SObject:
                 raise
 
     @classmethod
+    def from_description(cls, sobject: str, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME):
+
+
+    @classmethod
     def typeof(
         cls, record: dict, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME
     ) -> type["SObject"] | None:
@@ -136,7 +139,7 @@ class SObject:
         fields.remove("attributes")
         return cls._registry[
             SObjectAttributes(record["attributes"]["type"], connection)
-        ][frozenset(fields)]
+        ].get(frozenset(fields))
 
     @property
     @classmethod
@@ -152,12 +155,15 @@ class SObject:
     def revive_value(cls, name: str, value: Any, *, strict=True):
         datatype: type | None = cls.fields.get(name)
         if datatype is None:
-            raise KeyError(
-                f"unknown field {name} on {cls.__qualname__} ({cls._sf_attrs.type})"
-            )
+            if strict:
+                raise KeyError(
+                    f"unknown field {name} on {cls.__qualname__} ({cls._sf_attrs.type})"
+                )
+            return value
 
         if isinstance(value, datatype):
             return value
+
         if isinstance(value, (NoneType, bool, int, float)) or isinstance(
             value, datatype
         ):
@@ -170,16 +176,15 @@ class SObject:
                 return datetime.date.fromisoformat(value)
             if issubclass(datatype, MultiPicklistField):
                 return MultiPicklistField(value)
-            raise TypeError(
-                f"Unexpected 'str' value for {datatype.__qualname__} field {name}"
-            )
 
-        if isinstance(value, dict):
+        elif isinstance(value, dict):
             if _is_sobject_subclass(datatype):
                 return datatype(**value)
             raise TypeError(
                 f"Unexpected 'dict' value for {datatype.__qualname__} field {name}"
             )
+
+        raise TypeError("Unexpected ")
 
     @property
     @classmethod
@@ -249,7 +254,7 @@ class SObject:
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
     ) -> list[_sObject]:
         if sf_client is None:
-            sf_client = cls._client_connection.as_async
+            sf_client =cls._client_connection.as_async
         async with sf_client:
             tasks = [
                 sf_client.post(
