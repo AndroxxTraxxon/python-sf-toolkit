@@ -4,14 +4,18 @@ import datetime
 from functools import cache
 from json import JSONDecoder, JSONEncoder
 from types import NoneType
-from typing import Any, Iterable, Callable, NamedTuple, TypedDict, overload, TypeVar
-from salesforce_toolkit.client import SalesforceClient
+from typing import Any, Iterable, Callable, NamedTuple, TypedDict, TypeVar, Coroutine
+
+from httpx import Response
+from salesforce_toolkit.client import SalesforceClient, AsyncSalesforceClient
 
 from more_itertools import chunked
 
-ALL_FIELDS = "ALL FIELDS"
+from salesforce_toolkit.concurrency import run_with_concurrency
 
+ALL_FIELDS = "ALL FIELDS"
 _sObject = TypeVar("_sObject", bound="SObject")
+
 
 class MultiPicklistField(str):
     values: list[str]
@@ -22,9 +26,11 @@ class MultiPicklistField(str):
     def __str__(self):
         return ";".join(self.values)
 
+
 class SObjectAttributes(NamedTuple):
     type: str
     connection: str
+
 
 class SObjectEncoder(JSONEncoder):
     def default(self, o: Any) -> Any:
@@ -64,31 +70,47 @@ class SObjectEncoder(JSONEncoder):
 
 class _SObjectDictAttrs(TypedDict):
     type: str
+    url: str
 
 
 class _SObjectDict(TypedDict):
     attributes: _SObjectDictAttrs
 
+
 class SObjectDecoder(JSONDecoder):
-    def __init__(self, sf_connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME, **kwargs):
+    def __init__(
+        self, sf_connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME, **kwargs
+    ):
         super().__init__(**kwargs, object_hook=self._object_hook)
         self.sf_connection = sf_connection
 
     def _object_hook(self, o: Any):
-        if isinstance(o, dict) and (sobject_type := SObject.typeof(o, self.sf_connection)) is not None:
+        if (
+            isinstance(o, dict)
+            and (sobject_type := SObject.typeof(o, self.sf_connection)) is not None
+        ):
             return sobject_type(**o)
         return o
 
+
 class SObject:
-    _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = defaultdict(dict)
+    _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
+        defaultdict(dict)
+    )
 
-
-    def __init_subclass__(cls, name: str, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME, **kwargs) -> None:
+    def __init_subclass__(
+        cls,
+        name: str,
+        connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME,
+        **kwargs,
+    ) -> None:
         super().__init_subclass__(**kwargs)
         cls._sf_attrs = SObjectAttributes(name, connection)
         fields = frozenset(cls.fields.keys())
         if fields in cls._registry[cls._sf_attrs]:
-            raise TypeError(f"SObject Type {cls} already defined as {cls._registry[cls._sf_attrs][fields]}")
+            raise TypeError(
+                f"SObject Type {cls} already defined as {cls._registry[cls._sf_attrs][fields]}"
+            )
         cls._registry[cls._sf_attrs][fields] = cls
 
     def __init__(self, /, __strict_fields: bool = True, **fields):
@@ -96,20 +118,25 @@ class SObject:
             if name == "attributes":
                 continue
             try:
-                setattr(self, name, self.revive_value(name, value, strict=__strict_fields))
+                setattr(
+                    self, name, self.revive_value(name, value, strict=__strict_fields)
+                )
             except KeyError:
                 if __strict_fields:
                     continue
                 raise
 
     @classmethod
-    def typeof(cls, record: dict, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME) -> type["SObject"] | None:
+    def typeof(
+        cls, record: dict, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME
+    ) -> type["SObject"] | None:
         if "attributes" not in record or "type" not in record["attributes"]:
             return None
         fields = set(record.keys())
         fields.remove("attributes")
-        return cls._registry[SObjectAttributes(record["attributes"]["type"], connection)][frozenset(fields)]
-
+        return cls._registry[
+            SObjectAttributes(record["attributes"]["type"], connection)
+        ][frozenset(fields)]
 
     @property
     @classmethod
@@ -122,14 +149,18 @@ class SObject:
             yield field, getattr(self, field)
 
     @classmethod
-    def revive_value(cls, name: str, value: Any, * , strict=True):
+    def revive_value(cls, name: str, value: Any, *, strict=True):
         datatype: type | None = cls.fields.get(name)
         if datatype is None:
-            raise KeyError(f"unknown field {name} on {cls.__qualname__} ({cls._sf_attrs.type})")
+            raise KeyError(
+                f"unknown field {name} on {cls.__qualname__} ({cls._sf_attrs.type})"
+            )
 
         if isinstance(value, datatype):
             return value
-        if isinstance(value, (NoneType, bool, int, float)) or isinstance(value, datatype):
+        if isinstance(value, (NoneType, bool, int, float)) or isinstance(
+            value, datatype
+        ):
             return value
 
         if isinstance(value, str):
@@ -139,12 +170,16 @@ class SObject:
                 return datetime.date.fromisoformat(value)
             if issubclass(datatype, MultiPicklistField):
                 return MultiPicklistField(value)
-            raise TypeError(f"Unexpected 'str' value for {datatype.__qualname__} field {name}")
+            raise TypeError(
+                f"Unexpected 'str' value for {datatype.__qualname__} field {name}"
+            )
 
         if isinstance(value, dict):
             if _is_sobject_subclass(datatype):
                 return datatype(**value)
-            raise TypeError(f"Unexpected 'dict' value for {datatype.__qualname__} field {name}")
+            raise TypeError(
+                f"Unexpected 'dict' value for {datatype.__qualname__} field {name}"
+            )
 
     @property
     @classmethod
@@ -157,16 +192,14 @@ class SObject:
         record_id: str,
         sf_client: SalesforceClient | None = None,
     ) -> _sObject:
-
         if sf_client is None:
             sf_client = cls._client_connection
 
         # fetch single record
         return sf_client.get(
             f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/{record_id}",
-            params={"fields": ",".join(cls.fields)}
+            params={"fields": ",".join(cls.fields)},
         ).json(object_hook=cls)
-
 
     @classmethod
     def fetch(
@@ -174,8 +207,8 @@ class SObject:
         *ids: str,
         sf_client: SalesforceClient | None = None,
         concurrency: int = 1,
-        on_chunk_received: Callable[[list["SObject"]], None] | None = None
-    ) ->  list[_sObject]:
+        on_chunk_received: Callable[[Response], None] | None = None,
+    ) -> list[_sObject]:
         if sf_client is None:
             sf_client = cls._client_connection
 
@@ -186,17 +219,26 @@ class SObject:
         # pull in batches with composite API
         if concurrency > 1:
             # do some async shenanigans
-            return asyncio.run(cls.afetch(*ids, sf_client.as_async, concurrency, on_chunk_received))
-            pass
+            return asyncio.run(
+                cls.afetch(
+                    *ids,
+                    sf_client=sf_client.as_async,
+                    concurrency=concurrency,
+                    on_chunk_received=on_chunk_received,
+                )
+            )
         else:
             result = []
             for chunk in chunked(ids, 2000):
-                response = sf_client.get(sf_client.composite_sobjects_url)
-                chunk_result: list[SObject] = decoder.decode(response.text)
+                response = sf_client.post(
+                    sf_client.composite_sobjects_url(cls._sf_attrs.type),
+                    json={"ids": chunk, "fields": list(cls.fields)},
+                )
+                chunk_result: list[_sObject] = decoder.decode(response.text)
                 result.extend(chunk_result)
-            # do this synchronously
-
-
+                if on_chunk_received:
+                    on_chunk_received(response)
+            return result
 
     @classmethod
     async def afetch(
@@ -204,23 +246,35 @@ class SObject:
         *ids: str,
         sf_client: AsyncSalesforceClient | None = None,
         concurrency: int = 1,
-        on_chunk_received: Callable[[list["SObject"]], None] | None = None
+        on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
     ) -> list[_sObject]:
-        if sf_client.
+        if sf_client is None:
+            sf_client = cls._client_connection.as_async
         async with sf_client:
-            result = []
-            for chunk in chunked(ids, 2000):
-                response = sf_client.get(f"{sf_client.composite")
-                chunk_result: list[SObject] = decoder.decode(response.text)
-                result.extend(chunk_result)
-
+            tasks = [
+                sf_client.post(
+                    sf_client.composite_sobjects_url(cls._sf_attrs.type),
+                    json={"ids": chunk, "fields": list(cls.fields)},
+                )
+                for chunk in chunked(ids, 2000)
+            ]
+            decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
+            return [
+                item
+                for response in (
+                    await run_with_concurrency(concurrency, tasks, on_chunk_received)
+                )
+                for item in decoder.decode(response.text)
+            ]
 
     @classmethod
     def describe(cls):
         pass
 
+
 def _is_sobject(value):
     return isinstance(value, SObject)
+
 
 def _is_sobject_subclass(cls):
     return issubclass(cls, SObject)

@@ -66,7 +66,7 @@ class AsyncSalesforceClient(
         login: SalesforceLogin | None = None,
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
-        sync_parent: "SalesforceClient | None" = None
+        sync_parent: "SalesforceClient | None" = None,
     ):
         assert login or token, (
             "Either auth or session parameters are required.\n"
@@ -160,7 +160,7 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
             login=self.auth.login,
             token=self.auth.token,
             token_refresh_callback=self.handle_async_clone_token_refresh,
-            sync_parent = self
+            sync_parent=self,
         )
 
     def __enter__(self):
