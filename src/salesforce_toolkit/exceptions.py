@@ -30,7 +30,7 @@ class SalesforceError(Exception):
 
     def __str__(self):
         return self.message.format(
-            status_code=self.status_code, url=self.url_path, content=self.content
+            status_code=self.status_code, url_path=self.url_path, content=self.content
         )
 
     def __repr__(self):
@@ -57,20 +57,16 @@ class SalesforceRecordNotModifiedSince(SalesforceError):
     The date and time is provided in a If-Modified-Since header.
     """
 
-    message = (
-        "({status_code}) Content not modified since {modified_since} for {url_path}. "
-        "Response content: {content}"
-    )
+
 
     def __init__(self, response: httpx.Response, resource_name: str):
         self.if_modified_since = response.headers.get("If-Modified-Since")
         super().__init__(response, resource_name)
 
     def __str__(self):
-        return self.message.format(
-            url=self.url_path,
-            content=self.content,
-            modified_since=self.if_modified_since,
+        return (
+            f"({self.status_code}) Content not modified since {self.if_modified_since} for {self.url_path}. "
+            f"Response content: {self.content}"
         )
 
 
@@ -117,14 +113,11 @@ class SalesforceResourceNotFound(SalesforceError):
     verify that there are no sharing issues.
     """
 
-    message = "({status_code}) Resource {name} Not Found at {url_path}. Response content: {content}"
-
     def __str__(self):
-        return self.message.format(
-            status_code=self.status_code,
-            name=self.resource_name,
-            url=self.url_path,
-            content=self.content,
+        return (
+            f"({self.status_code}) "
+            f"Resource {self.resource_name} Not Found at {self.url_path}. "
+            f"Response content: {self.content}"
         )
 
 
@@ -338,15 +331,12 @@ _error_code_exception_map: dict[int, type[SalesforceError]] = {
 }
 
 
-def build_salesforce_exception(
+def raise_for_status(
     response: httpx.Response,
-    # url: str,
-    # status_code: int,
-    # content: Union[str, List[Dict[str, Any]]],
-    name="",
+    name: str = ""
 ):
-    """Exception router that determines which error to raise for bad results"""
-
-    return _error_code_exception_map.get(response.status_code, SalesforceGeneralError)(
+    if response.is_success:
+        return
+    raise _error_code_exception_map.get(response.status_code, SalesforceGeneralError)(
         response, name
     )

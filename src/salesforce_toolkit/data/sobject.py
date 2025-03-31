@@ -4,7 +4,7 @@ import datetime
 from functools import cache
 from json import JSONDecoder, JSONEncoder
 from types import NoneType
-from typing import Any, Iterable, Callable, NamedTuple, TypedDict, TypeVar, Coroutine
+from typing import Any, Callable, NamedTuple, TypedDict, TypeVar, Coroutine
 
 from httpx import Response
 from salesforce_toolkit.client import SalesforceClient, AsyncSalesforceClient
@@ -29,6 +29,116 @@ class MultiPicklistField(str):
 class SObjectAttributes(NamedTuple):
     type: str
     connection: str
+
+class SObjectFieldDescribe(NamedTuple):
+    """Represents metadata about a Salesforce SObject field"""
+    name: str
+    label: str
+    type: str
+    length: int = 0
+    nillable: bool = False
+    picklistValues: list[dict] = []
+    referenceTo: list[str] = []
+    relationshipName: str | None = None
+    unique: bool = False
+    updateable: bool = False
+    createable: bool = False
+    defaultValue: Any = None
+    externalId: bool = False
+    autoNumber: bool = False
+    calculated: bool = False
+    caseSensitive: bool = False
+    dependentPicklist: bool = False
+    deprecatedAndHidden: bool = False
+    displayLocationInDecimal: bool = False
+    filterable: bool = False
+    groupable: bool = False
+    permissionable: bool = False
+    restrictedPicklist: bool = False
+    sortable: bool = False
+    writeRequiresMasterRead: bool = False
+
+
+class SObjectDescribe:
+    """Represents metadata about a Salesforce SObject from a describe call"""
+    def __init__(
+        self,
+        *,
+        name: str = "",
+        label: str = "",
+        labelPlural: str = "",
+        keyPrefix: str = "",
+        custom: bool = False,
+        customSetting: bool = False,
+        createable: bool = False,
+        updateable: bool = False,
+        deletable: bool = False,
+        undeletable: bool = False,
+        mergeable: bool = False,
+        queryable: bool = False,
+        feedEnabled: bool = False,
+        searchable: bool = False,
+        layoutable: bool = False,
+        activateable: bool = False,
+        fields: list[SObjectFieldDescribe] | None = None,
+        childRelationships: list[dict] | None = None,
+        recordTypeInfos: list[dict] | None = None,
+        **additional_properties
+    ):
+        self.name = name
+        self.label = label
+        self.labelPlural = labelPlural
+        self.keyPrefix = keyPrefix
+        self.custom = custom
+        self.customSetting = customSetting
+        self.createable = createable
+        self.updateable = updateable
+        self.deletable = deletable
+        self.undeletable = undeletable
+        self.mergeable = mergeable
+        self.queryable = queryable
+        self.feedEnabled = feedEnabled
+        self.searchable = searchable
+        self.layoutable = layoutable
+        self.activateable = activateable
+        self.fields = fields or []
+        self.childRelationships = childRelationships or []
+        self.recordTypeInfos = recordTypeInfos or []
+        self._raw_data = {**additional_properties}
+
+        # Add all explicit properties to _raw_data too
+        for key, value in self.__dict__.items():
+            if not key.startswith('_'):
+                self._raw_data[key] = value
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SObjectDescribe':
+        """Create an SObjectDescribe instance from a dictionary (typically from a Salesforce API response)"""
+        # Extract fields specifically to convert them to SObjectFieldDescribe objects
+        fields_data = data.pop('fields', []) if 'fields' in data else []
+
+        # Create SObjectFieldDescribe instances for each field
+        fields = [
+            SObjectFieldDescribe(**{
+                k: v for k, v in field_data.items()
+                if k in SObjectFieldDescribe._fields
+            })
+            for field_data in fields_data
+        ]
+
+        # Create the SObjectDescribe with all remaining properties
+        return cls(fields=fields, **data)
+
+    def get_field(self, field_name: str) -> SObjectFieldDescribe | None:
+        """Get the field metadata for a specific field by name"""
+        for field in self.fields:
+            if field.name == field_name:
+                return field
+        return None
+
+    def get_raw_data(self) -> dict:
+        """Get the raw JSON data from the describe call"""
+        return self._raw_data
 
 
 class SObjectEncoder(JSONEncoder):
@@ -126,10 +236,6 @@ class SObject:
                 raise
 
     @classmethod
-    def from_description(cls, sobject: str, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME):
-
-
-    @classmethod
     def typeof(
         cls, record: dict, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME
     ) -> type["SObject"] | None:
@@ -141,15 +247,21 @@ class SObject:
             SObjectAttributes(record["attributes"]["type"], connection)
         ].get(frozenset(fields))
 
+
     @property
     @classmethod
     @cache
     def fields(cls):
         return cls.__annotations__
 
-    def field_items(self) -> Iterable[tuple[str, Any]]:
-        for field in self.fields:
-            yield field, getattr(self, field)
+    @classmethod
+    def keys(cls):
+        return cls.__annotations__.keys()
+
+    def __getitem__(self, name):
+        if name not in self.keys():
+            raise KeyError("Undefined field " + name)
+        return getattr(self, name)
 
     @classmethod
     def revive_value(cls, name: str, value: Any, *, strict=True):
@@ -274,7 +386,80 @@ class SObject:
 
     @classmethod
     def describe(cls):
-        pass
+        """
+        Retrieves detailed metadata information about the SObject from Salesforce.
+
+        Returns:
+            dict: The full describe result containing metadata about the SObject's
+                  fields, relationships, and other properties.
+        """
+        sf_client = cls._client_connection
+
+        # Use the describe endpoint for this SObject type
+        describe_url = f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/describe"
+
+        # Make the request to get the describe metadata
+        response = sf_client.get(describe_url)
+
+        # Return the describe metadata as a dictionary
+        return response.json()
+
+    @classmethod
+    def from_description(cls, sobject: str, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME) -> type["SObject"]:
+        """
+        Build an SObject type definition for the named SObject based on the object 'describe' from Salesforce
+
+        Args:
+            sobject (str): The API name of the SObject in Salesforce
+            connection (str): The name of the Salesforce connection to use
+
+        Returns:
+            type[SObject]: A dynamically created SObject subclass with fields matching the describe result
+        """
+        sf_client = SalesforceClient.get_connection(connection)
+
+        # Get the describe metadata for this SObject
+        describe_url = f"{sf_client.sobjects_url}/{sobject}/describe"
+        describe_data = SObjectDescribe.from_dict(sf_client.get(describe_url).json())
+
+        # Extract field information
+        field_annotations = {}
+        for field in describe_data.fields:
+            field_name = field.name
+            field_type = field.type
+
+            # Map Salesforce field types to Python types
+            python_type = str  # Default type
+            if field_type == 'boolean':
+                python_type = bool
+            elif field_type in ('int', 'double', 'currency', 'percent'):
+                python_type = float
+            elif field_type == 'date':
+                python_type = datetime.date
+            elif field_type == 'datetime':
+                python_type = datetime.datetime
+            elif field_type == 'time':
+                python_type = datetime.time
+            elif field_type == 'multipicklist':
+                python_type = MultiPicklistField
+
+            field_annotations[field_name] = python_type
+
+        # Create a new SObject subclass
+        sobject_class: type[_sObject] = type(  # type: ignore
+            f"{sobject.title().replace('__c', '').replace('_', '')}SObject",
+            (SObject,),
+            {
+                "__annotations__": field_annotations,
+                "__doc__": f"Auto-generated SObject class for {sobject} ({describe_data.label})"
+            },
+            name=sobject,
+            connection=connection
+        )
+
+        return sobject_class
+
+
 
 
 def _is_sobject(value):

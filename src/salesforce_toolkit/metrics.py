@@ -3,7 +3,6 @@ Utility functions and types to assist in parsing API usage metadata
 """
 
 from typing import NamedTuple
-import re
 
 
 class Usage(NamedTuple):
@@ -15,12 +14,6 @@ class PerAppUsage(NamedTuple):
     used: int
     total: int
     name: str
-
-
-app_usage_pattern = re.compile(r"[^-]?api-usage=(?P<used>\d+)/(?P<tot>\d+)")
-per_app_usage_pattern = re.compile(
-    r".+per-app-api-usage=(?P<u>\d+)/(?P<t>\d+)\(appName=(?P<n>.+)\)"
-)
 
 
 class ApiUsage(NamedTuple):
@@ -38,16 +31,21 @@ def parse_api_usage(sforce_limit_info: str):
             per-app-api-usage=17/250(appName=sample-connected-app)'
     """
     app_usage, per_app_usage = None, None
-    if (match := app_usage_pattern.match(sforce_limit_info)) and (
-        groups := match.groups()
-    ):
-        app_usage = Usage(used=int(groups[0]), total=int(groups[1]))
+    for item in sforce_limit_info.split(";"):
+        try:
+            item = item.strip()
+            if not item:
+                continue
 
-    if (match := per_app_usage_pattern.match(sforce_limit_info)) and (
-        groups := match.groups()
-    ):
-        per_app_usage = PerAppUsage(
-            used=int(groups[0]), total=int(groups[1]), name=groups[2]
-        )
-
+            type, usage = item.split("=", maxsplit=1)
+            if type.startswith("per-app-"):
+                usage, appname = usage.split("(", maxsplit=1)
+                appname = appname.removeprefix("appName=").removesuffix(")")
+                used, total = map(int, usage.split("/", maxsplit=1))
+                per_app_usage = PerAppUsage(used, total, appname)
+            else:
+                used, total = map(int, usage.split("/", maxsplit=1))
+                app_usage = Usage(used, total)
+        except ValueError:
+            continue
     return ApiUsage(app_usage, per_app_usage)
