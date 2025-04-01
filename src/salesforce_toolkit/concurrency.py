@@ -5,7 +5,7 @@ from types import CoroutineType
 
 T = TypeVar("T")
 
-async def run_with_concurrency(
+async def run_concurrently(
     limit: int,
     coroutines: Iterable[Awaitable[T]],
     task_callback: Callable[[T], Awaitable[None] | None] | None = None,

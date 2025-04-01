@@ -172,7 +172,7 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
 
     @classmethod
     def get_connection(cls, name: str):
-        return cls._connections["name"]
+        return cls._connections[name]
 
     def __init__(
         self,

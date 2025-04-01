@@ -1,17 +1,17 @@
 import asyncio
 from collections import defaultdict
 import datetime
-from functools import cache
+from functools import cache, cached_property
 from json import JSONDecoder, JSONEncoder
 from types import NoneType
-from typing import Any, Callable, NamedTuple, TypedDict, TypeVar, Coroutine
+from typing import Any, Callable, Generic, NamedTuple, TypedDict, TypeVar, Coroutine
 
 from httpx import Response
 from salesforce_toolkit.client import SalesforceClient, AsyncSalesforceClient
 
 from more_itertools import chunked
 
-from salesforce_toolkit.concurrency import run_with_concurrency
+from salesforce_toolkit.concurrency import run_concurrently
 
 _sObject = TypeVar("_sObject", bound="SObject")
 
@@ -150,7 +150,7 @@ class SObjectEncoder(JSONEncoder):
     def _encode_sobject(self, o: "SObject"):
         encoded: dict[str, Any] = {
             field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
-            for field_name in o.fields
+            for field_name in o.fields()
         }
         encoded["attributes"] = {"type": o._sf_attrs.type}
         return encoded
@@ -186,7 +186,7 @@ class _SObjectDict(TypedDict):
     attributes: _SObjectDictAttrs
 
 
-class SObjectDecoder(JSONDecoder):
+class SObjectDecoder(JSONDecoder, Generic[_sObject]):
     def __init__(
         self, sf_connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME, **kwargs
     ):
@@ -209,13 +209,15 @@ class SObject:
 
     def __init_subclass__(
         cls,
-        name: str,
+        api_name: str | None = None,
         connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME,
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
-        cls._sf_attrs = SObjectAttributes(name, connection)
-        fields = frozenset(cls.fields.keys())
+        if not api_name:
+            api_name = cls.__name__
+        cls._sf_attrs = SObjectAttributes(api_name, connection)
+        fields = frozenset(cls.keys())
         if fields in cls._registry[cls._sf_attrs]:
             raise TypeError(
                 f"SObject Type {cls} already defined as {cls._registry[cls._sf_attrs][fields]}"
@@ -248,9 +250,7 @@ class SObject:
         ].get(frozenset(fields))
 
 
-    @property
     @classmethod
-    @cache
     def fields(cls):
         return cls.__annotations__
 
@@ -265,7 +265,7 @@ class SObject:
 
     @classmethod
     def revive_value(cls, name: str, value: Any, *, strict=True):
-        datatype: type | None = cls.fields.get(name)
+        datatype: type | None = cls.fields()[name]
         if datatype is None:
             if strict:
                 raise KeyError(
@@ -298,28 +298,27 @@ class SObject:
 
         raise TypeError("Unexpected ")
 
-    @property
     @classmethod
     def _client_connection(cls) -> SalesforceClient:
         return SalesforceClient.get_connection(cls._sf_attrs.connection)
 
     @classmethod
-    def get(
+    def read(
         cls: type[_sObject],
         record_id: str,
         sf_client: SalesforceClient | None = None,
     ) -> _sObject:
         if sf_client is None:
-            sf_client = cls._client_connection
+            sf_client = cls._client_connection()
 
         # fetch single record
-        return sf_client.get(
+        return cls(**sf_client.get(
             f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/{record_id}",
-            params={"fields": ",".join(cls.fields)},
-        ).json(object_hook=cls)
+            params={"fields": ",".join(cls.keys())},
+        ).json())
 
     @classmethod
-    def fetch(
+    def list(
         cls: type[_sObject],
         *ids: str,
         sf_client: SalesforceClient | None = None,
@@ -327,10 +326,10 @@ class SObject:
         on_chunk_received: Callable[[Response], None] | None = None,
     ) -> list[_sObject]:
         if sf_client is None:
-            sf_client = cls._client_connection
+            sf_client = cls._client_connection()
 
         if len(ids) == 1:
-            return [cls.get(ids[0], sf_client)]
+            return [cls.read(ids[0], sf_client)]
         decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
 
         # pull in batches with composite API
@@ -349,7 +348,7 @@ class SObject:
             for chunk in chunked(ids, 2000):
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(cls._sf_attrs.type),
-                    json={"ids": chunk, "fields": list(cls.fields)},
+                    json={"ids": chunk, "fields": list(cls.fields())},
                 )
                 chunk_result: list[_sObject] = decoder.decode(response.text)
                 result.extend(chunk_result)
@@ -364,25 +363,26 @@ class SObject:
         sf_client: AsyncSalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
-    ) -> list[_sObject]:
+    ):
         if sf_client is None:
-            sf_client =cls._client_connection.as_async
+            sf_client =cls._client_connection().as_async
         async with sf_client:
             tasks = [
                 sf_client.post(
                     sf_client.composite_sobjects_url(cls._sf_attrs.type),
-                    json={"ids": chunk, "fields": list(cls.fields)},
+                    json={"ids": chunk, "fields": list(cls.fields())},
                 )
                 for chunk in chunked(ids, 2000)
             ]
             decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
-            return [
+            records: list[_sObject] = [  # type: ignore
                 item
                 for response in (
-                    await run_with_concurrency(concurrency, tasks, on_chunk_received)
+                    await run_concurrently(concurrency, tasks, on_chunk_received)
                 )
                 for item in decoder.decode(response.text)
             ]
+            return records
 
     @classmethod
     def describe(cls):
@@ -393,7 +393,7 @@ class SObject:
             dict: The full describe result containing metadata about the SObject's
                   fields, relationships, and other properties.
         """
-        sf_client = cls._client_connection
+        sf_client = cls._client_connection()
 
         # Use the describe endpoint for this SObject type
         describe_url = f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/describe"
@@ -447,13 +447,13 @@ class SObject:
 
         # Create a new SObject subclass
         sobject_class: type[_sObject] = type(  # type: ignore
-            f"{sobject.title().replace('__c', '').replace('_', '')}SObject",
+            f"SObject__{sobject}",
             (SObject,),
             {
                 "__annotations__": field_annotations,
                 "__doc__": f"Auto-generated SObject class for {sobject} ({describe_data.label})"
             },
-            name=sobject,
+            api_name=sobject,
             connection=connection
         )
 

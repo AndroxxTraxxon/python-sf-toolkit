@@ -82,7 +82,10 @@ class SObjectProtocol(Protocol):
     """Protocol defining the interface of SObject classes for typing purposes."""
     _sf_attrs: SObjectAttributesProtocol
     fields: dict[str, Any]
-    _client_connection: SalesforceClientProtocol
+
+    @classmethod
+    def _client_connection(cls) -> SalesforceClientProtocol:
+        ...
 
     @classmethod
     def get(cls, record_id: str, sf_client: Any = None) -> Any:

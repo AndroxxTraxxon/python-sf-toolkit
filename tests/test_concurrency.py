@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from salesforce_toolkit.concurrency import run_with_concurrency
+from salesforce_toolkit.concurrency import run_concurrently
 
 @pytest.mark.asyncio
 async def test_concurrency_limit():
@@ -27,7 +27,7 @@ async def test_concurrency_limit():
     # Record the start time before running all tasks
     overall_start_time = asyncio.get_event_loop().time()
 
-    results = await run_with_concurrency(concurrency_limit, [task(d) for d in delays])
+    results = await run_concurrently(concurrency_limit, [task(d) for d in delays])
 
     # Calculate total run time
     overall_execution_time = asyncio.get_event_loop().time() - overall_start_time
@@ -57,7 +57,7 @@ async def test_callback_function():
         callback_results.append(result)
 
     values = [1, 2, 3, 4, 5]
-    results = await run_with_concurrency(2, [task(v) for v in values], callback)
+    results = await run_concurrently(2, [task(v) for v in values], callback)
 
     assert results == values
     assert sorted(callback_results) == values
@@ -76,7 +76,7 @@ async def test_async_callback_function():
         callback_results.append(result)
 
     values = [1, 2, 3, 4, 5]
-    results = await run_with_concurrency(2, [task(v) for v in values], async_callback)
+    results = await run_concurrently(2, [task(v) for v in values], async_callback)
 
     assert results == values
     assert sorted(callback_results) == values
@@ -84,7 +84,7 @@ async def test_async_callback_function():
 @pytest.mark.asyncio
 async def test_empty_coroutines():
     """Test with empty list of coroutines."""
-    results = await run_with_concurrency(5, [])
+    results = await run_concurrently(5, [])
     assert results == []
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_error_propagation():
         raise ValueError("Task failed")
 
     with pytest.raises(ValueError, match="Task failed"):
-        await run_with_concurrency(2, [succeeding_task(), failing_task()])
+        await run_concurrently(2, [succeeding_task(), failing_task()])
 
 @pytest.mark.asyncio
 async def test_different_return_types():
@@ -116,7 +116,7 @@ async def test_different_return_types():
         await asyncio.sleep(0.01)
         return [1, 2, 3]
 
-    results = await run_with_concurrency(3, [task_int(), task_str(), task_list()])
+    results = await run_concurrently(3, [task_int(), task_str(), task_list()])
     assert results == [42, "hello", [1, 2, 3]]
 
 @pytest.mark.asyncio
@@ -130,7 +130,7 @@ async def test_concurrency_one():
         return idx
 
     tasks = [task(i) for i in range(5)]
-    results = await run_with_concurrency(1, tasks)
+    results = await run_concurrently(1, tasks)
 
     assert results == list(range(5))
     assert execution_order == list(range(5))  # Should execute in order

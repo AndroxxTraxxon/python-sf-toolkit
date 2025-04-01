@@ -1,10 +1,10 @@
-from functools import cached_property
-from typing import Literal, NamedTuple, TypeVar, Generic
+from typing import Any, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
-from ..protocols import SObjectProtocol, SalesforceClientProtocol
+
+from salesforce_toolkit.data.apimodels import QueryResultJSON
+from ..protocols import SObjectProtocol
 from ..formatting import quote_soql_value
 
-from ..client import SalesforceClient
 
 BooleanOperator = Literal["AND", "OR"]
 Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES"]
@@ -51,10 +51,9 @@ class Order(NamedTuple):
     def __str__(self):
         return f"{self.field} {self.direction}"
 
-
-T = TypeVar('T', bound=SObjectProtocol)
-
-class QueryResult(Generic[T]):
+_SObject = TypeVar('_SObject', bound=SObjectProtocol)
+_SObjectJSON = TypeVar('_SObjectJSON', bound=dict[str, Any])
+class QueryResult(Generic[_SObject]):
     """
     A generic class to represent results returned by the Salesforce SOQL Query API.
 
@@ -66,14 +65,15 @@ class QueryResult(Generic[T]):
     """
     done: bool
     totalSize: int
-    records: list[T]
+    records: list[_SObject]
     nextRecordsUrl: str | None
+    _sobject_type: type[_SObject]
 
     def __init__(self,
-        sobject_type: type[T],
+        sobject_type: type[_SObject], / ,
         done: bool = True,
         totalSize: int = 0,
-        records: list[T] | None = None,
+        records: list[dict[str, Any]] | None = None,
         nextRecordsUrl: str | None = None
     ):
         """
@@ -82,14 +82,22 @@ class QueryResult(Generic[T]):
         Args:
             **kwargs: Key-value pairs from the Salesforce API response.
         """
+        self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
         self.records = [sobject_type(**record) for record in records] if records else []
         self.nextRecordsUrl = nextRecordsUrl
 
+    def query_more(self):
+        if not self.nextRecordsUrl:
+            raise ValueError("Cannot get more records without nextRecordsUrl")
+
+        client = self._sobject_type._client_connection()
+        result: QueryResultJSON = client.get(self.nextRecordsUrl).json()
+        return QueryResult(self._sobject_type, **result)
 
 
-class SoqlSelect(Generic[T]):
+class SoqlSelect(Generic[_SObject]):
     where: Comparison | BooleanOperator | None = None
     grouping: list[str] | None = None
     having: Comparison | BooleanOperator | None = None
@@ -97,12 +105,8 @@ class SoqlSelect(Generic[T]):
     offset: int | None = None
     order: list[Order] | None = None
 
-    def __init__(self, sobject_type: type[SObjectProtocol]):
+    def __init__(self, sobject_type: type[_SObject]):
         self.sobject_type = sobject_type
-
-    @property
-    def sf_connection(self) -> SalesforceClientProtocol:
-        return self.sobject_type._client_connection
 
     @property
     def fields(self):
@@ -112,9 +116,8 @@ class SoqlSelect(Generic[T]):
     def sobject(self):
         return self.sobject_type._sf_attrs.type
 
-
     def _sf_connection(self):
-        return self.sobject_type._client_connection
+        return self.sobject_type._client_connection()
 
 
     def format(self, fields: list[str]):
@@ -139,28 +142,21 @@ class SoqlSelect(Generic[T]):
         """
 
         # Execute the query
-        count_result = self.execute(["COUNT()"])
+        count_result = self.query(["COUNT()"])
 
         # Count query returns a list with a single record containing the count
-        if count_result and len(count_result) > 0:
-            return int(count_result[0]["expr0"])
-        return 0
+        return count_result.totalSize
 
-    def execute(self, fields: list[str] | None) -> list[dict]:
+    def query(self, fields: list[str] | None = None) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).
-
-        Returns:
-            list[dict]: List of records matching the query criteria
         """
         if not fields:
             fields = self.fields
-        connection = self._sf_connection()
-        query_string = self.format(fields)
+        client = self._sf_connection()
 
-        result = connection.get(f"{connection.data_url}/query?q={query_string}").json()
-        query_result = QueryResult(**result, )
-
-        return query_result
-
-    def
+        result: QueryResultJSON = client.get(
+            f"{client.data_url}/query",
+            params={"q": self.format(fields)}
+        ).json()
+        return QueryResult(self.sobject_type, **result)
