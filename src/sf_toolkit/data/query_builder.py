@@ -1,9 +1,9 @@
 from typing import Any, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
-from salesforce_toolkit.data.apimodels import QueryResultJSON
-from salesforce_toolkit.interfaces import I_SObject
 from ..formatting import quote_soql_value
+from ..interfaces import I_SObject
+from .._models import QueryResultJSON, SObjectRecordJSON
 
 
 BooleanOperator = Literal["AND", "OR"]
@@ -58,22 +58,29 @@ class QueryResult(Generic[_SObject]):
     A generic class to represent results returned by the Salesforce SOQL Query API.
 
     Attributes:
-        done (bool): Indicates whether all records have been retrieved (True) or if more batches exist (False)
-        totalSize (int): The total number of records that match the query criteria
-        records (list[T]): The list of records returned by the query
-        nextRecordsUrl (str, optional): URL to the next batch of records, if more exist
+        done (bool):
+        totalSize (int):
+        records (list[T]):
+        nextRecordsUrl (str, optional):
     """
     done: bool
+    "Indicates whether all records have been retrieved (True) or if more batches exist (False)"
     totalSize: int
+    "The total number of records that match the query criteria"
     records: list[_SObject]
+    "The list of records returned by the query"
     nextRecordsUrl: str | None
+    "URL to the next batch of records, if more exist"
     _sobject_type: type[_SObject]
+    "The SObject type this QueryResult contains records for"
+    query_locator: str | None = None
+    batch_size: int | None = None
 
     def __init__(self,
         sobject_type: type[_SObject], / ,
         done: bool = True,
         totalSize: int = 0,
-        records: list[dict[str, Any]] | None = None,
+        records: list[SObjectRecordJSON] | None = None,
         nextRecordsUrl: str | None = None
     ):
         """
@@ -88,7 +95,9 @@ class QueryResult(Generic[_SObject]):
         self.records = [sobject_type(**record) for record in records] if records else []
         self.nextRecordsUrl = nextRecordsUrl
         if self.nextRecordsUrl:
-            self.query_locator, self.batch_size = self.nextRecordsUrl.rsplit("/", maxsplit=1)[1].rsplit("-", maxsplit=1)
+            # nextRecordsUrl looks like this:
+            self.query_locator, batch_size = self.nextRecordsUrl.rsplit("/", maxsplit=1)[1].rsplit("-", maxsplit=1)
+            self.batch_size = int(batch_size)
 
     def query_more(self):
         if not self.nextRecordsUrl:

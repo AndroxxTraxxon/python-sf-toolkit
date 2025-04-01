@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import datetime
-from salesforce_toolkit.data.sobject import SObject, MultiPicklistField
-from salesforce_toolkit.data.query_builder import SoqlSelect
-from salesforce_toolkit.client import SalesforceClient
+from sf_toolkit.data.sobject import SObject, MultiPicklistField
+from sf_toolkit.data.query_builder import SoqlSelect
+from sf_toolkit.client import SalesforceClient
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def test_sobject_class_definition():
     assert account['Name'] == "Acme Corp"
 
 
-@patch('salesforce_toolkit.client.SalesforceClient.get')
+@patch('sf_toolkit.client.SalesforceClient.get')
 def test_sobject_get(mock_get):
     # Define an SObject subclass
     class Contact(SObject, api_name="Contact"):
@@ -104,7 +104,7 @@ def test_sobject_get(mock_get):
     mock_get.assert_called_once()
 
 
-@patch('salesforce_toolkit.client.SalesforceClient.post')
+@patch('sf_toolkit.client.SalesforceClient.post')
 def test_sobject_fetch(mock_post):
     # Define an SObject subclass
     class Opportunity(SObject, api_name="Opportunity"):
@@ -155,7 +155,7 @@ def test_sobject_fetch(mock_post):
     mock_post.assert_called_once()
 
 
-@patch('salesforce_toolkit.client.SalesforceClient.get')
+@patch('sf_toolkit.client.SalesforceClient.get')
 def test_sobject_describe(mock_get):
     # Define an SObject subclass
     class Lead(SObject, api_name="Lead"):
@@ -198,7 +198,7 @@ def test_sobject_describe(mock_get):
     mock_get.assert_called_once()
 
 
-@patch('salesforce_toolkit.client.SalesforceClient.get')
+@patch('sf_toolkit.client.SalesforceClient.get')
 def test_from_description(mock_get):
     # Mock the describe API response
     mock_response = MagicMock()
@@ -265,7 +265,7 @@ def test_from_description(mock_get):
     assert obj.Categories__c.values == ["one", "two", "three"]  # type: ignore
 
 
-@patch('salesforce_toolkit.client.SalesforceClient.get')
+@patch('sf_toolkit.client.SalesforceClient.get')
 def test_query_builder(mock_get):
     # Define an SObject subclass
     class Case(SObject, api_name="Case"):

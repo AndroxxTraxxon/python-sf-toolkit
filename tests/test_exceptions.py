@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock
 import httpx
 
-from salesforce_toolkit.exceptions import (
+from sf_toolkit.exceptions import (
     raise_for_status,
     SalesforceMoreThanOneRecord,
     SalesforceRecordNotModifiedSince,

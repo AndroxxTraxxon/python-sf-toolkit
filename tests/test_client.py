@@ -1,6 +1,6 @@
-from salesforce_toolkit.apimodels import ApiVersion
-from salesforce_toolkit.auth.types import SalesforceToken
-from salesforce_toolkit.client import SalesforceClient
+from sf_toolkit.apimodels import ApiVersion
+from sf_toolkit.auth.types import SalesforceToken
+from sf_toolkit.client import SalesforceClient
 
 def test_client_context_manager(mocker):
     """Test that the client context manager correctly initializes"""
@@ -52,7 +52,6 @@ def test_client_context_manager(mocker):
         "test.salesforce.com", "mock_access_token"
     )) as client:
         # Verify client has userinfo and api_version configured
-        assert client.api_version is not None
         assert isinstance(client.api_version, ApiVersion)
         assert client.api_version.version == 52.0  # Should use the latest version
 

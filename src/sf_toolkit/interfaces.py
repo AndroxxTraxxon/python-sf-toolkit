@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from httpx import AsyncClient, Client
 from httpx._client import BaseClient  # type: ignore
 
-from salesforce_toolkit.auth.types import TokenRefreshCallback, SalesforceToken
-from salesforce_toolkit.apimodels import ApiVersion, UserInfo
-from salesforce_toolkit._models import SObjectAttributes
+from .auth.types import TokenRefreshCallback, SalesforceToken
+from .apimodels import ApiVersion, UserInfo
+from ._models import SObjectAttributes
 
 class TokenRefreshCallbackMixin:
     token_refresh_callback: TokenRefreshCallback | None

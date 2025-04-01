@@ -1,7 +1,7 @@
 """Tests for salesforce_toolkit.formatting."""
 import pytest
 from datetime import datetime, date, timezone
-from salesforce_toolkit.formatting import (
+from sf_toolkit.formatting import (
     quote_soql_value,
     format_soql,
     format_external_id,

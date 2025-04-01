@@ -5,7 +5,7 @@ from types import TracebackType
 from httpx import URL, Response
 from httpx._client import ClientState  # type: ignore
 
-from salesforce_toolkit.interfaces import I_AsyncSalesforceClient, I_SalesforceClient
+from .interfaces import I_AsyncSalesforceClient, I_SalesforceClient
 
 
 from .logger import getLogger

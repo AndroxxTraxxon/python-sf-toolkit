@@ -6,15 +6,15 @@ from types import NoneType
 from typing import Any, Callable, Generic, NamedTuple, TypeVar, Coroutine
 
 from httpx import Response
-import salesforce_toolkit.client as sftk_client
+from .. import client as sftk_client
 
 from more_itertools import chunked
 
-from salesforce_toolkit.concurrency import run_concurrently
-from salesforce_toolkit._models import (
+from ..concurrency import run_concurrently
+from .._models import (
     SObjectAttributes
 )
-from salesforce_toolkit.interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
+from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 
 _sObject = TypeVar("_sObject", bound="SObject")
 

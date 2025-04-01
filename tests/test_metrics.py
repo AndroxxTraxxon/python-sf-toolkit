@@ -1,4 +1,4 @@
-from salesforce_toolkit.metrics import parse_api_usage, Usage, PerAppUsage, ApiUsage
+from sf_toolkit.metrics import parse_api_usage, Usage, PerAppUsage, ApiUsage
 
 
 def test_parse_api_usage_with_api_usage_only():

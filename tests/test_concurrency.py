@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from salesforce_toolkit.concurrency import run_concurrently
+from sf_toolkit.concurrency import run_concurrently
 
 @pytest.mark.asyncio
 async def test_concurrency_limit():
