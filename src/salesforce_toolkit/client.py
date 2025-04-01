@@ -2,8 +2,11 @@ import asyncio
 from functools import cached_property
 from types import TracebackType
 
-from httpx import URL, Client, AsyncClient, Response
-from httpx._client import ClientState, BaseClient  # type: ignore
+from httpx import URL, Response
+from httpx._client import ClientState  # type: ignore
+
+from salesforce_toolkit.interfaces import I_AsyncSalesforceClient, I_SalesforceClient
+
 
 from .logger import getLogger
 from .metrics import parse_api_usage
@@ -22,58 +25,8 @@ from .apimodels import (
 LOGGER = getLogger("client")
 
 
-class TokenRefreshCallbackMixin:
-    token_refresh_callback: TokenRefreshCallback | None
-
-    def handle_token_refresh(self, token: SalesforceToken):
-        self.derive_base_url(token)
-        if self.token_refresh_callback:
-            self.token_refresh_callback(token)
-
-    def set_token_refresh_callback(self, callback: TokenRefreshCallback):
-        self.token_refresh_callback = callback
-
-    def derive_base_url(self, session: SalesforceToken):
-        self.base_url = f"https://{session.instance}"
-
-
-class SalesforceApiHelpersMixin(BaseClient):
-    DEFAULT_API_VERSION = 63.0
-    api_version: ApiVersion
-    _versions: dict[float, ApiVersion]
-    _userinfo: UserInfo
-
-    def __init__(self, **kwargs):
-        if "api_version" in kwargs:
-            self.api_version = ApiVersion.lazy_build(kwargs["api_version"])
-
-        super().__init__(**kwargs)
-
-    @property
-    def data_url(self):
-        if not self.api_version:
-            assert hasattr(self, "_versions") and self._versions, ""
-            self.api_version = self._versions[max(self._versions)]
-        return self.api_version.url
-
-    def _userinfo_request(self):
-        return self.build_request("GET", "/oauth2/userinfo")
-
-    def _versions_request(self):
-        return self.build_request("GET", "/services/data")
-
-    @property
-    def sobjects_url(self):
-        return f"{self.data_url}/sobjects"
-
-    def composite_sobjects_url(self, sobject: str | None = None):
-        url = f"{self.data_url}/composite/sobjects"
-        if sobject:
-            url += "/" + sobject
-        return url
-
 class AsyncSalesforceClient(
-    AsyncClient, TokenRefreshCallbackMixin, SalesforceApiHelpersMixin
+    I_AsyncSalesforceClient
 ):
     auth: SalesforceAuth  # type: ignore
 
@@ -95,10 +48,14 @@ class AsyncSalesforceClient(
         self.sync_parent = sync_parent
 
 
+    def unregister_parent(self):
+        self.sync_parent = None
+
+
     async def __aenter__(self):  # type: ignore
         if self._state == ClientState.UNOPENED:
             await super().__aenter__()
-            self._userinfo = await self.send_request(self._userinfo_request()).json(object_hook=ApiVersion)  # type: ignore
+            self._userinfo = await self.send(self._userinfo_request()).json(object_hook=ApiVersion)  # type: ignore
             self._versions = (await self.send(self._versions_request())).json(object_hook=ApiVersion)
             if self.api_version:
                 self.api_version = self._versions[self.api_version.version]
@@ -154,7 +111,7 @@ class AsyncSalesforceClient(
         }
 
 
-class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMixin):
+class SalesforceClient(I_SalesforceClient):
     token_refresh_callback: TokenRefreshCallback | None
     auth: SalesforceAuth  # type: ignore
     DEFAULT_CONNECTION_NAME = "default"
@@ -163,6 +120,8 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
 
     @classmethod
     def get_connection(cls, name: str):
+        if not name:
+            name = cls.DEFAULT_CONNECTION_NAME
         return cls._connections[name]
 
     def __init__(
@@ -194,14 +153,21 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
         self.auth.token = token
 
     # caching this so that multiple calls don't generate new sessions.
-    @cached_property
-    def as_async(self) -> AsyncSalesforceClient:
-        return AsyncSalesforceClient(
-            login=self.auth.login,
-            token=self.auth.token,
-            token_refresh_callback=self.handle_async_clone_token_refresh,
-            sync_parent=self,
-        )
+    @property
+    def as_async(self) -> I_AsyncSalesforceClient:
+        a_client = getattr(self, "_async_session", None)
+        if a_client is None:
+            a_client = self._async_session = AsyncSalesforceClient(
+                login=self.auth.login,
+                token=self.auth.token,
+                token_refresh_callback=self.handle_async_clone_token_refresh,
+                sync_parent=self,
+            )
+        return a_client
+
+    @as_async.deleter
+    def as_async(self):
+        self._async_session = None
 
     def __enter__(self):
         super().__enter__()
@@ -226,7 +192,7 @@ class SalesforceClient(Client, TokenRefreshCallbackMixin, SalesforceApiHelpersMi
         traceback: TracebackType | None = None,
     ) -> None:
         if self.as_async._state == ClientState.OPENED:
-            self.as_async.sync_parent = None
+            self.as_async.unregister_parent
             asyncio.run(self.as_async.__aexit__())
             del self.as_async
         return super().__exit__(exc_type, exc_value, traceback)

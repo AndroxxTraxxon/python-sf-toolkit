@@ -3,14 +3,18 @@ from collections import defaultdict
 import datetime
 from json import JSONDecoder, JSONEncoder
 from types import NoneType
-from typing import Any, Callable, Generic, NamedTuple, TypedDict, TypeVar, Coroutine
+from typing import Any, Callable, Generic, NamedTuple, TypeVar, Coroutine
 
 from httpx import Response
-from salesforce_toolkit.client import SalesforceClient, AsyncSalesforceClient
+import salesforce_toolkit.client as sftk_client
 
 from more_itertools import chunked
 
 from salesforce_toolkit.concurrency import run_concurrently
+from salesforce_toolkit._models import (
+    SObjectAttributes
+)
+from salesforce_toolkit.interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 
 _sObject = TypeVar("_sObject", bound="SObject")
 
@@ -24,10 +28,6 @@ class MultiPicklistField(str):
     def __str__(self):
         return ";".join(self.values)
 
-
-class SObjectAttributes(NamedTuple):
-    type: str
-    connection: str
 
 class SObjectFieldDescribe(NamedTuple):
     """Represents metadata about a Salesforce SObject field"""
@@ -176,21 +176,12 @@ class SObjectEncoder(JSONEncoder):
             raise ValueError("Unexpected Data Type")
 
 
-class _SObjectDictAttrs(TypedDict):
-    type: str
-    url: str
-
-
-class _SObjectDict(TypedDict):
-    attributes: _SObjectDictAttrs
-
-
 class SObjectDecoder(JSONDecoder, Generic[_sObject]):
     def __init__(
-        self, sf_connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME, **kwargs
+        self, sf_connection: str = "", **kwargs
     ):
         super().__init__(**kwargs, object_hook=self._object_hook)
-        self.sf_connection = sf_connection
+        self.sf_connection = sf_connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
 
     def _object_hook(self, o: Any):
         if (
@@ -201,7 +192,7 @@ class SObjectDecoder(JSONDecoder, Generic[_sObject]):
         return o
 
 
-class SObject:
+class SObject(I_SObject):
     _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
         defaultdict(dict)
     )
@@ -209,12 +200,13 @@ class SObject:
     def __init_subclass__(
         cls,
         api_name: str | None = None,
-        connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME,
+        connection: str = "",
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
         if not api_name:
             api_name = cls.__name__
+        connection = connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
         cls._sf_attrs = SObjectAttributes(api_name, connection)
         fields = frozenset(cls.keys())
         if fields in cls._registry[cls._sf_attrs]:
@@ -237,15 +229,23 @@ class SObject:
                 raise
 
     @classmethod
+    @property
+    def attributes(cls):
+        return cls._sf_attrs
+
+    @classmethod
     def typeof(
-        cls, record: dict, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME
+        cls, record: dict, connection: str = ""
     ) -> type["SObject"] | None:
         if "attributes" not in record or "type" not in record["attributes"]:
             return None
         fields = set(record.keys())
         fields.remove("attributes")
         return cls._registry[
-            SObjectAttributes(record["attributes"]["type"], connection)
+            SObjectAttributes(
+                record["attributes"]["type"],
+                connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
+        )
         ].get(frozenset(fields))
 
 
@@ -255,7 +255,7 @@ class SObject:
 
     @classmethod
     def keys(cls):
-        return cls.__annotations__.keys()
+        return frozenset(cls.__annotations__.keys())
 
     def __getitem__(self, name):
         if name not in self.keys():
@@ -298,14 +298,14 @@ class SObject:
         raise TypeError("Unexpected ")
 
     @classmethod
-    def _client_connection(cls) -> SalesforceClient:
-        return SalesforceClient.get_connection(cls._sf_attrs.connection)
+    def _client_connection(cls) -> I_SalesforceClient:
+        return sftk_client.SalesforceClient.get_connection(cls._sf_attrs.connection)
 
     @classmethod
     def read(
         cls: type[_sObject],
         record_id: str,
-        sf_client: SalesforceClient | None = None,
+        sf_client: I_SalesforceClient | None = None,
     ) -> _sObject:
         if sf_client is None:
             sf_client = cls._client_connection()
@@ -320,7 +320,7 @@ class SObject:
     def list(
         cls: type[_sObject],
         *ids: str,
-        sf_client: SalesforceClient | None = None,
+        sf_client: I_SalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], None] | None = None,
     ) -> list[_sObject]:
@@ -359,7 +359,7 @@ class SObject:
     async def afetch(
         cls: type[_sObject],
         *ids: str,
-        sf_client: AsyncSalesforceClient | None = None,
+        sf_client: I_AsyncSalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
     ):
@@ -404,7 +404,7 @@ class SObject:
         return response.json()
 
     @classmethod
-    def from_description(cls, sobject: str, connection: str = SalesforceClient.DEFAULT_CONNECTION_NAME) -> type["SObject"]:
+    def from_description(cls, sobject: str, connection: str = "") -> type["SObject"]:
         """
         Build an SObject type definition for the named SObject based on the object 'describe' from Salesforce
 
@@ -415,7 +415,7 @@ class SObject:
         Returns:
             type[SObject]: A dynamically created SObject subclass with fields matching the describe result
         """
-        sf_client = SalesforceClient.get_connection(connection)
+        sf_client = sftk_client.SalesforceClient.get_connection(connection)
 
         # Get the describe metadata for this SObject
         describe_url = f"{sf_client.sobjects_url}/{sobject}/describe"

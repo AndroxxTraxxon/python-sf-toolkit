@@ -2,7 +2,7 @@ from typing import Any, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
 from salesforce_toolkit.data.apimodels import QueryResultJSON
-from ..protocols import SObjectProtocol
+from salesforce_toolkit.interfaces import I_SObject
 from ..formatting import quote_soql_value
 
 
@@ -51,7 +51,7 @@ class Order(NamedTuple):
     def __str__(self):
         return f"{self.field} {self.direction}"
 
-_SObject = TypeVar('_SObject', bound=SObjectProtocol)
+_SObject = TypeVar('_SObject', bound=I_SObject)
 _SObjectJSON = TypeVar('_SObjectJSON', bound=dict[str, Any])
 class QueryResult(Generic[_SObject]):
     """
@@ -87,6 +87,8 @@ class QueryResult(Generic[_SObject]):
         self.totalSize = totalSize
         self.records = [sobject_type(**record) for record in records] if records else []
         self.nextRecordsUrl = nextRecordsUrl
+        if self.nextRecordsUrl:
+            self.query_locator, self.batch_size = self.nextRecordsUrl.rsplit("/", maxsplit=1)[1].rsplit("-", maxsplit=1)
 
     def query_more(self):
         if not self.nextRecordsUrl:
@@ -110,18 +112,18 @@ class SoqlSelect(Generic[_SObject]):
 
     @property
     def fields(self):
-        return list(self.sobject_type.fields)
+        return list(self.sobject_type.keys())
 
     @property
-    def sobject(self):
-        return self.sobject_type._sf_attrs.type
+    def sobject_name(self) -> str:
+        return self.sobject_type.attributes.type
 
     def _sf_connection(self):
         return self.sobject_type._client_connection()
 
 
     def format(self, fields: list[str]):
-        segments = ["SELECT", ", ".join(fields), f"FROM {self.sobject}"]
+        segments = ["SELECT", ", ".join(fields), f"FROM {self.sobject_name}"]
         if self.where:
             segments.append(str(self.where))
         if self.grouping:
