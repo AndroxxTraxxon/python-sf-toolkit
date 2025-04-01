@@ -1,7 +1,6 @@
 import asyncio
 from functools import cached_property
 from types import TracebackType
-from typing_extensions import override
 
 from httpx import URL, Client, AsyncClient, Response
 from httpx._client import ClientState, BaseClient  # type: ignore
@@ -63,21 +62,6 @@ class SalesforceApiHelpersMixin(BaseClient):
     def _versions_request(self):
         return self.build_request("GET", "/services/data")
 
-    async def __aenter__(self):
-        if not isinstance(self, AsyncClient):
-            raise TypeError(f"{type(self)} {self} is not an instance of AsyncClient")
-        try:
-            await super().__aenter__()  # type: ignore
-        except:
-            pass
-        self._userinfo = await self.send_request(self._userinfo_request()).json(object_hook=ApiVersion)  # type: ignore
-        self._versions = (await self.send(self._versions_request())).json(object_hook=ApiVersion)
-        if self.api_version:
-            self.api_version = self._versions[self.api_version.version]
-        else:
-            self.api_version = self._versions[max(self._versions)]
-        return self
-
     @property
     def sobjects_url(self):
         return f"{self.data_url}/sobjects"
@@ -114,6 +98,13 @@ class AsyncSalesforceClient(
     async def __aenter__(self):  # type: ignore
         if self._state == ClientState.UNOPENED:
             await super().__aenter__()
+            self._userinfo = await self.send_request(self._userinfo_request()).json(object_hook=ApiVersion)  # type: ignore
+            self._versions = (await self.send(self._versions_request())).json(object_hook=ApiVersion)
+            if self.api_version:
+                self.api_version = self._versions[self.api_version.version]
+            else:
+                self.api_version = self._versions[max(self._versions)]
+            return self
             LOGGER.info(
                 "Opened connection to %s as %s (%s) using API Version %s (%.01f)",
                 self.base_url,
