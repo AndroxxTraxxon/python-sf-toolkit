@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock
 import datetime
 from sf_toolkit.data.sobject import SObject, MultiPicklistField
 from sf_toolkit.data.query_builder import SoqlSelect
@@ -73,7 +73,7 @@ def test_sobject_class_definition():
 
 def test_sobject_get(mock_sf_client):
     # Define an SObject subclass
-    class Contact(SObject, api_name="Contact"):
+    class Contact(SObject):
         Id: str
         FirstName: str
         LastName: str
@@ -107,7 +107,7 @@ def test_sobject_get(mock_sf_client):
 
 def test_sobject_fetch(mock_sf_client):
     # Define an SObject subclass
-    class Opportunity(SObject, api_name="Opportunity"):
+    class Opportunity(SObject):
         Id: str
         Name: str
         Amount: float
@@ -239,7 +239,7 @@ def test_from_description(mock_sf_client):
 
     # Verify the class was created correctly
     assert CustomObject._sf_attrs.type == "CustomObject__c"
-    assert set(CustomObject.fields().keys()) == {
+    assert set(CustomObject.keys()) == {
         'Id', 'Name', 'CustomDate__c', 'IsActive__c', 'Categories__c'
     }
     assert CustomObject.fields()['CustomDate__c'] is datetime.date
@@ -249,7 +249,6 @@ def test_from_description(mock_sf_client):
     # Create an instance
     obj = CustomObject(
         Id="a01XX000003GabcIAC",
-        api_name="Test Custom Object",
         CustomDate__c="2023-01-15",
         IsActive__c=True,
         Categories__c="one;two;three"

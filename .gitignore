@@ -5,3 +5,8 @@
 .ruff_cache
 
 **/__pycache__
+
+htmlcov/
+.coverage
+coverage.xml
+.reports/
