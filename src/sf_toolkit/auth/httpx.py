@@ -30,14 +30,18 @@ class SalesforceAuth(httpx.Auth):
         if self.token is None:
             assert self.login is not None, "No login method provided"
             try:
-                for login_request in (login_flow := self.login()):
-                    if isinstance(login_request, httpx.Request):
+                login_flow = self.login()
+                login_request = next(login_flow)
+                while True:
+                    if login_request is not None:
                         login_response = yield login_request
-                        login_flow.send(login_response)
+                        login_request = login_flow.send(login_response)
+                    else:
+                        login_request = next(login_flow)
 
             except StopIteration as login_result:
                 new_token: SalesforceToken = login_result.value
-                self.token = new_token
+                self.token = SalesforceToken(*new_token)
                 if self.callback is not None:
                     self.callback(new_token)
             assert self.token is not None, "Failed to perform initial login"
@@ -59,6 +63,7 @@ class SalesforceAuth(httpx.Auth):
             except StopIteration as login_result:
                 new_token: SalesforceToken = login_result.value
                 self.token = new_token
+                breakpoint()
                 if self.callback is not None:
                     self.callback(new_token)
 

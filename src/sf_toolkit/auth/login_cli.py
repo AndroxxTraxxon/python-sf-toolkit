@@ -16,33 +16,26 @@ def cli_login(
     if not sf_exec_path:
         sf_exec_path = which("sf") or which("sfdx")
         if not sf_exec_path:
-            raise ValueError("Could not find sf executable.")
+            raise ValueError("Could not find `sf` executable.")
     elif isinstance(sf_exec_path, Path):
         sf_exec_path = str(sf_exec_path.resolve())
 
     def _cli_login():
         """Fetches the authentication credentials from sf or sfdx command line tools."""
         LOGGER.info("Logging in via SF CLI at %s", sf_exec_path)
-        yield  # yield to make this a generator
         command: list[str] = [sf_exec_path, "org", "display", "--json"]
         if alias_or_username:
             command.extend(["-o", alias_or_username])
 
-        # ipython messes with environment variables that causes the json parse to fail
-        # we're preserving environment, but un-setting these three variables
-        # when they are present
-        cmd_env = {**os.environ}
-        color_vars = (
-            "CLICOLOR",
-            "FORCE_COLOR",
-            "CLICOLOR_FORCE",
-        )
-        for var in color_vars:
-            if var in cmd_env:
-                cmd_env[var] = "0"
+        # the color shell configs can mess with JSON parsing, so just get rid of them.
+        cmd_env = {
+            key: value
+            for key, value in os.environ.items()
+            if "color" not in key.casefold()
+        }
 
         result = subprocess_run(command, check=False, capture_output=True, env=cmd_env)
-
+        yield  # yield to make this a generator
         output = json.loads(result.stdout)
         if output["status"] != 0:
             exception = type(output["name"], (Exception,), {})
