@@ -63,7 +63,6 @@ class SalesforceAuth(httpx.Auth):
             except StopIteration as login_result:
                 new_token: SalesforceToken = login_result.value
                 self.token = new_token
-                breakpoint()
                 if self.callback is not None:
                     self.callback(new_token)
 

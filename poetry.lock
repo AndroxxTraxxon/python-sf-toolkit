@@ -996,6 +996,20 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "virtualenv"]
 
 [[package]]
+name = "pytest-integration-mark"
+version = "0.2.0"
+description = "Automatic integration test marking and excluding plugin for pytest"
+optional = false
+python-versions = ">=3.7,<4.0"
+files = [
+    {file = "pytest_integration_mark-0.2.0-py3-none-any.whl", hash = "sha256:dfff273d47922c2d750923e06ac65bda20ff1c016adba187dee20840f0d5869b"},
+    {file = "pytest_integration_mark-0.2.0.tar.gz", hash = "sha256:2f3580fba9aa7fecc9ede2385ae5c0c1414c688cc4e8511ccb61f65025508a14"},
+]
+
+[package.dependencies]
+pytest = ">=5.2"
+
+[[package]]
 name = "pytest-mock"
 version = "3.14.0"
 description = "Thin-wrapper around the mock package for easier use with pytest"
@@ -1284,4 +1298,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "22a2c6f3769e5e4077567956b9cb6db94836f2a07b68b7dd1d3b3faf7cf45a60"
+content-hash = "0e926415b6686cab4cbf244f122afc6207bc95511c0db5295463b0d1bf0713c3"

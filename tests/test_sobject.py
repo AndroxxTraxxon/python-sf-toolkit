@@ -1,12 +1,13 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 import datetime
 from sf_toolkit.data.sobject import SObject, MultiPicklistField
 from sf_toolkit.data.query_builder import SoqlSelect
 from sf_toolkit.client import SalesforceClient
+from sf_toolkit.interfaces import I_SalesforceClient
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_sf_client():
     # Create a mock SalesforceClient for testing
     mock_client = MagicMock(spec=SalesforceClient)
@@ -14,21 +15,21 @@ def mock_sf_client():
     mock_client.data_url = "/services/data/v57.0/query"
     mock_client.composite_sobjects_url = MagicMock(return_value="/services/data/v57.0/composite/sobjects/Account")
 
-    # Store the original get_connection method
-    original_get_connection = SalesforceClient.get_connection
+    # Keep a reference to the original _connections dictionary to restore later
+    original_connections = I_SalesforceClient._connections
 
-    # Override the get_connection method to return our mock
-    SalesforceClient.get_connection = MagicMock(return_value=mock_client)
+    # Add the mock client to the _connections dictionary directly
+    I_SalesforceClient._connections = {SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client}
 
     yield mock_client
 
-    # Restore the original get_connection method
-    SalesforceClient.get_connection = original_get_connection
+    # Restore the original _connections dictionary
+    I_SalesforceClient._connections = original_connections
 
 
 def test_sobject_class_definition():
     # Define an SObject subclass
-    class Account(SObject, api_name="Account"):
+    class Account(SObject):
         Id: str
         Name: str
         Industry: str
@@ -51,8 +52,8 @@ def test_sobject_class_definition():
         Name="Acme Corp",
         Industry="Technology",
         AnnualRevenue=1000000.0,
-        CreatedDate=datetime.datetime(2023, 1, 1, 12, 0, 0),
-        LastModifiedDate=datetime.datetime(2023, 1, 2, 12, 0, 0),
+        CreatedDate=(cdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()).isoformat(timespec="milliseconds"),
+        LastModifiedDate=(lmdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()).isoformat(timespec="milliseconds"),
         IsActive=True,
         Tags="cloud;technology;partner"
     )
@@ -63,13 +64,14 @@ def test_sobject_class_definition():
     assert account.AnnualRevenue == 1000000.0
     assert account.IsActive is True
     assert account.Tags.values == ["cloud", "technology", "partner"]
+    assert account.CreatedDate == cdt
+    assert account.LastModifiedDate == lmdt
 
     # Test dict-style access
     assert account['Name'] == "Acme Corp"
 
 
-@patch('sf_toolkit.client.SalesforceClient.get')
-def test_sobject_get(mock_get):
+def test_sobject_get(mock_sf_client):
     # Define an SObject subclass
     class Contact(SObject, api_name="Contact"):
         Id: str
@@ -79,7 +81,7 @@ def test_sobject_get(mock_get):
         Birthdate: datetime.date
 
     # Mock the response
-    mock_response = MagicMock()
+    mock_response = Mock()
     mock_response.json.return_value = {
         "attributes": {"type": "Contact"},
         "Id": "003XX000004UINIAA4",
@@ -88,11 +90,10 @@ def test_sobject_get(mock_get):
         "Email": "john.doe@example.com",
         "Birthdate": "1980-01-15"
     }
-    mock_get.return_value = mock_response
+    mock_sf_client.get.return_value = mock_response
 
     # Call get method
     contact = Contact.read("003XX000004UINIAA4")
-
     # Verify the result
     assert contact.Id == "003XX000004UINIAA4"
     assert contact.FirstName == "John"
@@ -101,11 +102,10 @@ def test_sobject_get(mock_get):
     assert contact.Birthdate == datetime.date(1980, 1, 15)
 
     # Verify the API call
-    mock_get.assert_called_once()
+    mock_sf_client.get.assert_called_once()
 
 
-@patch('sf_toolkit.client.SalesforceClient.post')
-def test_sobject_fetch(mock_post):
+def test_sobject_fetch(mock_sf_client):
     # Define an SObject subclass
     class Opportunity(SObject, api_name="Opportunity"):
         Id: str
@@ -134,7 +134,7 @@ def test_sobject_fetch(mock_post):
             "StageName": "Negotiation"
         }
     ]'''
-    mock_post.return_value = mock_response
+    mock_sf_client.post.return_value = mock_response
 
     # Call fetch method
     opportunities = Opportunity.list(
@@ -152,11 +152,10 @@ def test_sobject_fetch(mock_post):
     assert opportunities[1].StageName == "Negotiation"
 
     # Verify the API call
-    mock_post.assert_called_once()
+    mock_sf_client.post.assert_called_once()
 
 
-@patch('sf_toolkit.client.SalesforceClient.get')
-def test_sobject_describe(mock_get):
+def test_sobject_describe(mock_sf_client):
     # Define an SObject subclass
     class Lead(SObject, api_name="Lead"):
         Id: str
@@ -184,7 +183,7 @@ def test_sobject_describe(mock_get):
             }
         ]
     }
-    mock_get.return_value = mock_response
+    mock_sf_client.get.return_value = mock_response
 
     # Call describe method
     describe_result = Lead.describe()
@@ -195,11 +194,10 @@ def test_sobject_describe(mock_get):
     assert len(describe_result["fields"]) == 2
 
     # Verify the API call
-    mock_get.assert_called_once()
+    mock_sf_client.get.assert_called_once()
 
 
-@patch('sf_toolkit.client.SalesforceClient.get')
-def test_from_description(mock_get):
+def test_from_description(mock_sf_client):
     # Mock the describe API response
     mock_response = MagicMock()
     mock_response.json.return_value = {
@@ -234,7 +232,7 @@ def test_from_description(mock_get):
             }
         ]
     }
-    mock_get.return_value = mock_response
+    mock_sf_client.get.return_value = mock_response
 
     # Generate SObject class from description
     CustomObject = SObject.from_description("CustomObject__c")
@@ -265,8 +263,7 @@ def test_from_description(mock_get):
     assert obj.Categories__c.values == ["one", "two", "three"]  # type: ignore
 
 
-@patch('sf_toolkit.client.SalesforceClient.get')
-def test_query_builder(mock_get):
+def test_query_builder(mock_sf_client):
     # Define an SObject subclass
     class Case(SObject, api_name="Case"):
         Id: str
@@ -298,7 +295,7 @@ def test_query_builder(mock_get):
             }
         ]
     }
-    mock_get.return_value = mock_response
+    mock_sf_client.get.return_value = mock_response
 
     # Create a query
     query = SoqlSelect(Case)
@@ -315,4 +312,4 @@ def test_query_builder(mock_get):
     assert results.records[1].Priority == "Medium"
 
     # Verify the API call
-    mock_get.assert_called_once()
+    mock_sf_client.get.assert_called_once()

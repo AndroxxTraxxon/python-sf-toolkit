@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from types import TracebackType
 from httpx import AsyncClient, Client
 from httpx._client import BaseClient  # type: ignore
 
@@ -69,12 +70,55 @@ class I_SalesforceClient(
     TokenRefreshCallbackMixin,
     SalesforceApiHelpersMixin,
     Client,
-    ABC):
+    ABC
+):
+
+    _connections: dict[str, "I_SalesforceClient"] = {}
+    _connection_name: str
+
+    DEFAULT_CONNECTION_NAME = "default"
+
+
+    @classmethod
+    def get_connection(cls, name: str | None = None):
+        if not name:
+            name = cls.DEFAULT_CONNECTION_NAME
+        return cls._connections[name]
 
     @property
     @abstractmethod
     def as_async(self) -> I_AsyncSalesforceClient:
         ...
+
+    @classmethod
+    def register_connection(cls, connection_name: str, instance: "I_SalesforceClient"):
+        if connection_name in cls._connections:
+            raise KeyError(
+                f"SalesforceClient connection '{connection_name}' has already been registered."
+            )
+        cls._connections[connection_name] = instance
+
+    @classmethod
+    def unregister_connection(cls, name_or_instance: "str | I_SalesforceClient"):
+        if isinstance(name_or_instance, str):
+            names_to_unregister = [name_or_instance]
+        else:
+            names_to_unregister = [
+                name for name, instance in cls._connections.items()
+                if instance is name_or_instance
+            ]
+        for name in names_to_unregister:
+            if name in cls._connections:
+                del cls._connections[name]
+
+    def __enter__(self):
+        super().__enter__()
+        self.register_connection(self._connection_name, self)
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None = None, exc_value: BaseException | None = None, traceback: TracebackType | None = None) -> None:
+        self.unregister_connection(self)
+        return super().__exit__(exc_type, exc_value, traceback)
 
 
 

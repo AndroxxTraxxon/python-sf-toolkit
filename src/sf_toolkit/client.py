@@ -114,19 +114,10 @@ class AsyncSalesforceClient(
 class SalesforceClient(I_SalesforceClient):
     token_refresh_callback: TokenRefreshCallback | None
     auth: SalesforceAuth  # type: ignore
-    DEFAULT_CONNECTION_NAME = "default"
-
-    _connections: dict[str, "SalesforceClient"] = {}
-
-    @classmethod
-    def get_connection(cls, name: str):
-        if not name:
-            name = cls.DEFAULT_CONNECTION_NAME
-        return cls._connections[name]
 
     def __init__(
         self,
-        connection_name: str = DEFAULT_CONNECTION_NAME,
+        connection_name: str = I_SalesforceClient.DEFAULT_CONNECTION_NAME,
         login: SalesforceLogin | None = None,
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
@@ -141,13 +132,7 @@ class SalesforceClient(I_SalesforceClient):
         if token:
             self.derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
-
-        _conns = type(self)._connections
-        if connection_name in _conns:
-            raise KeyError(
-                f"SalesforceClient connection '{connection_name}' has already been registered."
-            )
-        _conns[connection_name] = self
+        self._connection_name = connection_name
 
     def handle_async_clone_token_refresh(self, token: SalesforceToken):
         self.auth.token = token
@@ -176,7 +161,6 @@ class SalesforceClient(I_SalesforceClient):
             self.api_version = self.versions[self.api_version.version]
         else:
             self.api_version = self.versions[max(self.versions)]
-        return self
         LOGGER.info(
             "Logged into %s as %s (%s)",
             self.base_url,

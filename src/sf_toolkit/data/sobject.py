@@ -309,12 +309,13 @@ class SObject(I_SObject):
     ) -> _sObject:
         if sf_client is None:
             sf_client = cls._client_connection()
-
-        # fetch single record
-        return cls(**sf_client.get(
+        response_data = sf_client.get(
             f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/{record_id}",
             params={"fields": ",".join(cls.keys())},
-        ).json())
+        ).json()
+
+        # fetch single record
+        return cls(**response_data)
 
     @classmethod
     def list(
