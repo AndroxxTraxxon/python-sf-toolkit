@@ -3,9 +3,10 @@ from collections import defaultdict
 import datetime
 from json import JSONDecoder, JSONEncoder
 from types import NoneType
-from typing import Any, Callable, Generic, NamedTuple, TypeVar, Coroutine
+from typing import Any, Callable, Generic, NamedTuple, TypeVar, Coroutine, get_args, get_origin
 
 from httpx import Response
+import pytest
 from .. import client as sftk_client
 
 from more_itertools import chunked
@@ -18,6 +19,14 @@ from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 
 _sObject = TypeVar("_sObject", bound="SObject")
 
+_T = TypeVar("_T")
+
+class ReadOnly(Generic[_T]):
+
+
+    def __class_getitem__(cls, wrapped_type: _T):
+        # return cls(wrapped_type)
+        return super().__class_getitem__(wrapped_type)
 
 class MultiPicklistField(str):
     values: list[str]
@@ -146,16 +155,17 @@ class SObjectEncoder(JSONEncoder):
             return self._encode_sobject(o)
         return super().default(o)
 
-    def _encode_sobject(self, o: "SObject"):
+    def _encode_sobject(self, o: "SObject", only_changes: bool = False):
         encoded: dict[str, Any] = {
-            field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
-            for field_name in o.fields()
-            if hasattr(o, field_name)
+            field_name: self._encode_sobject_field(field_name, getattr(o, field_name), only_changes)
+            for field_name, field_type in o.fields().items()
+            if hasattr(o, field_name) and get_origin(field_type) is not ReadOnly
+            and (not only_changes or field_name in o._dirty_fields)
         }
         encoded["attributes"] = {"type": o._sf_attrs.type}
         return encoded
 
-    def _encode_sobject_field(self, name: str, value: Any):
+    def _encode_sobject_field(self, name: str, value: Any, only_changes: bool = False):
         # assuming any dict instances are already "serialized".
         if isinstance(value, (NoneType, bool, int, float, dict, str)):
             return value
@@ -172,7 +182,7 @@ class SObjectEncoder(JSONEncoder):
         elif isinstance(value, MultiPicklistField):
             return str(value)
         elif isinstance(value, SObject):
-            return self._encode_sobject(value)
+            return self._encode_sobject(value, only_changes)
         else:
             raise ValueError("Unexpected Data Type")
 
@@ -197,6 +207,7 @@ class SObject(I_SObject):
     _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
         defaultdict(dict)
     )
+    _dirty_fields: set[str]
 
     def __init_subclass__(
         cls,
@@ -229,6 +240,7 @@ class SObject(I_SObject):
                 if __strict_fields:
                     continue
                 raise
+        self._dirty_fields = set()
 
     @classmethod
     @property
@@ -272,9 +284,29 @@ class SObject(I_SObject):
             raise KeyError(f"Undefined field {name} on object {type(self)}")
         setattr(self, name, self.revive_value(name, value))
 
+    def __setattr__(self, name, value):
+        # Regular assignment
+        super().__setattr__(name, value)
+
+        # Only track fields that are part of the SObject fields,
+        # not internal or special attributes
+        if (
+            # Make sure initialization is complete
+            hasattr(self, '__dict__') and
+            # Only track fields that are part of the schema
+            name in self.keys() and
+            # Make sure we're not in initialization
+            hasattr(self, '_dirty_fields')
+        ):
+            # Add this field to dirty fields set
+            self._dirty_fields.add(name)
+
+
     @classmethod
     def revive_value(cls, name: str, value: Any, *, strict=True):
         datatype: type | None = cls.fields()[name]
+        if get_origin(datatype) is ReadOnly:
+            datatype = get_args(datatype)[0]
         if datatype is None:
             if strict:
                 raise KeyError(
@@ -327,21 +359,27 @@ class SObject(I_SObject):
         # fetch single record
         return cls(**response_data)
 
-    def save(self, sf_client: I_SalesforceClient | None = None, reload_after_success: bool = False):
-        payload = {
-            field: value
-            for field, value in SObjectEncoder()._encode_sobject(self).items()
-            if field != self._sf_attrs.id_field
-        }
+    def save(self, sf_client: I_SalesforceClient | None = None, only_changes: bool = True, reload_after_success: bool = False):
         if sf_client is None:
             sf_client = self._client_connection()
         if _id_val := getattr(self, self._sf_attrs.id_field, None):
-            sf_client.patch(
-                f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            )
+            if not only_changes or self._dirty_fields:
+                payload = {
+                    field: value
+                    for field, value in SObjectEncoder()._encode_sobject(self, only_changes).items()
+                    if field != self._sf_attrs.id_field
+                }
+                sf_client.patch(
+                    f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
         else:
+            payload = {
+                field: value
+                for field, value in SObjectEncoder()._encode_sobject(self).items()
+                if field != self._sf_attrs.id_field
+            }
             response_data = sf_client.post(
                 f"{sf_client.sobjects_url}/{self._sf_attrs.type}",
                 json=payload,
@@ -351,8 +389,9 @@ class SObject(I_SObject):
             setattr(self, self._sf_attrs.id_field, _id_val)
 
         if reload_after_success:
-            self.update(**type(self).read(_id_val))
+            self.update_values(**type(self).read(_id_val))
 
+        self._dirty_fields.clear()
 
 
     def delete(self, sf_client: I_SalesforceClient | None = None, clear_id_field: bool = True):
@@ -370,7 +409,7 @@ class SObject(I_SObject):
             delattr(self, self._sf_attrs.id_field)
 
 
-    def update(self, **kwargs):
+    def update_values(self, **kwargs):
         for key, value in kwargs.items():
             if key in self.keys():
                 self[key] = value
@@ -500,6 +539,9 @@ class SObject(I_SObject):
                 python_type = datetime.time
             elif field_type == 'multipicklist':
                 python_type = MultiPicklistField
+
+            if field.updateable:
+                python_type = ReadOnly[python_type]
 
             field_annotations[field_name] = python_type
 

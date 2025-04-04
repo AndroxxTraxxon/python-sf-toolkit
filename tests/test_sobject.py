@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, Mock
 import datetime
-from sf_toolkit.data.sobject import SObject, MultiPicklistField
+from sf_toolkit.data.sobject import ReadOnly, SObject, MultiPicklistField
 from sf_toolkit.data.query_builder import SoqlSelect
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.interfaces import I_SalesforceClient
@@ -18,10 +18,9 @@ class Account(SObject):
     Name: str
     Industry: str
     AnnualRevenue: float
-    CreatedDate: datetime.datetime
-    LastModifiedDate: datetime.datetime
-    IsActive: bool
-    Tags: MultiPicklistField
+    Description: str
+    CreatedDate: ReadOnly[datetime.datetime]
+    LastModifiedDate: ReadOnly[datetime.datetime]
 
 @pytest.fixture()
 def mock_sf_client():
@@ -49,7 +48,7 @@ def test_sobject_class_definition():
     assert Account._sf_attrs.type == "Account"
     assert set(Account.fields().keys()) == {
         'Id', 'Name', 'Industry', 'AnnualRevenue', 'CreatedDate',
-        'LastModifiedDate', 'IsActive', 'Tags'
+        'LastModifiedDate', 'Description'
     }
 
     # Test instance creation
@@ -60,16 +59,14 @@ def test_sobject_class_definition():
         AnnualRevenue=1000000.0,
         CreatedDate=(cdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()).isoformat(timespec="milliseconds"),
         LastModifiedDate=(lmdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()).isoformat(timespec="milliseconds"),
-        IsActive=True,
-        Tags="cloud;technology;partner"
+        Description="This is a test account."
     )
 
     # Test attribute access
     assert account.Id == "001XX000003DGT2IAO"
     assert account.Name == "Acme Corp"
     assert account.AnnualRevenue == 1000000.0
-    assert account.IsActive is True
-    assert account.Tags.values == ["cloud", "technology", "partner"]
+    assert account.Description == "This is a test account."
     assert account.CreatedDate == cdt
     assert account.LastModifiedDate == lmdt
 

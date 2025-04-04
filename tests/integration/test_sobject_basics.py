@@ -28,7 +28,7 @@ def test_opportunity_crud(sf_client):
 
     # Update opportunity
     updated_name = f"{unique_name} - Updated"
-    opp.update(
+    opp.update_values(
         Name=updated_name,
         StageName="Qualification",
         Amount=15000.00
@@ -47,3 +47,52 @@ def test_opportunity_crud(sf_client):
     # Verify opportunity was deleted
     with pytest.raises(SalesforceError):
         Opportunity.read(opp.Id)
+
+
+def test_reload_after_success_flag(sf_client):
+    """Test that reload_after_success flag updates multiple references to the same record"""
+    # Create a test account
+    unique_name = f"Test Account {datetime.now().strftime('%Y%m%d%H%M%S')}"
+    account = Account(
+        Name=unique_name,
+        Industry="Technology"
+    )
+    account.save()
+
+    try:
+        # Create two references to the same account
+        account_ref1 = Account.read(account.Id)
+        account_ref2 = Account.read(account.Id)
+
+        # Verify both references have the same data
+        assert account_ref1.Name == unique_name
+        assert account_ref2.Name == unique_name
+
+        # Update using first reference with reload_after_success=True
+        new_name = f"{unique_name} - Updated"
+        account_ref1.Name = new_name
+        account_ref1.save(reload_after_success=True)
+
+        # Verify first reference has updated data
+        assert account_ref1.Name == new_name
+
+        # Second reference still has old data since it wasn't reloaded
+        assert account_ref2.Name == unique_name
+
+        # Now update second reference with reload_after_success=True
+        description = "This is a test description"
+        account_ref2.Description = description
+        account_ref2.save(reload_after_success=True)
+
+        # Verify second reference now has both updated name and description
+        assert account_ref2.Name == new_name
+        assert account_ref2.Description == description
+
+        # Read again to confirm changes were actually saved to Salesforce
+        account_ref3 = Account.read(account.Id)
+        assert account_ref3.Name == new_name
+        assert account_ref3.Description == description
+
+    finally:
+        # Clean up
+        account.delete()
