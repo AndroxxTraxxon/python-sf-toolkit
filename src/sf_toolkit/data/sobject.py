@@ -150,6 +150,7 @@ class SObjectEncoder(JSONEncoder):
         encoded: dict[str, Any] = {
             field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
             for field_name in o.fields()
+            if hasattr(o, field_name)
         }
         encoded["attributes"] = {"type": o._sf_attrs.type}
         return encoded
@@ -201,13 +202,14 @@ class SObject(I_SObject):
         cls,
         api_name: str | None = None,
         connection: str = "",
+        id_field: str = "Id",
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
         if not api_name:
             api_name = cls.__name__
         connection = connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
-        cls._sf_attrs = SObjectAttributes(api_name, connection)
+        cls._sf_attrs = SObjectAttributes(api_name, connection, id_field)
         fields = frozenset(cls.keys())
         if fields in cls._registry[cls._sf_attrs]:
             raise TypeError(
@@ -235,7 +237,7 @@ class SObject(I_SObject):
 
     @classmethod
     def typeof(
-        cls, record: dict, connection: str = ""
+        cls, record: dict, connection: str = "", id_field: str = "Id"
     ) -> type["SObject"] | None:
         if "attributes" not in record or "type" not in record["attributes"]:
             return None
@@ -244,8 +246,9 @@ class SObject(I_SObject):
         return cls._registry[
             SObjectAttributes(
                 record["attributes"]["type"],
-                connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
-        )
+                connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME,
+                id_field
+            )
         ].get(frozenset(fields))
 
 
@@ -255,12 +258,19 @@ class SObject(I_SObject):
 
     @classmethod
     def keys(cls):
-        return frozenset(cls.__annotations__.keys())
+        if not getattr(cls, '_keys', None):
+            cls._keys = frozenset(cls.__annotations__.keys())
+        return cls._keys
 
     def __getitem__(self, name):
         if name not in self.keys():
-            raise KeyError("Undefined field " + name)
-        return getattr(self, name)
+            raise KeyError(f"Undefined field {name} on object {type(self)}")
+        return getattr(self, name, None)
+
+    def __setitem__(self, name, value):
+        if name not in self.keys():
+            raise KeyError(f"Undefined field {name} on object {type(self)}")
+        setattr(self, name, self.revive_value(name, value))
 
     @classmethod
     def revive_value(cls, name: str, value: Any, *, strict=True):
@@ -316,6 +326,54 @@ class SObject(I_SObject):
 
         # fetch single record
         return cls(**response_data)
+
+    def save(self, sf_client: I_SalesforceClient | None = None, reload_after_success: bool = False):
+        payload = {
+            field: value
+            for field, value in SObjectEncoder()._encode_sobject(self).items()
+            if field != self._sf_attrs.id_field
+        }
+        if sf_client is None:
+            sf_client = self._client_connection()
+        if _id_val := getattr(self, self._sf_attrs.id_field, None):
+            sf_client.patch(
+                f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+        else:
+            response_data = sf_client.post(
+                f"{sf_client.sobjects_url}/{self._sf_attrs.type}",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            ).json()
+            _id_val = response_data['id']
+            setattr(self, self._sf_attrs.id_field, _id_val)
+
+        if reload_after_success:
+            self.update(**type(self).read(_id_val))
+
+
+
+    def delete(self, sf_client: I_SalesforceClient | None = None, clear_id_field: bool = True):
+        if sf_client is None:
+            sf_client = self._client_connection()
+        _id_val = getattr(self, self._sf_attrs.id_field, None)
+
+        if not _id_val:
+            raise ValueError("Cannot delete unsaved record (missing ID to delete)")
+
+        sf_client.delete(
+            f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
+        )
+        if clear_id_field:
+            delattr(self, self._sf_attrs.id_field)
+
+
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
+            if key in self.keys():
+                self[key] = value
 
     @classmethod
     def list(

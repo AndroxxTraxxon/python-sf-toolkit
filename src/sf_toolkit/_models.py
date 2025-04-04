@@ -4,6 +4,7 @@ from typing import TypedDict, Generic, TypeVar, NamedTuple
 class SObjectAttributes(NamedTuple):
     type: str
     connection: str
+    id_field: str
 
 
 class SObjectDictAttrs(TypedDict):

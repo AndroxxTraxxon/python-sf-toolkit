@@ -6,6 +6,22 @@ from sf_toolkit.data.query_builder import SoqlSelect
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.interfaces import I_SalesforceClient
 
+class Opportunity(SObject):
+    Id: str
+    Name: str
+    Amount: float
+    CloseDate: datetime.date
+    StageName: str
+
+class Account(SObject):
+    Id: str
+    Name: str
+    Industry: str
+    AnnualRevenue: float
+    CreatedDate: datetime.datetime
+    LastModifiedDate: datetime.datetime
+    IsActive: bool
+    Tags: MultiPicklistField
 
 @pytest.fixture()
 def mock_sf_client():
@@ -28,16 +44,6 @@ def mock_sf_client():
 
 
 def test_sobject_class_definition():
-    # Define an SObject subclass
-    class Account(SObject):
-        Id: str
-        Name: str
-        Industry: str
-        AnnualRevenue: float
-        CreatedDate: datetime.datetime
-        LastModifiedDate: datetime.datetime
-        IsActive: bool
-        Tags: MultiPicklistField
 
     # Test basic class properties
     assert Account._sf_attrs.type == "Account"
@@ -107,12 +113,6 @@ def test_sobject_get(mock_sf_client):
 
 def test_sobject_fetch(mock_sf_client):
     # Define an SObject subclass
-    class Opportunity(SObject):
-        Id: str
-        Name: str
-        Amount: float
-        CloseDate: datetime.date
-        StageName: str
 
     # Mock the response
     mock_response = MagicMock()
