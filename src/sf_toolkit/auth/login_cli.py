@@ -50,7 +50,9 @@ def cli_login(
                 .decode("unicode_escape")
             )
         token_result = output["result"]
-        if token_result["connectedStatus"] != "Connected":
+        # Normal orgs use 'connectedStatus': 'Connected'
+        # Scratch orgs use 'status': 'Active'
+        if token_result.get("connectedStatus") != "Connected" and token_result.get("status") != "Active":
             exception = type(token_result["connectedStatus"], (Exception,), {})
             raise exception(
                 "Check SF CLI. Unable to connect to "

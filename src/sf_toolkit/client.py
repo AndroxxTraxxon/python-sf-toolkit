@@ -180,7 +180,7 @@ class SalesforceClient(I_SalesforceClient):
         traceback: TracebackType | None = None,
     ) -> None:
         if self.as_async._state == ClientState.OPENED:
-            self.as_async.unregister_parent
+            self.as_async.unregister_parent()
             asyncio.run(self.as_async.__aexit__())
             del self.as_async
         return super().__exit__(exc_type, exc_value, traceback)

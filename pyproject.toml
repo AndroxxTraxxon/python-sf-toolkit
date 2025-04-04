@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "salesforce_toolkit"
+name = "sf_toolkit"
 version = "0.1.0"
 description = "A Salesforce API Adapter for Python"
 authors = ["David Culbreth <david.culbreth.256@gmail.com>"]

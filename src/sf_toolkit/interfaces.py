@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
-from httpx import AsyncClient, Client, URL
+from httpx import AsyncClient, Client
 from httpx._client import BaseClient  # type: ignore
 
 from .auth.types import TokenRefreshCallback, SalesforceToken
