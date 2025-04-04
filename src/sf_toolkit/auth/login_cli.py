@@ -4,6 +4,8 @@ from subprocess import run as subprocess_run
 import os
 import json
 
+from httpx import URL
+
 from ..logger import getLogger
 
 from .types import SalesforceLogin, SalesforceToken
@@ -60,8 +62,6 @@ def cli_login(
             )
         session_id = token_result["accessToken"]
         instance_url = token_result["instanceUrl"]
-        sf_instance = instance_url.replace("http://", "").replace("https://", "")
-
-        return SalesforceToken(sf_instance, session_id)
+        return SalesforceToken(URL(instance_url), session_id)
 
     return _cli_login

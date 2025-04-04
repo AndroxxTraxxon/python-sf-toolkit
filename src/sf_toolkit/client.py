@@ -41,9 +41,12 @@ class AsyncSalesforceClient(
             "Either auth or session parameters are required.\n"
             "Both are permitted simultaneously."
         )
-        super().__init__(auth=SalesforceAuth(login, token, self.handle_token_refresh))
+        super().__init__(
+            auth=SalesforceAuth(login, token, self.handle_token_refresh),
+            headers={"Accept": "application/json"}
+        )
         if token:
-            self.derive_base_url(token)
+            self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
         self.sync_parent = sync_parent
 
@@ -121,6 +124,7 @@ class SalesforceClient(I_SalesforceClient):
         login: SalesforceLogin | None = None,
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
+        headers={"Accept": "application/json"},
         **kwargs,
     ):
         assert login or token, (
@@ -130,7 +134,7 @@ class SalesforceClient(I_SalesforceClient):
         auth = SalesforceAuth(login, token, self.handle_token_refresh)
         super().__init__(auth=auth, **kwargs)
         if token:
-            self.derive_base_url(token)
+            self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
         self._connection_name = connection_name
 

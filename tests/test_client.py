@@ -1,6 +1,10 @@
+from httpx import URL
+import httpx
 from sf_toolkit.apimodels import ApiVersion
 from sf_toolkit.auth.types import SalesforceToken
 from sf_toolkit.client import SalesforceClient
+
+
 
 def test_client_context_manager(mocker):
     """Test that the client context manager correctly initializes"""
@@ -49,7 +53,7 @@ def test_client_context_manager(mocker):
 
     # Create client with mock token
     with SalesforceClient(token=SalesforceToken(
-        "test.salesforce.com", "mock_access_token"
+        URL("https://test.salesforce.com"), "mock_access_token"
     )) as client:
         # Verify client has userinfo and api_version configured
         assert isinstance(client.api_version, ApiVersion)
@@ -58,9 +62,9 @@ def test_client_context_manager(mocker):
         # Verify the send method was called for each request
         assert mock_send.call_count == 2
         # Assert that the first call was to userinfo endpoint
-        userinfo_request = mock_send.call_args_list[0][0][0]
-        assert userinfo_request.url.path == "/oauth2/userinfo"
+        userinfo_request: httpx.Request = mock_send.call_args_list[0][0][0]
+        assert userinfo_request.url.path.endswith("/oauth2/userinfo")
 
         # Assert that the second call was to versions endpoint
         versions_request = mock_send.call_args_list[1][0][0]
-        assert versions_request.url.path == "/services/data"
+        assert versions_request.url.path.endswith("/services/data")

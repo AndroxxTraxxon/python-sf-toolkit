@@ -1,25 +1,25 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
-from httpx import AsyncClient, Client
+from httpx import AsyncClient, Client, URL
 from httpx._client import BaseClient  # type: ignore
 
 from .auth.types import TokenRefreshCallback, SalesforceToken
 from .apimodels import ApiVersion, UserInfo
 from ._models import SObjectAttributes
 
-class TokenRefreshCallbackMixin:
+class TokenRefreshCallbackMixin(BaseClient):
     token_refresh_callback: TokenRefreshCallback | None
 
     def handle_token_refresh(self, token: SalesforceToken):
-        self.derive_base_url(token)
+        self._derive_base_url(token)
         if self.token_refresh_callback:
             self.token_refresh_callback(token)
 
     def set_token_refresh_callback(self, callback: TokenRefreshCallback):
         self.token_refresh_callback = callback
 
-    def derive_base_url(self, session: SalesforceToken):
-        self.base_url = f"https://{session.instance}"
+    def _derive_base_url(self, session: SalesforceToken):
+        self._base_url = self._enforce_trailing_slash(session.instance)
 
 class SalesforceApiHelpersMixin(BaseClient):
     DEFAULT_API_VERSION = 63.0
@@ -41,7 +41,7 @@ class SalesforceApiHelpersMixin(BaseClient):
         return self.api_version.url
 
     def _userinfo_request(self):
-        return self.build_request("GET", "/oauth2/userinfo")
+        return self.build_request("GET", "/services/oauth2/userinfo")
 
     def _versions_request(self):
         return self.build_request("GET", "/services/data")
@@ -117,6 +117,7 @@ class I_SalesforceClient(
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None = None, exc_value: BaseException | None = None, traceback: TracebackType | None = None) -> None:
+        self.unregister_connection(self._connection_name)
         self.unregister_connection(self)
         return super().__exit__(exc_type, exc_value, traceback)
 

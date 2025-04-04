@@ -27,7 +27,7 @@ class SalesforceAuth(httpx.Auth):
     def auth_flow(
         self, request: httpx.Request
     ) -> typing.Generator[httpx.Request, httpx.Response, None]:
-        if self.token is None:
+        if self.token is None or request.url.is_relative_url:
             assert self.login is not None, "No login method provided"
             try:
                 login_flow = self.login()
@@ -45,6 +45,13 @@ class SalesforceAuth(httpx.Auth):
                 if self.callback is not None:
                     self.callback(new_token)
             assert self.token is not None, "Failed to perform initial login"
+
+        if request.url.is_relative_url:
+            absolute_url = self.token.instance.raw_path + request.url.raw_path.lstrip(b"/")
+            request.url = self.token.instance.copy_with(
+                raw_path=absolute_url
+            )
+            request._prepare({**request.headers})
 
         request.headers["Authorization"] = f"Bearer {self.token.token}"
         response = yield request

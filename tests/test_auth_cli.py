@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from sf_toolkit.auth.httpx import SalesforceAuth
 from sf_toolkit.auth.login_cli import cli_login
+from sf_toolkit.auth.types import SalesforceToken
 
 
 def test_cli_login_success():
@@ -44,7 +45,7 @@ def test_cli_login_with_alias():
                     next(login_gen)  # Exhaust the generator
                     iter_count += 1
             except StopIteration as result:
-                generated_token = result.value
+                generated_token: SalesforceToken = result.value
             assert iter_count <= 2
             assert mock_run.called_once()
             # Verify the command included the alias
@@ -54,7 +55,7 @@ def test_cli_login_with_alias():
 
             assert generated_token is not None
             assert generated_token.token == "test_token"
-            assert generated_token.instance == "test.salesforce.com"
+            assert generated_token.instance.host == "test.salesforce.com"
 
 
 def test_cli_login_command_failure():

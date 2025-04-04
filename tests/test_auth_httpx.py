@@ -9,7 +9,7 @@ from sf_toolkit.auth.types import SalesforceToken
 def test_salesforce_auth_init():
     """Test the initialization of SalesforceAuth."""
     login = MagicMock()
-    token = SalesforceToken(instance="test.instance", token="test_token")
+    token = SalesforceToken(httpx.URL("https://test.instance"), token="test_token")
     callback = MagicMock()
 
     auth = SalesforceAuth(login=login, session_token=token, callback=callback)
@@ -21,7 +21,7 @@ def test_salesforce_auth_init():
 
 def test_auth_flow_with_token():
     """Test auth flow when token is already available."""
-    token = SalesforceToken(instance="test.instance", token="test_token")
+    token = SalesforceToken(httpx.URL("https://test.instance"), token="test_token")
     auth = SalesforceAuth(session_token=token)
 
     request = httpx.Request("GET", "https://example.com")
@@ -35,7 +35,7 @@ def test_auth_flow_with_token():
 
 def test_auth_flow_initial_login():
     """Test auth flow when initial login is required."""
-    token = SalesforceToken(instance="test.instance", token="test_token")
+    token = SalesforceToken(httpx.URL("https://test.instance"), token="test_token")
 
     # Mock login generator function
     def mock_login():
@@ -68,8 +68,8 @@ def test_auth_flow_initial_login():
 
 def test_auth_flow_token_refresh():
     """Test auth flow when token refresh is required."""
-    initial_token = SalesforceToken(instance="test.instance", token="initial_token")
-    new_token = SalesforceToken(instance="test.instance", token="new_token")
+    initial_token = SalesforceToken(httpx.URL("https://test.instance"), token="initial_token")
+    new_token = SalesforceToken(httpx.URL("https://test.instance"), token="new_token")
 
     # Mock login generator function for refresh
     def mock_login():

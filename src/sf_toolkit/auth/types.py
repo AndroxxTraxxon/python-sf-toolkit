@@ -2,7 +2,7 @@ import typing
 import httpx
 
 class SalesforceToken(typing.NamedTuple):
-    instance: str
+    instance: httpx.URL
     token: str
 
 
