@@ -2,11 +2,10 @@ import asyncio
 from collections import defaultdict
 import datetime
 from json import JSONDecoder, JSONEncoder
-from types import NoneType
-from typing import Any, Callable, Generic, NamedTuple, TypeVar, Coroutine, get_args, get_origin
-
+from types import NoneType, UnionType
+from typing import Any, Callable, Final, Generic, NamedTuple, TypeVar, Coroutine, Union, get_args, get_origin
+from urllib.parse import quote_plus
 from httpx import Response
-import pytest
 from .. import client as sftk_client
 
 from more_itertools import chunked
@@ -21,12 +20,8 @@ _sObject = TypeVar("_sObject", bound="SObject")
 
 _T = TypeVar("_T")
 
-class ReadOnly(Generic[_T]):
-
-
-    def __class_getitem__(cls, wrapped_type: _T):
-        # return cls(wrapped_type)
-        return super().__class_getitem__(wrapped_type)
+class ReadOnlyAssignmentException(TypeError):
+    ...
 
 class MultiPicklistField(str):
     values: list[str]
@@ -155,12 +150,11 @@ class SObjectEncoder(JSONEncoder):
             return self._encode_sobject(o)
         return super().default(o)
 
-    def _encode_sobject(self, o: "SObject", only_changes: bool = False):
+    def _encode_sobject(self, o: "SObject"):
         encoded: dict[str, Any] = {
-            field_name: self._encode_sobject_field(field_name, getattr(o, field_name), only_changes)
+            field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
             for field_name, field_type in o.fields().items()
-            if hasattr(o, field_name) and get_origin(field_type) is not ReadOnly
-            and (not only_changes or field_name in o._dirty_fields)
+            if hasattr(o, field_name) and get_origin(field_type) is not Final
         }
         encoded["attributes"] = {"type": o._sf_attrs.type}
         return encoded
@@ -182,7 +176,7 @@ class SObjectEncoder(JSONEncoder):
         elif isinstance(value, MultiPicklistField):
             return str(value)
         elif isinstance(value, SObject):
-            return self._encode_sobject(value, only_changes)
+            return self._encode_sobject(value)
         else:
             raise ValueError("Unexpected Data Type")
 
@@ -233,6 +227,8 @@ class SObject(I_SObject):
             if name == "attributes":
                 continue
             try:
+                if name not in self.keys():
+                    raise KeyError(f"Field {name} not defined for {type(self).__qualname__}")
                 setattr(
                     self, name, self.revive_value(name, value, strict=__strict_fields)
                 )
@@ -286,27 +282,27 @@ class SObject(I_SObject):
 
     def __setattr__(self, name, value):
         # Regular assignment
+        if hasattr(self, '_dirty_fields'):
+            if isinstance(self.fields()[name], Final):
+                raise ReadOnlyAssignmentException(f"Field {name} on type {type(self).__qualname__} ({self._sf_attrs.type}) is readonly.")
+            if name in self.keys():
+                # Only track fields that are part of the SObject fields,
+                # not internal or special attributes
+                self._dirty_fields.add(name)
         super().__setattr__(name, value)
-
-        # Only track fields that are part of the SObject fields,
-        # not internal or special attributes
-        if (
-            # Make sure initialization is complete
-            hasattr(self, '__dict__') and
-            # Only track fields that are part of the schema
-            name in self.keys() and
-            # Make sure we're not in initialization
-            hasattr(self, '_dirty_fields')
-        ):
-            # Add this field to dirty fields set
-            self._dirty_fields.add(name)
 
 
     @classmethod
     def revive_value(cls, name: str, value: Any, *, strict=True):
         datatype: type | None = cls.fields()[name]
-        if get_origin(datatype) is ReadOnly:
+        if (_origin := get_origin(datatype)) is Final:
             datatype = get_args(datatype)[0]
+        elif _origin in {Union, UnionType}:
+            _args = get_args(datatype)
+            for arg in _args:
+                if arg is not None:
+                    datatype = arg
+                    break
         if datatype is None:
             if strict:
                 raise KeyError(
@@ -359,39 +355,180 @@ class SObject(I_SObject):
         # fetch single record
         return cls(**response_data)
 
-    def save(self, sf_client: I_SalesforceClient | None = None, only_changes: bool = True, reload_after_success: bool = False):
+    def save_insert(self, sf_client: I_SalesforceClient | None = None, reload_after_success: bool = False):
         if sf_client is None:
             sf_client = self._client_connection()
-        if _id_val := getattr(self, self._sf_attrs.id_field, None):
-            if not only_changes or self._dirty_fields:
-                payload = {
-                    field: value
-                    for field, value in SObjectEncoder()._encode_sobject(self, only_changes).items()
-                    if field != self._sf_attrs.id_field
-                }
-                sf_client.patch(
-                    f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
-                    json=payload,
-                    headers={"Content-Type": "application/json"}
-                )
+
+        # Assert that there is no ID on the record
+        if _id := getattr(self, self._sf_attrs.id_field, None):
+            raise ValueError(f"Cannot insert record that already has an {self._sf_attrs.id_field} set: {_id}")
+
+        # Prepare the payload with all fields
+        payload = {
+            field: value
+            for field, value in SObjectEncoder()._encode_sobject(self).items()
+            if field != self._sf_attrs.id_field and field != "attributes"
+        }
+
+        # Create a new record
+        response_data = sf_client.post(
+            f"{sf_client.sobjects_url}/{self._sf_attrs.type}",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        ).json()
+
+        # Set the new ID on the object
+        _id_val = response_data['id']
+        setattr(self, self._sf_attrs.id_field, _id_val)
+
+        # Reload the record if requested
+        if reload_after_success:
+            self.update_values(**type(self).read(_id_val))
+
+        # Clear dirty fields since we've saved
+        self._dirty_fields.clear()
+
+        return
+
+    def save_update(self, sf_client: I_SalesforceClient | None = None, only_changes: bool = True, reload_after_success: bool = False):
+        if sf_client is None:
+            sf_client = self._client_connection()
+
+        # Assert that there is an ID on the record
+        if not (_id_val := getattr(self, self._sf_attrs.id_field, None)):
+            raise ValueError(f"Cannot update record without {self._sf_attrs.id_field}")
+
+        # If only tracking changes and there are no changes, do nothing
+        if only_changes and not self._dirty_fields:
+            return
+
+        # Prepare the payload
+        if only_changes:
+            payload = {
+                field: value
+                for field, value in SObjectEncoder()._encode_sobject(self).items()
+                if field != self._sf_attrs.id_field and field != "attributes"
+                and field in self._dirty_fields
+            }
         else:
             payload = {
                 field: value
                 for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field
+                if field != self._sf_attrs.id_field and field != "attributes"
             }
-            response_data = sf_client.post(
-                f"{sf_client.sobjects_url}/{self._sf_attrs.type}",
+
+        # Update the record if there's anything to update
+        if payload:
+            sf_client.patch(
+                f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
                 json=payload,
                 headers={"Content-Type": "application/json"}
-            ).json()
-            _id_val = response_data['id']
-            setattr(self, self._sf_attrs.id_field, _id_val)
+            )
 
+        # Reload the record if requested
         if reload_after_success:
             self.update_values(**type(self).read(_id_val))
 
+        # Clear dirty fields since we've saved
         self._dirty_fields.clear()
+
+        return
+
+    def save_upsert(
+        self,
+        external_id_field: str,
+        sf_client: I_SalesforceClient | None = None,
+        reload_after_success: bool = False,
+        update_only: bool = False,
+        only_changes: bool = True
+    ):
+        if sf_client is None:
+            sf_client = self._client_connection()
+
+        # Get the external ID value
+        if not (ext_id_val := getattr(self, external_id_field, None)):
+            raise ValueError(f"Cannot upsert record without a value for external ID field: {external_id_field}")
+
+        # Encode the external ID value in the URL to handle special characters
+        ext_id_val = quote_plus(str(ext_id_val))
+
+        # Prepare the payload
+        if only_changes:
+            payload = {
+                field: value
+                for field, value in SObjectEncoder()._encode_sobject(self).items()
+                if field != self._sf_attrs.id_field and field != "attributes" and field != external_id_field
+                and field in self._dirty_fields
+            }
+        else:
+            payload = {
+                field: value
+                for field, value in SObjectEncoder()._encode_sobject(self).items()
+                if field != self._sf_attrs.id_field and field != "attributes" and field != external_id_field
+            }
+
+        # If there's nothing to update when only_changes=True, just return
+        if only_changes and not payload:
+            return
+
+        # Execute the upsert
+        response = sf_client.patch(
+            f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{external_id_field}/{ext_id_val}",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+
+        # For an insert via upsert, the response contains the new ID
+        if response.status_code == 201:  # Created
+            response_data = response.json()
+            _id_val = response_data.get('id')
+            if _id_val:
+                setattr(self, self._sf_attrs.id_field, _id_val)
+        elif update_only and response.status_code == 404:
+            raise ValueError(f"Record not found for external ID field {external_id_field} with value {ext_id_val}")
+
+        # Reload the record if requested
+        if reload_after_success and (_id_val := getattr(self, self._sf_attrs.id_field, None)):
+            self.update_values(**type(self).read(_id_val))
+
+        # Clear dirty fields since we've saved
+        self._dirty_fields.clear()
+
+        return self
+
+    def save(
+        self,
+        sf_client: I_SalesforceClient | None = None,
+        only_changes: bool = True,
+        reload_after_success: bool = False,
+        external_id_field: str | None = None,
+        update_only: bool = False
+    ):
+        # If we have an ID value, use save_update
+        if getattr(self, self._sf_attrs.id_field, None):
+            return self.save_update(
+                sf_client=sf_client,
+                only_changes=only_changes,
+                reload_after_success=reload_after_success
+            )
+        # If we have an external ID field, use save_upsert
+        elif external_id_field:
+            return self.save_upsert(
+                external_id_field=external_id_field,
+                sf_client=sf_client,
+                reload_after_success=reload_after_success,
+                update_only=update_only,
+                only_changes=only_changes
+            )
+        # Otherwise, if not update_only, use save_insert
+        elif not update_only:
+            return self.save_insert(
+                sf_client=sf_client,
+                reload_after_success=reload_after_success
+            )
+        else:
+            # If update_only is True and there's no ID or external ID, raise an error
+            raise ValueError("Cannot update record without an ID or external ID")
 
 
     def delete(self, sf_client: I_SalesforceClient | None = None, clear_id_field: bool = True):
@@ -540,8 +677,8 @@ class SObject(I_SObject):
             elif field_type == 'multipicklist':
                 python_type = MultiPicklistField
 
-            if field.updateable:
-                python_type = ReadOnly[python_type]
+            if not field.updateable:
+                python_type = Final[python_type]
 
             field_annotations[field_name] = python_type
 

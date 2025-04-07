@@ -92,7 +92,6 @@ def test_cli_login_disconnected_status():
 
             login_func = cli_login()
             login_gen = login_func()
-            next(login_gen)  # Start the generator
 
             with pytest.raises(Exception, match="Unable to connect"):
                 next(login_gen)

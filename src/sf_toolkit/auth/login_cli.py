@@ -37,7 +37,6 @@ def cli_login(
         }
 
         result = subprocess_run(command, check=False, capture_output=True, env=cmd_env)
-        yield  # yield to make this a generator
         output = json.loads(result.stdout)
         if output["status"] != 0:
             exception = type(output["name"], (Exception,), {})
@@ -65,5 +64,6 @@ def cli_login(
         session_id = token_result["accessToken"]
         instance_url = token_result["instanceUrl"]
         return SalesforceToken(URL(instance_url), session_id)
+        yield  # yield to make this a generator
 
     return _cli_login

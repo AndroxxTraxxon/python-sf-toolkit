@@ -2,7 +2,6 @@ import pytest
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.auth.login_cli import cli_login
 
-@pytest.mark.integration
 def test_cli_login_with_default_org():
     """Test that we can log in using the default org from sf cli"""
     # Create client with CLI login method
@@ -15,7 +14,6 @@ def test_cli_login_with_default_org():
 
     assert SalesforceClient.DEFAULT_CONNECTION_NAME not in SalesforceClient._connections
 
-@pytest.mark.integration
 def test_cli_login_with_specified_alias():
     """Test that we can log in using a specific org alias from sf cli"""
     import json

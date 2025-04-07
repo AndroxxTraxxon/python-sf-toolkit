@@ -160,17 +160,22 @@ class SalesforceClient(I_SalesforceClient):
 
     def __enter__(self):
         super().__enter__()
-        self._userinfo = UserInfo(**self.send(self._userinfo_request()).json())
-        if getattr(self, "api_version", None):
-            self.api_version = self.versions[self.api_version.version]
-        else:
-            self.api_version = self.versions[max(self.versions)]
-        LOGGER.info(
-            "Logged into %s as %s (%s)",
-            self.base_url,
-            self._userinfo.name,
-            self._userinfo.preferred_username
-        )
+        try:
+
+            self._userinfo = UserInfo(**self.send(self._userinfo_request()).json())
+            if getattr(self, "api_version", None):
+                self.api_version = self.versions[self.api_version.version]
+            else:
+                self.api_version = self.versions[max(self.versions)]
+            LOGGER.info(
+                "Logged into %s as %s (%s)",
+                self.base_url,
+                self._userinfo.name,
+                self._userinfo.preferred_username
+            )
+        except Exception as e:
+            super().__exit__(type(e), e, e.__traceback__)
+            raise
         return self
 
     def __exit__(
