@@ -3,11 +3,13 @@ from typing import TypeVar
 
 _T_ApiVer = TypeVar("_T_ApiVer", bound="ApiVersion")
 
+
 class ApiVersion:
     """
     Data structure representing a Salesforce API version.
     https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_versions.htm
     """
+
     version: float
     label: str
     url: str
@@ -35,13 +37,17 @@ class ApiVersion:
                 return cls(version_number, f"v{version_number:.01f}", value)
             else:
                 version_number = float(value)
-                return cls(version_number, f"v{version_number:.01f}", f"/services/data/{version_number:.01f}")
+                return cls(
+                    version_number,
+                    f"v{version_number:.01f}",
+                    f"/services/data/{version_number:.01f}",
+                )
 
         elif isinstance(value, float):
             return cls(value, f"v{value:.01f}", f"/services/data/{value:.01f}")
 
         elif isinstance(dict, value):
-            return(cls(**value))
+            return cls(**value)
 
         raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
 
@@ -149,7 +155,7 @@ class UserInfo:
         utcOffset: int,
         updated_at: str,
         preferred_username: str,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize a UserInfo object.

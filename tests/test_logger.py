@@ -1,5 +1,6 @@
 from sf_toolkit.logger import getLogger, pkg_root
 
+
 def test_logger_creation():
     # Test getting the root logger
     logger = getLogger(None)

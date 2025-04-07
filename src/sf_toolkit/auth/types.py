@@ -1,6 +1,7 @@
 import typing
 import httpx
 
+
 class SalesforceToken(typing.NamedTuple):
     instance: httpx.URL
     token: str
@@ -12,8 +13,4 @@ SalesforceLogin = typing.Callable[
 
 TokenRefreshCallback = typing.Callable[[SalesforceToken], typing.Any]
 
-__all__ = [
-    "SalesforceToken",
-    "SalesforceLogin",
-    "TokenRefreshCallback"
-]
+__all__ = ["SalesforceToken", "SalesforceLogin", "TokenRefreshCallback"]

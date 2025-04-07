@@ -3,7 +3,18 @@ from collections import defaultdict
 import datetime
 from json import JSONDecoder, JSONEncoder
 from types import NoneType, UnionType
-from typing import Any, Callable, Final, Generic, NamedTuple, TypeVar, Coroutine, Union, get_args, get_origin
+from typing import (
+    Any,
+    Callable,
+    Final,
+    Generic,
+    NamedTuple,
+    TypeVar,
+    Coroutine,
+    Union,
+    get_args,
+    get_origin,
+)
 from urllib.parse import quote_plus
 from httpx import Response
 from .. import client as sftk_client
@@ -11,17 +22,16 @@ from .. import client as sftk_client
 from more_itertools import chunked
 
 from ..concurrency import run_concurrently
-from .._models import (
-    SObjectAttributes
-)
+from .._models import SObjectAttributes
 from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 
 _sObject = TypeVar("_sObject", bound="SObject")
 
 _T = TypeVar("_T")
 
-class ReadOnlyAssignmentException(TypeError):
-    ...
+
+class ReadOnlyAssignmentException(TypeError): ...
+
 
 class MultiPicklistField(str):
     values: list[str]
@@ -35,6 +45,7 @@ class MultiPicklistField(str):
 
 class SObjectFieldDescribe(NamedTuple):
     """Represents metadata about a Salesforce SObject field"""
+
     name: str
     label: str
     type: str
@@ -64,6 +75,7 @@ class SObjectFieldDescribe(NamedTuple):
 
 class SObjectDescribe:
     """Represents metadata about a Salesforce SObject from a describe call"""
+
     def __init__(
         self,
         *,
@@ -86,7 +98,7 @@ class SObjectDescribe:
         fields: list[SObjectFieldDescribe] | None = None,
         childRelationships: list[dict] | None = None,
         recordTypeInfos: list[dict] | None = None,
-        **additional_properties
+        **additional_properties,
     ):
         self.name = name
         self.label = label
@@ -111,21 +123,24 @@ class SObjectDescribe:
 
         # Add all explicit properties to _raw_data too
         for key, value in self.__dict__.items():
-            if not key.startswith('_'):
+            if not key.startswith("_"):
                 self._raw_data[key] = value
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'SObjectDescribe':
+    def from_dict(cls, data: dict) -> "SObjectDescribe":
         """Create an SObjectDescribe instance from a dictionary (typically from a Salesforce API response)"""
         # Extract fields specifically to convert them to SObjectFieldDescribe objects
-        fields_data = data.pop('fields', []) if 'fields' in data else []
+        fields_data = data.pop("fields", []) if "fields" in data else []
 
         # Create SObjectFieldDescribe instances for each field
         fields = [
-            SObjectFieldDescribe(**{
-                k: v for k, v in field_data.items()
-                if k in SObjectFieldDescribe._fields
-            })
+            SObjectFieldDescribe(
+                **{
+                    k: v
+                    for k, v in field_data.items()
+                    if k in SObjectFieldDescribe._fields
+                }
+            )
             for field_data in fields_data
         ]
 
@@ -182,11 +197,11 @@ class SObjectEncoder(JSONEncoder):
 
 
 class SObjectDecoder(JSONDecoder, Generic[_sObject]):
-    def __init__(
-        self, sf_connection: str = "", **kwargs
-    ):
+    def __init__(self, sf_connection: str = "", **kwargs):
         super().__init__(**kwargs, object_hook=self._object_hook)
-        self.sf_connection = sf_connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
+        self.sf_connection = (
+            sf_connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
+        )
 
     def _object_hook(self, o: Any):
         if (
@@ -228,7 +243,9 @@ class SObject(I_SObject):
                 continue
             try:
                 if name not in self.keys():
-                    raise KeyError(f"Field {name} not defined for {type(self).__qualname__}")
+                    raise KeyError(
+                        f"Field {name} not defined for {type(self).__qualname__}"
+                    )
                 setattr(
                     self, name, self.revive_value(name, value, strict=__strict_fields)
                 )
@@ -255,10 +272,9 @@ class SObject(I_SObject):
             SObjectAttributes(
                 record["attributes"]["type"],
                 connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME,
-                id_field
+                id_field,
             )
         ].get(frozenset(fields))
-
 
     @classmethod
     def fields(cls):
@@ -266,7 +282,7 @@ class SObject(I_SObject):
 
     @classmethod
     def keys(cls):
-        if not getattr(cls, '_keys', None):
+        if not getattr(cls, "_keys", None):
             cls._keys = frozenset(cls.__annotations__.keys())
         return cls._keys
 
@@ -282,15 +298,16 @@ class SObject(I_SObject):
 
     def __setattr__(self, name, value):
         # Regular assignment
-        if hasattr(self, '_dirty_fields'):
+        if hasattr(self, "_dirty_fields"):
             if isinstance(self.fields()[name], Final):
-                raise ReadOnlyAssignmentException(f"Field {name} on type {type(self).__qualname__} ({self._sf_attrs.type}) is readonly.")
+                raise ReadOnlyAssignmentException(
+                    f"Field {name} on type {type(self).__qualname__} ({self._sf_attrs.type}) is readonly."
+                )
             if name in self.keys():
                 # Only track fields that are part of the SObject fields,
                 # not internal or special attributes
                 self._dirty_fields.add(name)
         super().__setattr__(name, value)
-
 
     @classmethod
     def revive_value(cls, name: str, value: Any, *, strict=True):
@@ -355,13 +372,19 @@ class SObject(I_SObject):
         # fetch single record
         return cls(**response_data)
 
-    def save_insert(self, sf_client: I_SalesforceClient | None = None, reload_after_success: bool = False):
+    def save_insert(
+        self,
+        sf_client: I_SalesforceClient | None = None,
+        reload_after_success: bool = False,
+    ):
         if sf_client is None:
             sf_client = self._client_connection()
 
         # Assert that there is no ID on the record
         if _id := getattr(self, self._sf_attrs.id_field, None):
-            raise ValueError(f"Cannot insert record that already has an {self._sf_attrs.id_field} set: {_id}")
+            raise ValueError(
+                f"Cannot insert record that already has an {self._sf_attrs.id_field} set: {_id}"
+            )
 
         # Prepare the payload with all fields
         payload = {
@@ -374,11 +397,11 @@ class SObject(I_SObject):
         response_data = sf_client.post(
             f"{sf_client.sobjects_url}/{self._sf_attrs.type}",
             json=payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         ).json()
 
         # Set the new ID on the object
-        _id_val = response_data['id']
+        _id_val = response_data["id"]
         setattr(self, self._sf_attrs.id_field, _id_val)
 
         # Reload the record if requested
@@ -390,7 +413,12 @@ class SObject(I_SObject):
 
         return
 
-    def save_update(self, sf_client: I_SalesforceClient | None = None, only_changes: bool = True, reload_after_success: bool = False):
+    def save_update(
+        self,
+        sf_client: I_SalesforceClient | None = None,
+        only_changes: bool = True,
+        reload_after_success: bool = False,
+    ):
         if sf_client is None:
             sf_client = self._client_connection()
 
@@ -407,7 +435,8 @@ class SObject(I_SObject):
             payload = {
                 field: value
                 for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field and field != "attributes"
+                if field != self._sf_attrs.id_field
+                and field != "attributes"
                 and field in self._dirty_fields
             }
         else:
@@ -422,7 +451,7 @@ class SObject(I_SObject):
             sf_client.patch(
                 f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
                 json=payload,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
 
         # Reload the record if requested
@@ -440,14 +469,16 @@ class SObject(I_SObject):
         sf_client: I_SalesforceClient | None = None,
         reload_after_success: bool = False,
         update_only: bool = False,
-        only_changes: bool = True
+        only_changes: bool = True,
     ):
         if sf_client is None:
             sf_client = self._client_connection()
 
         # Get the external ID value
         if not (ext_id_val := getattr(self, external_id_field, None)):
-            raise ValueError(f"Cannot upsert record without a value for external ID field: {external_id_field}")
+            raise ValueError(
+                f"Cannot upsert record without a value for external ID field: {external_id_field}"
+            )
 
         # Encode the external ID value in the URL to handle special characters
         ext_id_val = quote_plus(str(ext_id_val))
@@ -457,14 +488,18 @@ class SObject(I_SObject):
             payload = {
                 field: value
                 for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field and field != "attributes" and field != external_id_field
+                if field != self._sf_attrs.id_field
+                and field != "attributes"
+                and field != external_id_field
                 and field in self._dirty_fields
             }
         else:
             payload = {
                 field: value
                 for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field and field != "attributes" and field != external_id_field
+                if field != self._sf_attrs.id_field
+                and field != "attributes"
+                and field != external_id_field
             }
 
         # If there's nothing to update when only_changes=True, just return
@@ -475,20 +510,24 @@ class SObject(I_SObject):
         response = sf_client.patch(
             f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{external_id_field}/{ext_id_val}",
             json=payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         # For an insert via upsert, the response contains the new ID
         if response.status_code == 201:  # Created
             response_data = response.json()
-            _id_val = response_data.get('id')
+            _id_val = response_data.get("id")
             if _id_val:
                 setattr(self, self._sf_attrs.id_field, _id_val)
         elif update_only and response.status_code == 404:
-            raise ValueError(f"Record not found for external ID field {external_id_field} with value {ext_id_val}")
+            raise ValueError(
+                f"Record not found for external ID field {external_id_field} with value {ext_id_val}"
+            )
 
         # Reload the record if requested
-        if reload_after_success and (_id_val := getattr(self, self._sf_attrs.id_field, None)):
+        if reload_after_success and (
+            _id_val := getattr(self, self._sf_attrs.id_field, None)
+        ):
             self.update_values(**type(self).read(_id_val))
 
         # Clear dirty fields since we've saved
@@ -502,14 +541,14 @@ class SObject(I_SObject):
         only_changes: bool = True,
         reload_after_success: bool = False,
         external_id_field: str | None = None,
-        update_only: bool = False
+        update_only: bool = False,
     ):
         # If we have an ID value, use save_update
         if getattr(self, self._sf_attrs.id_field, None):
             return self.save_update(
                 sf_client=sf_client,
                 only_changes=only_changes,
-                reload_after_success=reload_after_success
+                reload_after_success=reload_after_success,
             )
         # If we have an external ID field, use save_upsert
         elif external_id_field:
@@ -518,20 +557,20 @@ class SObject(I_SObject):
                 sf_client=sf_client,
                 reload_after_success=reload_after_success,
                 update_only=update_only,
-                only_changes=only_changes
+                only_changes=only_changes,
             )
         # Otherwise, if not update_only, use save_insert
         elif not update_only:
             return self.save_insert(
-                sf_client=sf_client,
-                reload_after_success=reload_after_success
+                sf_client=sf_client, reload_after_success=reload_after_success
             )
         else:
             # If update_only is True and there's no ID or external ID, raise an error
             raise ValueError("Cannot update record without an ID or external ID")
 
-
-    def delete(self, sf_client: I_SalesforceClient | None = None, clear_id_field: bool = True):
+    def delete(
+        self, sf_client: I_SalesforceClient | None = None, clear_id_field: bool = True
+    ):
         if sf_client is None:
             sf_client = self._client_connection()
         _id_val = getattr(self, self._sf_attrs.id_field, None)
@@ -544,7 +583,6 @@ class SObject(I_SObject):
         )
         if clear_id_field:
             delattr(self, self._sf_attrs.id_field)
-
 
     def update_values(self, **kwargs):
         for key, value in kwargs.items():
@@ -599,7 +637,7 @@ class SObject(I_SObject):
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
     ):
         if sf_client is None:
-            sf_client =cls._client_connection().as_async
+            sf_client = cls._client_connection().as_async
         async with sf_client:
             tasks = [
                 sf_client.post(
@@ -664,17 +702,17 @@ class SObject(I_SObject):
 
             # Map Salesforce field types to Python types
             python_type = str  # Default type
-            if field_type == 'boolean':
+            if field_type == "boolean":
                 python_type = bool
-            elif field_type in ('int', 'double', 'currency', 'percent'):
+            elif field_type in ("int", "double", "currency", "percent"):
                 python_type = float
-            elif field_type == 'date':
+            elif field_type == "date":
                 python_type = datetime.date
-            elif field_type == 'datetime':
+            elif field_type == "datetime":
                 python_type = datetime.datetime
-            elif field_type == 'time':
+            elif field_type == "time":
                 python_type = datetime.time
-            elif field_type == 'multipicklist':
+            elif field_type == "multipicklist":
                 python_type = MultiPicklistField
 
             if not field.updateable:
@@ -688,15 +726,13 @@ class SObject(I_SObject):
             (SObject,),
             {
                 "__annotations__": field_annotations,
-                "__doc__": f"Auto-generated SObject class for {sobject} ({describe_data.label})"
+                "__doc__": f"Auto-generated SObject class for {sobject} ({describe_data.label})",
             },
             api_name=sobject,
-            connection=connection
+            connection=connection,
         )
 
         return sobject_class
-
-
 
 
 def _is_sobject(value):

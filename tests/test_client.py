@@ -5,7 +5,6 @@ from sf_toolkit.auth.types import SalesforceToken
 from sf_toolkit.client import SalesforceClient
 
 
-
 def test_client_context_manager(mocker):
     """Test that the client context manager correctly initializes"""
 
@@ -31,7 +30,7 @@ def test_client_context_manager(mocker):
         "language": "en_US",
         "locale": "en_US",
         "utcOffset": -28800000,
-        "updated_at": "2023-01-01T00:00:00Z"
+        "updated_at": "2023-01-01T00:00:00Z",
     }
 
     # Set up mock responses
@@ -42,19 +41,19 @@ def test_client_context_manager(mocker):
     mock_response_versions.json.return_value = [
         {"version": "50.0", "label": "Winter '21", "url": "/services/data/v50.0"},
         {"version": "51.0", "label": "Spring '21", "url": "/services/data/v51.0"},
-        {"version": "52.0", "label": "Summer '21", "url": "/services/data/v52.0"}
+        {"version": "52.0", "label": "Summer '21", "url": "/services/data/v52.0"},
     ]
 
     # Mock the send method instead of request
-    mock_send = mocker.patch.object(SalesforceClient, 'send')
+    mock_send = mocker.patch.object(SalesforceClient, "send")
 
     # Configure the mock to return different responses for different calls
     mock_send.side_effect = [mock_response_userinfo, mock_response_versions]
 
     # Create client with mock token
-    with SalesforceClient(token=SalesforceToken(
-        URL("https://test.salesforce.com"), "mock_access_token"
-    )) as client:
+    with SalesforceClient(
+        token=SalesforceToken(URL("https://test.salesforce.com"), "mock_access_token")
+    ) as client:
         # Verify client has userinfo and api_version configured
         assert isinstance(client.api_version, ApiVersion)
         assert client.api_version.version == 52.0  # Should use the latest version

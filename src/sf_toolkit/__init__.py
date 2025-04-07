@@ -11,5 +11,5 @@ __all__ = [
     "SObject",
     "SoqlSelect",
     "lazy_login",
-    "cli_login"
+    "cli_login",
 ]

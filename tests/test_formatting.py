@@ -1,4 +1,5 @@
 """Tests for salesforce_toolkit.formatting."""
+
 import pytest
 from datetime import datetime, date, timezone
 from sf_toolkit.formatting import (
@@ -6,7 +7,7 @@ from sf_toolkit.formatting import (
     format_soql,
     format_external_id,
     format_datetime,
-    parse_datetime
+    parse_datetime,
 )
 
 
@@ -78,26 +79,47 @@ def test_quote_soql_invalid():
 def test_format_soql():
     """Test formatting SOQL queries."""
     # Test basic formatting
-    assert format_soql("SELECT Id FROM Account WHERE Name = {}", "Test") == "SELECT Id FROM Account WHERE Name = 'Test'"
+    assert (
+        format_soql("SELECT Id FROM Account WHERE Name = {}", "Test")
+        == "SELECT Id FROM Account WHERE Name = 'Test'"
+    )
 
     # Test with named parameters
-    assert format_soql("SELECT Id FROM Contact WHERE FirstName = {first} AND LastName = {last}",
-                       first="John", last="Doe") == "SELECT Id FROM Contact WHERE FirstName = 'John' AND LastName = 'Doe'"
+    assert (
+        format_soql(
+            "SELECT Id FROM Contact WHERE FirstName = {first} AND LastName = {last}",
+            first="John",
+            last="Doe",
+        )
+        == "SELECT Id FROM Contact WHERE FirstName = 'John' AND LastName = 'Doe'"
+    )
 
     # Test with literal format spec
-    assert format_soql("SELECT {0:literal} FROM Account", "COUNT(Id)") == "SELECT COUNT(Id) FROM Account"
+    assert (
+        format_soql("SELECT {0:literal} FROM Account", "COUNT(Id)")
+        == "SELECT COUNT(Id) FROM Account"
+    )
 
     # Test with LIKE format spec
-    assert format_soql("SELECT Id FROM Account WHERE Name LIKE '%{0:like}%'", "100%") == "SELECT Id FROM Account WHERE Name LIKE '%100\\%%'"
+    assert (
+        format_soql("SELECT Id FROM Account WHERE Name LIKE '%{0:like}%'", "100%")
+        == "SELECT Id FROM Account WHERE Name LIKE '%100\\%%'"
+    )
 
     # Test with lists
-    assert format_soql("SELECT Id FROM Account WHERE Id IN {}", [1, 2, 3]) == "SELECT Id FROM Account WHERE Id IN (1,2,3)"
+    assert (
+        format_soql("SELECT Id FROM Account WHERE Id IN {}", [1, 2, 3])
+        == "SELECT Id FROM Account WHERE Id IN (1,2,3)"
+    )
 
 
 def test_format_external_id():
     """Test formatting external IDs."""
     assert format_external_id("CustomField__c", "12345") == "CustomField__c/12345"
-    assert format_external_id("Email__c", "user@example.com") == "Email__c/user%40example.com"
+    assert (
+        format_external_id("Email__c", "user@example.com")
+        == "Email__c/user%40example.com"
+    )
     assert format_external_id("Path__c", "a/b/c") == "Path__c/a%2Fb%2Fc"
 
 
@@ -105,7 +127,9 @@ def test_format_datetime():
     """Test formatting datetime objects."""
     dt = datetime(2023, 1, 15, 12, 30, 45, 123456, tzinfo=timezone.utc)
     formatted_dt = format_datetime(dt)
-    assert formatted_dt == "2023-01-15T12:30:45.123456+0000" or formatted_dt.startswith("2023-01-15T12:30:45.123456")
+    assert formatted_dt == "2023-01-15T12:30:45.123456+0000" or formatted_dt.startswith(
+        "2023-01-15T12:30:45.123456"
+    )
 
     # Test naive datetime
     naive_dt = datetime(2023, 1, 15, 12, 30, 45, 123456)

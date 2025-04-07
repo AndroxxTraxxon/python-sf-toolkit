@@ -5,6 +5,7 @@ from sf_toolkit.exceptions import SalesforceError
 
 from ..test_sobject import Opportunity, Account
 
+
 class Product(SObject, api_name="Product2"):
     Id: str
     Name: str
@@ -16,13 +17,10 @@ def test_opportunity_crud(sf_client):
     """Test creating, updating, and deleting an Opportunity"""
     # Generate unique name using timestamp to avoid conflicts
     unique_name = f"Test Opportunity {datetime.now().strftime('%Y%m%d%H%M%S')}"
-    close_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+    close_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
     # Create new opportunity
     opp = Opportunity(
-        Name=unique_name,
-        StageName="Prospecting",
-        CloseDate=close_date,
-        Amount=10000.00
+        Name=unique_name, StageName="Prospecting", CloseDate=close_date, Amount=10000.00
     )
 
     created_opp_id = None
@@ -32,18 +30,14 @@ def test_opportunity_crud(sf_client):
         created_opp_id = opp.Id
 
         # Verify opportunity was created
-        assert hasattr(opp, 'Id')
+        assert hasattr(opp, "Id")
         assert opp.Id is not None
         assert opp.Name == unique_name
         assert opp.StageName == "Prospecting"
 
         # Update opportunity
         updated_name = f"{unique_name} - Updated"
-        opp.update_values(
-            Name=updated_name,
-            StageName="Qualification",
-            Amount=15000.00
-        )
+        opp.update_values(Name=updated_name, StageName="Qualification", Amount=15000.00)
         opp.save()
 
         # Verify opportunity was updated
@@ -61,7 +55,7 @@ def test_opportunity_crud(sf_client):
 
     finally:
         # Ensure cleanup happens even if test fails
-        if created_opp_id and hasattr(opp, 'Id') and opp.Id is not None:
+        if created_opp_id and hasattr(opp, "Id") and opp.Id is not None:
             try:
                 opp.delete(clear_id_field=False)
             except Exception:
@@ -73,10 +67,7 @@ def test_reload_after_success_flag(sf_client):
     """Test that reload_after_success flag updates multiple references to the same record"""
     # Create a test account
     unique_name = f"Test Account {datetime.now().strftime('%Y%m%d%H%M%S')}"
-    account = Account(
-        Name=unique_name,
-        Industry="Technology"
-    )
+    account = Account(Name=unique_name, Industry="Technology")
     account.save()
 
     try:
@@ -117,6 +108,7 @@ def test_reload_after_success_flag(sf_client):
         # Clean up
         account.delete()
 
+
 def test_upsert_with_external_id(sf_client):
     """Test upserting a record using an external ID field"""
     # Generate unique name and external ID
@@ -125,9 +117,7 @@ def test_upsert_with_external_id(sf_client):
 
     # Create account with external ID
     product = Product(
-        Name=unique_name,
-        ExternalId__c=external_id,
-        Description="Test Description"
+        Name=unique_name, ExternalId__c=external_id, Description="Test Description"
     )
 
     try:
@@ -135,7 +125,7 @@ def test_upsert_with_external_id(sf_client):
         product.save()
 
         # Verify the record was created and has an ID
-        assert hasattr(product, 'Id')
+        assert hasattr(product, "Id")
         assert product.Id is not None
         initial_id = product.Id
 
@@ -152,14 +142,14 @@ def test_upsert_with_external_id(sf_client):
         upsert_product = Product(
             Name=f"{unique_name} - Upserted",
             ExternalId__c=external_id,
-            Description="Manufacturing"
+            Description="Manufacturing",
         )
 
         # Should update the existing record instead of creating new one
         upsert_product.save(external_id_field="ExternalId__c")
 
         # Verify it matched and updated the existing record
-        assert hasattr(upsert_product, 'Id')
+        assert hasattr(upsert_product, "Id")
         assert upsert_product.Id == initial_id
 
         # Retrieve to confirm changes
@@ -169,7 +159,7 @@ def test_upsert_with_external_id(sf_client):
 
     finally:
         # Clean up
-        if hasattr(product, 'Id') and product.Id:
+        if hasattr(product, "Id") and product.Id:
             product.delete()
 
 
@@ -179,13 +169,12 @@ def test_update_only_flag(sf_client):
     unique_name = f"Update Only Test {datetime.now().strftime('%Y%m%d%H%M%S')}"
 
     # Create account object but don't save it
-    account = Account(
-        Name=unique_name,
-        Industry="Technology"
-    )
+    account = Account(Name=unique_name, Industry="Technology")
 
     # Attempt to save with update_only=True should fail
-    with pytest.raises(ValueError, match="Cannot update record without an ID or external ID"):
+    with pytest.raises(
+        ValueError, match="Cannot update record without an ID or external ID"
+    ):
         account.save(update_only=True)
 
     # Now save it normally to create it
@@ -204,7 +193,7 @@ def test_update_only_flag(sf_client):
         # Create another account with an ID but don't save it
         nonexistent_account = Account(
             Id="001000000000000AAA",  # Non-existent ID
-            Name="This should fail"
+            Name="This should fail",
         )
 
         # This should fail since the ID doesn't exist
@@ -213,7 +202,7 @@ def test_update_only_flag(sf_client):
 
     finally:
         # Clean up
-        if hasattr(account, 'Id') and account.Id:
+        if hasattr(account, "Id") and account.Id:
             account.delete()
 
 
@@ -225,20 +214,19 @@ def test_only_changes_with_upsert(sf_client):
 
     # Create and save account
     product = Product(
-        Name=unique_name,
-        ExternalId__c=external_id,
-        Description="Initial description"
+        Name=unique_name, ExternalId__c=external_id, Description="Initial description"
     )
     product.save()
 
     try:
         # Create a new instance with the same external ID but only change one field
         update_product = Product(
-            ExternalId__c=external_id,
-            Description="Updated description"
+            ExternalId__c=external_id, Description="Updated description"
         )
 
-        update_product.save(external_id_field="ExternalId__c", reload_after_success=True)
+        update_product.save(
+            external_id_field="ExternalId__c", reload_after_success=True
+        )
 
         # Retrieve to confirm changes
         retrieved = Product.read(product.Id)
@@ -247,9 +235,9 @@ def test_only_changes_with_upsert(sf_client):
 
         # Now update multiple fields with only_changes
         update_product = Product(
-            Name = "New Name",
-            Description = "Updated description",
-            ExternalId__c = external_id
+            Name="New Name",
+            Description="Updated description",
+            ExternalId__c=external_id,
         )
         update_product.save(external_id_field="ExternalId__c")
 
@@ -260,5 +248,5 @@ def test_only_changes_with_upsert(sf_client):
 
     finally:
         # Clean up
-        if hasattr(product, 'Id') and product.Id:
+        if hasattr(product, "Id") and product.Id:
             product.delete()

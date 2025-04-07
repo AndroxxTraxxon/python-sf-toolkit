@@ -17,17 +17,12 @@ from .auth import (
     SalesforceToken,
     TokenRefreshCallback,
 )
-from .apimodels import (
-    ApiVersion,
-    UserInfo
-)
+from .apimodels import ApiVersion, UserInfo
 
 LOGGER = getLogger("client")
 
 
-class AsyncSalesforceClient(
-    I_AsyncSalesforceClient
-):
+class AsyncSalesforceClient(I_AsyncSalesforceClient):
     auth: SalesforceAuth  # type: ignore
 
     def __init__(
@@ -43,23 +38,25 @@ class AsyncSalesforceClient(
         )
         super().__init__(
             auth=SalesforceAuth(login, token, self.handle_token_refresh),
-            headers={"Accept": "application/json"}
+            headers={"Accept": "application/json"},
         )
         if token:
             self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
         self.sync_parent = sync_parent
 
-
     def unregister_parent(self):
         self.sync_parent = None
-
 
     async def __aenter__(self):  # type: ignore
         if self._state == ClientState.UNOPENED:
             await super().__aenter__()
-            self._userinfo = await self.send(self._userinfo_request()).json(object_hook=ApiVersion)  # type: ignore
-            self._versions = (await self.send(self._versions_request())).json(object_hook=ApiVersion)
+            self._userinfo = await self.send(self._userinfo_request()).json(
+                object_hook=ApiVersion
+            )  # type: ignore
+            self._versions = (await self.send(self._versions_request())).json(
+                object_hook=ApiVersion
+            )
             if self.api_version:
                 self.api_version = self._versions[self.api_version.version]
             else:
@@ -71,7 +68,7 @@ class AsyncSalesforceClient(
                 self._userinfo.name,
                 self._userinfo.preferred_username,
                 self.api_version.label,
-                self.api_version.version
+                self.api_version.version,
             )
 
         return self
@@ -93,8 +90,7 @@ class AsyncSalesforceClient(
 
         raise_for_status(response, resource_name)
 
-
-        if (sforce_limit_info := response.headers.get("Sforce-Limit-Info")):
+        if sforce_limit_info := response.headers.get("Sforce-Limit-Info"):
             self.api_usage = parse_api_usage(sforce_limit_info)
         return response
 
@@ -109,7 +105,9 @@ class AsyncSalesforceClient(
         response = await self.request("GET", "/services/data")
         versions_data = response.json()
         return {
-            float(version["version"]): ApiVersion(float(version["version"]), version["label"], version["url"])
+            float(version["version"]): ApiVersion(
+                float(version["version"]), version["label"], version["url"]
+            )
             for version in versions_data
         }
 
@@ -161,7 +159,6 @@ class SalesforceClient(I_SalesforceClient):
     def __enter__(self):
         super().__enter__()
         try:
-
             self._userinfo = UserInfo(**self.send(self._userinfo_request()).json())
             if getattr(self, "api_version", None):
                 self.api_version = self.versions[self.api_version.version]
@@ -171,7 +168,7 @@ class SalesforceClient(I_SalesforceClient):
                 "Logged into %s as %s (%s)",
                 self.base_url,
                 self._userinfo.name,
-                self._userinfo.preferred_username
+                self._userinfo.preferred_username,
             )
         except Exception as e:
             super().__exit__(type(e), e, e.__traceback__)
@@ -196,7 +193,7 @@ class SalesforceClient(I_SalesforceClient):
         url: URL | str,
         resource_name: str = "",
         response_status_raise: bool = True,
-        **kwargs
+        **kwargs,
     ) -> Response:
         response = super().request(method, url, **kwargs)
 
@@ -219,6 +216,8 @@ class SalesforceClient(I_SalesforceClient):
         response = self.request("GET", "/services/data")
         versions_data = response.json()
         return {
-            (f_ver := float(version["version"])): ApiVersion(f_ver, version["label"], version["url"])
+            (f_ver := float(version["version"])): ApiVersion(
+                f_ver, version["label"], version["url"]
+            )
             for version in versions_data
         }

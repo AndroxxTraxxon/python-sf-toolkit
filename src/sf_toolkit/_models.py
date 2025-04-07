@@ -18,6 +18,7 @@ class SObjectDict(TypedDict, total=False):
 
 SObjectRecordJSON = TypeVar("SObjectRecordJSON", bound=SObjectDict)
 
+
 class QueryResultJSON(TypedDict, Generic[SObjectRecordJSON]):
     totalSize: int
     done: bool

@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from unittest.mock import MagicMock # , AsyncMock
+from unittest.mock import MagicMock  # , AsyncMock
 
 from sf_toolkit.auth.httpx import SalesforceAuth
 from sf_toolkit.auth.types import SalesforceToken
@@ -68,7 +68,9 @@ def test_auth_flow_initial_login():
 
 def test_auth_flow_token_refresh():
     """Test auth flow when token refresh is required."""
-    initial_token = SalesforceToken(httpx.URL("https://test.instance"), token="initial_token")
+    initial_token = SalesforceToken(
+        httpx.URL("https://test.instance"), token="initial_token"
+    )
     new_token = SalesforceToken(httpx.URL("https://test.instance"), token="new_token")
 
     # Mock login generator function for refresh
@@ -79,7 +81,9 @@ def test_auth_flow_token_refresh():
         return new_token
 
     callback = MagicMock()
-    auth = SalesforceAuth(login=mock_login, session_token=initial_token, callback=callback)
+    auth = SalesforceAuth(
+        login=mock_login, session_token=initial_token, callback=callback
+    )
 
     request = httpx.Request("GET", "https://example.com")
     flow = auth.auth_flow(request)
@@ -89,10 +93,7 @@ def test_auth_flow_token_refresh():
     assert modified_request.headers["Authorization"] == f"Bearer {initial_token.token}"
 
     # Simulate 401 response with INVALID_SESSION_ID
-    error_response = httpx.Response(
-        401,
-        json=[{"errorDetails": "INVALID_SESSION_ID"}]
-    )
+    error_response = httpx.Response(401, json=[{"errorDetails": "INVALID_SESSION_ID"}])
 
     # Send the error response and get the login request
     login_request = flow.send(error_response)

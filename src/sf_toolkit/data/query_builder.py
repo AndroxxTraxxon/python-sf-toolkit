@@ -9,6 +9,7 @@ from .._models import QueryResultJSON, SObjectRecordJSON
 BooleanOperator = Literal["AND", "OR"]
 Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES"]
 
+
 class Comparison:
     property: str
     comparator: Comparator
@@ -51,8 +52,11 @@ class Order(NamedTuple):
     def __str__(self):
         return f"{self.field} {self.direction}"
 
-_SObject = TypeVar('_SObject', bound=I_SObject)
-_SObjectJSON = TypeVar('_SObjectJSON', bound=dict[str, Any])
+
+_SObject = TypeVar("_SObject", bound=I_SObject)
+_SObjectJSON = TypeVar("_SObjectJSON", bound=dict[str, Any])
+
+
 class QueryResult(Generic[_SObject]):
     """
     A generic class to represent results returned by the Salesforce SOQL Query API.
@@ -63,6 +67,7 @@ class QueryResult(Generic[_SObject]):
         records (list[T]):
         nextRecordsUrl (str, optional):
     """
+
     done: bool
     "Indicates whether all records have been retrieved (True) or if more batches exist (False)"
     totalSize: int
@@ -76,12 +81,14 @@ class QueryResult(Generic[_SObject]):
     query_locator: str | None = None
     batch_size: int | None = None
 
-    def __init__(self,
-        sobject_type: type[_SObject], / ,
+    def __init__(
+        self,
+        sobject_type: type[_SObject],
+        /,
         done: bool = True,
         totalSize: int = 0,
         records: list[SObjectRecordJSON] | None = None,
-        nextRecordsUrl: str | None = None
+        nextRecordsUrl: str | None = None,
     ):
         """
         Initialize a QueryResult object from Salesforce API response data.
@@ -96,7 +103,9 @@ class QueryResult(Generic[_SObject]):
         self.nextRecordsUrl = nextRecordsUrl
         if self.nextRecordsUrl:
             # nextRecordsUrl looks like this:
-            self.query_locator, batch_size = self.nextRecordsUrl.rsplit("/", maxsplit=1)[1].rsplit("-", maxsplit=1)
+            self.query_locator, batch_size = self.nextRecordsUrl.rsplit(
+                "/", maxsplit=1
+            )[1].rsplit("-", maxsplit=1)
             self.batch_size = int(batch_size)
 
     def query_more(self):
@@ -129,7 +138,6 @@ class SoqlSelect(Generic[_SObject]):
 
     def _sf_connection(self):
         return self.sobject_type._client_connection()
-
 
     def format(self, fields: list[str]):
         segments = ["SELECT", ", ".join(fields), f"FROM {self.sobject_name}"]
@@ -167,7 +175,6 @@ class SoqlSelect(Generic[_SObject]):
         client = self._sf_connection()
 
         result: QueryResultJSON = client.get(
-            f"{client.data_url}/query",
-            params={"q": self.format(fields)}
+            f"{client.data_url}/query", params={"q": self.format(fields)}
         ).json()
         return QueryResult(self.sobject_type, **result)

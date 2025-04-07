@@ -2,6 +2,7 @@ import pytest
 import asyncio
 from sf_toolkit.concurrency import run_concurrently
 
+
 @pytest.mark.asyncio
 async def test_concurrency_limit():
     """Test that concurrency limit is enforced."""
@@ -62,6 +63,7 @@ async def test_callback_function():
     assert results == values
     assert sorted(callback_results) == values
 
+
 @pytest.mark.asyncio
 async def test_async_callback_function():
     """Test that async callback function is awaited."""
@@ -81,15 +83,18 @@ async def test_async_callback_function():
     assert results == values
     assert sorted(callback_results) == values
 
+
 @pytest.mark.asyncio
 async def test_empty_coroutines():
     """Test with empty list of coroutines."""
     results = await run_concurrently(5, [])
     assert results == []
 
+
 @pytest.mark.asyncio
 async def test_error_propagation():
     """Test that errors in tasks are properly propagated."""
+
     async def succeeding_task():
         await asyncio.sleep(0.01)
         return "success"
@@ -101,9 +106,11 @@ async def test_error_propagation():
     with pytest.raises(ValueError, match="Task failed"):
         await run_concurrently(2, [succeeding_task(), failing_task()])
 
+
 @pytest.mark.asyncio
 async def test_different_return_types():
     """Test with tasks that return different types."""
+
     async def task_int():
         await asyncio.sleep(0.01)
         return 42
@@ -118,6 +125,7 @@ async def test_different_return_types():
 
     results = await run_concurrently(3, [task_int(), task_str(), task_list()])
     assert results == [42, "hello", [1, 2, 3]]
+
 
 @pytest.mark.asyncio
 async def test_concurrency_one():

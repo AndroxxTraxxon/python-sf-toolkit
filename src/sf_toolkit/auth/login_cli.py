@@ -12,6 +12,7 @@ from .types import SalesforceLogin, SalesforceToken
 
 LOGGER = getLogger("auth.cli")
 
+
 def cli_login(
     alias_or_username: str | None = None, sf_exec_path: str | Path | None = None
 ) -> SalesforceLogin:
@@ -51,7 +52,10 @@ def cli_login(
         token_result = output["result"]
         # Normal orgs use 'connectedStatus': 'Connected'
         # Scratch orgs use 'status': 'Active'
-        if token_result.get("connectedStatus") != "Connected" and token_result.get("status") != "Active":
+        if (
+            token_result.get("connectedStatus") != "Connected"
+            and token_result.get("status") != "Active"
+        ):
             exception = type(token_result["connectedStatus"], (Exception,), {})
             raise exception(
                 "Check SF CLI. Unable to connect to "

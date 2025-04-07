@@ -3,11 +3,10 @@ import typing
 import httpx
 
 from ..logger import getLogger
-from .types import (
-    SalesforceLogin, SalesforceToken, TokenRefreshCallback
-)
+from .types import SalesforceLogin, SalesforceToken, TokenRefreshCallback
 
 LOGGER = getLogger("auth")
+
 
 class SalesforceAuth(httpx.Auth):
     login: SalesforceLogin | None
@@ -47,10 +46,10 @@ class SalesforceAuth(httpx.Auth):
             assert self.token is not None, "Failed to perform initial login"
 
         if request.url.is_relative_url:
-            absolute_url = self.token.instance.raw_path + request.url.raw_path.lstrip(b"/")
-            request.url = self.token.instance.copy_with(
-                raw_path=absolute_url
+            absolute_url = self.token.instance.raw_path + request.url.raw_path.lstrip(
+                b"/"
             )
+            request.url = self.token.instance.copy_with(raw_path=absolute_url)
             request._prepare({**request.headers})
 
         request.headers["Authorization"] = f"Bearer {self.token.token}"

@@ -7,6 +7,7 @@ from .auth.types import TokenRefreshCallback, SalesforceToken
 from .apimodels import ApiVersion, UserInfo
 from ._models import SObjectAttributes
 
+
 class TokenRefreshCallbackMixin(BaseClient):
     token_refresh_callback: TokenRefreshCallback | None
 
@@ -20,6 +21,7 @@ class TokenRefreshCallbackMixin(BaseClient):
 
     def _derive_base_url(self, session: SalesforceToken):
         self._base_url = self._enforce_trailing_slash(session.instance)
+
 
 class SalesforceApiHelpersMixin(BaseClient):
     DEFAULT_API_VERSION = 63.0
@@ -56,28 +58,20 @@ class SalesforceApiHelpersMixin(BaseClient):
             url += "/" + sobject
         return url
 
-class I_AsyncSalesforceClient(
-    TokenRefreshCallbackMixin,
-    SalesforceApiHelpersMixin,
-    AsyncClient,
-    ABC):
 
-    def unregister_parent(self) -> None:
-        ...
+class I_AsyncSalesforceClient(
+    TokenRefreshCallbackMixin, SalesforceApiHelpersMixin, AsyncClient, ABC
+):
+    def unregister_parent(self) -> None: ...
 
 
 class I_SalesforceClient(
-    TokenRefreshCallbackMixin,
-    SalesforceApiHelpersMixin,
-    Client,
-    ABC
+    TokenRefreshCallbackMixin, SalesforceApiHelpersMixin, Client, ABC
 ):
-
     _connections: dict[str, "I_SalesforceClient"] = {}
     _connection_name: str
 
     DEFAULT_CONNECTION_NAME = "default"
-
 
     @classmethod
     def get_connection(cls, name: str | None = None):
@@ -87,8 +81,7 @@ class I_SalesforceClient(
 
     @property
     @abstractmethod
-    def as_async(self) -> I_AsyncSalesforceClient:
-        ...
+    def as_async(self) -> I_AsyncSalesforceClient: ...
 
     @classmethod
     def register_connection(cls, connection_name: str, instance: "I_SalesforceClient"):
@@ -104,7 +97,8 @@ class I_SalesforceClient(
             names_to_unregister = [name_or_instance]
         else:
             names_to_unregister = [
-                name for name, instance in cls._connections.items()
+                name
+                for name, instance in cls._connections.items()
                 if instance is name_or_instance
             ]
         for name in names_to_unregister:
@@ -116,28 +110,27 @@ class I_SalesforceClient(
         self.register_connection(self._connection_name, self)
         return self
 
-    def __exit__(self, exc_type: type[BaseException] | None = None, exc_value: BaseException | None = None, traceback: TracebackType | None = None) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
         self.unregister_connection(self._connection_name)
         self.unregister_connection(self)
         return super().__exit__(exc_type, exc_value, traceback)
 
 
-
 class I_SObject(ABC):
-
     @classmethod
     @abstractmethod
-    def _client_connection(cls) -> I_SalesforceClient:
-        ...
+    def _client_connection(cls) -> I_SalesforceClient: ...
 
     @classmethod
     @property
     @abstractmethod
-    def attributes(cls) -> SObjectAttributes:
-        ...
-
+    def attributes(cls) -> SObjectAttributes: ...
 
     @classmethod
     @abstractmethod
-    def keys(cls) -> frozenset[str]:
-        ...
+    def keys(cls) -> frozenset[str]: ...

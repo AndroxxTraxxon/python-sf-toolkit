@@ -57,8 +57,6 @@ class SalesforceRecordNotModifiedSince(SalesforceError):
     The date and time is provided in a If-Modified-Since header.
     """
 
-
-
     def __init__(self, response: httpx.Response, resource_name: str):
         self.if_modified_since = response.headers.get("If-Modified-Since")
         super().__init__(response, resource_name)
@@ -331,10 +329,7 @@ _error_code_exception_map: dict[int, type[SalesforceError]] = {
 }
 
 
-def raise_for_status(
-    response: httpx.Response,
-    name: str = ""
-):
+def raise_for_status(response: httpx.Response, name: str = ""):
     if response.is_success:
         return
     raise _error_code_exception_map.get(response.status_code, SalesforceGeneralError)(

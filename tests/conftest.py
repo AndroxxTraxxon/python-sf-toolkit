@@ -19,8 +19,11 @@ def cached_cli_login():
         def _cached_login():
             return token
             yield
+
         return _cached_login
+
     return _wrapper
+
 
 @pytest.fixture
 def sf_client(cached_cli_login):

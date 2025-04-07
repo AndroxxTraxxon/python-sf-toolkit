@@ -26,7 +26,9 @@ from sf_toolkit.exceptions import (
 )
 
 
-def create_mock_response(status_code: int, url_path="/test/path", text="Error message", method="GET"):
+def create_mock_response(
+    status_code: int, url_path="/test/path", text="Error message", method="GET"
+):
     """Helper function to create mock httpx.Response objects"""
     mock_request = Mock()
     mock_request.method = method
@@ -36,7 +38,7 @@ def create_mock_response(status_code: int, url_path="/test/path", text="Error me
     mock_response.reason_phrase = httpx.codes.get_reason_phrase(status_code)
     mock_response.text = text
     mock_response.request = mock_request
-    mock_response.is_success = (200 <=status_code < 300)
+    mock_response.is_success = 200 <= status_code < 300
 
     # Mock URL object with path attribute
     mock_url = Mock()
@@ -162,7 +164,9 @@ def test_different_http_methods():
 
         # For SalesforceGeneralError, HTTP method is included in the string representation
         # Let's test that specifically
-        general_response = create_mock_response(418, method=method)  # Use a code that maps to GeneralError
+        general_response = create_mock_response(
+            418, method=method
+        )  # Use a code that maps to GeneralError
 
         with pytest.raises(SalesforceGeneralError) as excinfo:
             raise_for_status(general_response, "Case")

@@ -2,10 +2,15 @@ import pytest
 from unittest.mock import MagicMock, Mock
 import datetime
 from typing import Final
-from sf_toolkit.data.sobject import SObject, MultiPicklistField, ReadOnlyAssignmentException
+from sf_toolkit.data.sobject import (
+    SObject,
+    MultiPicklistField,
+    ReadOnlyAssignmentException,
+)
 from sf_toolkit.data.query_builder import SoqlSelect
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.interfaces import I_SalesforceClient
+
 
 class Opportunity(SObject):
     Id: str
@@ -13,6 +18,7 @@ class Opportunity(SObject):
     Amount: float
     CloseDate: datetime.date
     StageName: str
+
 
 class Account(SObject):
     Id: str
@@ -23,19 +29,24 @@ class Account(SObject):
     CreatedDate: Final[datetime.datetime]  # type: ignore
     LastModifiedDate: Final[datetime.datetime]  # type: ignore
 
+
 @pytest.fixture()
 def mock_sf_client():
     # Create a mock SalesforceClient for testing
     mock_client = MagicMock(spec=SalesforceClient)
     mock_client.sobjects_url = "/services/data/v57.0/sobjects"
     mock_client.data_url = "/services/data/v57.0/query"
-    mock_client.composite_sobjects_url = MagicMock(return_value="/services/data/v57.0/composite/sobjects/Account")
+    mock_client.composite_sobjects_url = MagicMock(
+        return_value="/services/data/v57.0/composite/sobjects/Account"
+    )
 
     # Keep a reference to the original _connections dictionary to restore later
     original_connections = I_SalesforceClient._connections
 
     # Add the mock client to the _connections dictionary directly
-    I_SalesforceClient._connections = {SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client}
+    I_SalesforceClient._connections = {
+        SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
+    }
 
     yield mock_client
 
@@ -44,12 +55,16 @@ def mock_sf_client():
 
 
 def test_sobject_class_definition():
-
     # Test basic class properties
     assert Account._sf_attrs.type == "Account"
     assert set(Account.fields().keys()) == {
-        'Id', 'Name', 'Industry', 'AnnualRevenue', 'CreatedDate',
-        'LastModifiedDate', 'Description'
+        "Id",
+        "Name",
+        "Industry",
+        "AnnualRevenue",
+        "CreatedDate",
+        "LastModifiedDate",
+        "Description",
     }
 
     # Test instance creation
@@ -58,9 +73,13 @@ def test_sobject_class_definition():
         Name="Acme Corp",
         Industry="Technology",
         AnnualRevenue=1000000.0,
-        CreatedDate=(cdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()).isoformat(timespec="milliseconds"),
-        LastModifiedDate=(lmdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()).isoformat(timespec="milliseconds"),
-        Description="This is a test account."
+        CreatedDate=(
+            cdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()
+        ).isoformat(timespec="milliseconds"),
+        LastModifiedDate=(
+            lmdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()
+        ).isoformat(timespec="milliseconds"),
+        Description="This is a test account.",
     )
 
     # Test attribute access
@@ -72,7 +91,7 @@ def test_sobject_class_definition():
     assert account.LastModifiedDate == lmdt
 
     # Test dict-style access
-    assert account['Name'] == "Acme Corp"
+    assert account["Name"] == "Acme Corp"
 
 
 def test_sobject_get(mock_sf_client):
@@ -92,7 +111,7 @@ def test_sobject_get(mock_sf_client):
         "FirstName": "John",
         "LastName": "Doe",
         "Email": "john.doe@example.com",
-        "Birthdate": "1980-01-15"
+        "Birthdate": "1980-01-15",
     }
     mock_sf_client.get.return_value = mock_response
 
@@ -114,7 +133,7 @@ def test_sobject_fetch(mock_sf_client):
 
     # Mock the response
     mock_response = MagicMock()
-    mock_response.text = '''[
+    mock_response.text = """[
         {
             "attributes": {"type": "Opportunity"},
             "Id": "006XX000004UvVtIAK",
@@ -131,14 +150,11 @@ def test_sobject_fetch(mock_sf_client):
             "CloseDate": "2023-07-15",
             "StageName": "Negotiation"
         }
-    ]'''
+    ]"""
     mock_sf_client.post.return_value = mock_response
 
     # Call fetch method
-    opportunities = Opportunity.list(
-        "006XX000004UvVtIAK",
-        "006XX000004UvVuIAK"
-    )
+    opportunities = Opportunity.list("006XX000004UvVtIAK", "006XX000004UvVuIAK")
 
     # Verify the results
     assert len(opportunities) == 2
@@ -169,17 +185,9 @@ def test_sobject_describe(mock_sf_client):
         "label": "Lead",
         "labelPlural": "Leads",
         "fields": [
-            {
-                "name": "Id",
-                "type": "id",
-                "label": "Lead ID"
-            },
-            {
-                "name": "FirstName",
-                "type": "string",
-                "label": "First Name"
-            }
-        ]
+            {"name": "Id", "type": "id", "label": "Lead ID"},
+            {"name": "FirstName", "type": "string", "label": "First Name"},
+        ],
     }
     mock_sf_client.get.return_value = mock_response
 
@@ -203,32 +211,12 @@ def test_from_description(mock_sf_client):
         "label": "Custom Object",
         "labelPlural": "Custom Objects",
         "fields": [
-            {
-                "name": "Id",
-                "type": "id",
-                "label": "Record ID"
-            },
-            {
-                "name": "Name",
-                "type": "string",
-                "label": "Name"
-            },
-            {
-                "name": "CustomDate__c",
-                "type": "date",
-                "label": "Custom Date"
-            },
-            {
-                "name": "IsActive__c",
-                "type": "boolean",
-                "label": "Is Active"
-            },
-            {
-                "name": "Categories__c",
-                "type": "multipicklist",
-                "label": "Categories"
-            }
-        ]
+            {"name": "Id", "type": "id", "label": "Record ID"},
+            {"name": "Name", "type": "string", "label": "Name"},
+            {"name": "CustomDate__c", "type": "date", "label": "Custom Date"},
+            {"name": "IsActive__c", "type": "boolean", "label": "Is Active"},
+            {"name": "Categories__c", "type": "multipicklist", "label": "Categories"},
+        ],
     }
     mock_sf_client.get.return_value = mock_response
 
@@ -238,18 +226,22 @@ def test_from_description(mock_sf_client):
     # Verify the class was created correctly
     assert CustomObject._sf_attrs.type == "CustomObject__c"
     assert set(CustomObject.keys()) == {
-        'Id', 'Name', 'CustomDate__c', 'IsActive__c', 'Categories__c'
+        "Id",
+        "Name",
+        "CustomDate__c",
+        "IsActive__c",
+        "Categories__c",
     }
-    assert CustomObject.fields()['CustomDate__c'] is Final[datetime.date]
-    assert CustomObject.fields()['IsActive__c'] is Final[bool]
-    assert CustomObject.fields()['Categories__c'] is Final[MultiPicklistField]
+    assert CustomObject.fields()["CustomDate__c"] is Final[datetime.date]
+    assert CustomObject.fields()["IsActive__c"] is Final[bool]
+    assert CustomObject.fields()["Categories__c"] is Final[MultiPicklistField]
 
     # Create an instance
     obj = CustomObject(
         Id="a01XX000003GabcIAC",
         CustomDate__c="2023-01-15",
         IsActive__c=True,
-        Categories__c="one;two;three"
+        Categories__c="one;two;three",
     )
 
     # Verify instance data
@@ -281,16 +273,16 @@ def test_query_builder(mock_sf_client):
                 "Id": "500XX000001MxWtIAK",
                 "Subject": "Case 1",
                 "Status": "New",
-                "Priority": "High"
+                "Priority": "High",
             },
             {
                 "attributes": {"type": "Case"},
                 "Id": "500XX000001MxWuIAK",
                 "Subject": "Case 2",
                 "Status": "Working",
-                "Priority": "Medium"
-            }
-        ]
+                "Priority": "Medium",
+            },
+        ],
     }
     mock_sf_client.get.return_value = mock_response
 
@@ -310,6 +302,7 @@ def test_query_builder(mock_sf_client):
 
     # Verify the API call
     mock_sf_client.get.assert_called_once()
+
     def test_query_builder(mock_sf_client):
         # Define an SObject subclass
         class Case(SObject, api_name="Case"):
@@ -331,16 +324,16 @@ def test_query_builder(mock_sf_client):
                     "Id": "500XX000001MxWtIAK",
                     "Subject": "Case 1",
                     "Status": "New",
-                    "Priority": "High"
+                    "Priority": "High",
                 },
                 {
                     "attributes": {"type": "Case"},
                     "Id": "500XX000001MxWuIAK",
                     "Subject": "Case 2",
                     "Status": "Working",
-                    "Priority": "Medium"
-                }
-            ]
+                    "Priority": "Medium",
+                },
+            ],
         }
         mock_sf_client.get.return_value = mock_response
 
@@ -361,14 +354,11 @@ def test_query_builder(mock_sf_client):
         # Verify the API call
         mock_sf_client.get.assert_called_once()
 
-
     def test_save_insert(mock_sf_client):
         """Test the save_insert method for creating a new SObject record"""
         # Create a new account without an ID
         account = Account(
-            Name="New Test Account",
-            Industry="Technology",
-            AnnualRevenue=5000000.0
+            Name="New Test Account", Industry="Technology", AnnualRevenue=5000000.0
         )
 
         # Mock the response for the POST request
@@ -376,7 +366,7 @@ def test_query_builder(mock_sf_client):
         mock_response.json.return_value = {
             "id": "001XX000003DGTNEW",
             "success": True,
-            "errors": []
+            "errors": [],
         }
         mock_sf_client.post.return_value = mock_response
 
@@ -400,21 +390,17 @@ def test_query_builder(mock_sf_client):
         assert kwargs["json"]["Industry"] == "Technology"
         assert kwargs["json"]["AnnualRevenue"] == 5000000.0
 
-
     def test_save_insert_with_reload(mock_sf_client):
         """Test the save_insert method with reload_after_success=True"""
         # Create a new account without an ID
-        account = Account(
-            Name="Test Account with Reload",
-            Industry="Healthcare"
-        )
+        account = Account(Name="Test Account with Reload", Industry="Healthcare")
 
         # Mock the response for the POST request
         post_response = Mock()
         post_response.json.return_value = {
             "id": "001XX000003DGTREL",
             "success": True,
-            "errors": []
+            "errors": [],
         }
         mock_sf_client.post.return_value = post_response
 
@@ -428,7 +414,7 @@ def test_query_builder(mock_sf_client):
             "AnnualRevenue": 7500000.0,
             "Description": "Auto-populated description",
             "CreatedDate": datetime.datetime.now().isoformat(),
-            "LastModifiedDate": datetime.datetime.now().isoformat()
+            "LastModifiedDate": datetime.datetime.now().isoformat(),
         }
         mock_sf_client.get.return_value = get_response
 
@@ -446,7 +432,6 @@ def test_query_builder(mock_sf_client):
         mock_sf_client.post.assert_called_once()
         mock_sf_client.get.assert_called_once()
 
-
     def test_save_update(mock_sf_client):
         """Test the save_update method for updating an existing SObject record"""
         # Create an account with an existing ID
@@ -454,7 +439,7 @@ def test_query_builder(mock_sf_client):
             Id="001XX000003DGTUPD",
             Name="Existing Account",
             Industry="Retail",
-            AnnualRevenue=3000000.0
+            AnnualRevenue=3000000.0,
         )
 
         # Clear dirty fields set by initialization
@@ -489,7 +474,6 @@ def test_query_builder(mock_sf_client):
         # Verify dirty fields were cleared
         assert len(account._dirty_fields) == 0
 
-
     def test_save_update_only_changes(mock_sf_client):
         """Test the save_update method with only_changes=False to update all fields"""
         # Create an account with an existing ID
@@ -498,7 +482,7 @@ def test_query_builder(mock_sf_client):
             Name="Full Update Account",
             Industry="Education",
             AnnualRevenue=1500000.0,
-            Description="Original description"
+            Description="Original description",
         )
 
         # Clear dirty fields set by initialization
@@ -527,9 +511,9 @@ def test_query_builder(mock_sf_client):
         assert kwargs["json"]["AnnualRevenue"] == 1500000.0
         assert kwargs["json"]["Description"] == "Updated description"
 
-
     def test_save_upsert(mock_sf_client):
         """Test the save_upsert method using an external ID field"""
+
         # Define a custom SObject with an external ID field
         class CustomObject(SObject, api_name="CustomObject__c"):
             Id: str
@@ -541,7 +525,7 @@ def test_query_builder(mock_sf_client):
         custom_obj = CustomObject(
             Name="Test Upsert",
             External_Id__c="EXT-12345",
-            Custom_Field__c="Original Value"
+            Custom_Field__c="Original Value",
         )
 
         # Clear dirty fields set by initialization
@@ -563,7 +547,10 @@ def test_query_builder(mock_sf_client):
         args, kwargs = mock_sf_client.patch.call_args
 
         # Check the endpoint includes the external ID field and value
-        assert args[0] == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-12345"
+        assert (
+            args[0]
+            == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-12345"
+        )
 
         # Check the payload only includes the changed field
         assert "Id" not in kwargs["json"]
@@ -575,9 +562,9 @@ def test_query_builder(mock_sf_client):
         # Verify dirty fields were cleared
         assert len(custom_obj._dirty_fields) == 0
 
-
     def test_save_upsert_insert(mock_sf_client):
         """Test the save_upsert method creating a new record"""
+
         # Define a custom SObject with an external ID field
         class CustomObject(SObject, api_name="CustomObject__c"):
             Id: str
@@ -589,7 +576,7 @@ def test_query_builder(mock_sf_client):
         custom_obj = CustomObject(
             Name="Test Upsert Insert",
             External_Id__c="EXT-NEW-1",
-            Custom_Field__c="New Value"
+            Custom_Field__c="New Value",
         )
 
         # Mock the response for the PATCH request (successful insert)
@@ -598,7 +585,7 @@ def test_query_builder(mock_sf_client):
         mock_response.json.return_value = {
             "id": "a01XX000003GabcNEW",
             "success": True,
-            "errors": []
+            "errors": [],
         }
         mock_sf_client.patch.return_value = mock_response
 
@@ -610,19 +597,19 @@ def test_query_builder(mock_sf_client):
         args, kwargs = mock_sf_client.patch.call_args
 
         # Check the endpoint includes the external ID field and value
-        assert args[0] == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-NEW-1"
+        assert (
+            args[0]
+            == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-NEW-1"
+        )
 
         # Verify the ID was set from the response
         assert custom_obj.Id == "a01XX000003GabcNEW"
-
 
     def test_save_method_with_id(mock_sf_client):
         """Test the general save method with an existing ID (should use save_update)"""
         # Create an account with an ID
         account = Account(
-            Id="001XX000003DGTSAVE",
-            Name="Save Method Test",
-            Industry="Manufacturing"
+            Id="001XX000003DGTSAVE", Name="Save Method Test", Industry="Manufacturing"
         )
 
         # Clear dirty fields set by initialization
@@ -649,21 +636,17 @@ def test_query_builder(mock_sf_client):
         # Check payload only contains changed fields
         assert kwargs["json"] == {"Name": "Save Method Updated"}
 
-
     def test_save_method_without_id(mock_sf_client):
         """Test the general save method without an ID (should use save_insert)"""
         # Create an account without an ID
-        account = Account(
-            Name="New Save Account",
-            Industry="Technology"
-        )
+        account = Account(Name="New Save Account", Industry="Technology")
 
         # Mock the response for the POST request
         mock_response = Mock()
         mock_response.json.return_value = {
             "id": "001XX000003DGTNEW2",
             "success": True,
-            "errors": []
+            "errors": [],
         }
         mock_sf_client.post.return_value = mock_response
 
@@ -676,9 +659,9 @@ def test_query_builder(mock_sf_client):
         # Check the ID was set
         assert account.Id == "001XX000003DGTNEW2"
 
-
     def test_save_method_with_external_id(mock_sf_client):
         """Test the general save method with an external ID (should use save_upsert)"""
+
         # Define a custom SObject with an external ID field
         class CustomObject(SObject, api_name="CustomObject__c"):
             Id: str
@@ -690,7 +673,7 @@ def test_query_builder(mock_sf_client):
         custom_obj = CustomObject(
             Name="External ID Save Test",
             External_Id__c="EXT-SAVE-1",
-            Description__c="Test Description"
+            Description__c="Test Description",
         )
 
         # Mock the response for the PATCH request (successful upsert)
@@ -706,8 +689,10 @@ def test_query_builder(mock_sf_client):
         args, kwargs = mock_sf_client.patch.call_args
 
         # Check the endpoint includes the external ID field and value
-        assert args[0] == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
-
+        assert (
+            args[0]
+            == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
+        )
 
     def test_readonly_assignment_exception():
         """Test that assignment to Final fields raises an exception"""
@@ -716,7 +701,7 @@ def test_query_builder(mock_sf_client):
             Id="001XX000003DGTRO",
             Name="Final Test",
             CreatedDate=datetime.datetime(2023, 1, 1, 12, 0, 0).isoformat(),
-            LastModifiedDate=datetime.datetime(2023, 1, 1, 12, 0, 0).isoformat()
+            LastModifiedDate=datetime.datetime(2023, 1, 1, 12, 0, 0).isoformat(),
         )
 
         # Attempt to modify a Final field
