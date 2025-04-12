@@ -1,20 +1,13 @@
 import asyncio
 from collections import defaultdict
 import datetime
-from json import JSONDecoder, JSONEncoder
-from types import NoneType, UnionType
 from typing import (
-    Any,
     Callable,
     Final,
-    Generic,
-    NamedTuple,
     TypeVar,
     Coroutine,
-    Union,
-    get_args,
-    get_origin,
 )
+
 from urllib.parse import quote_plus
 from httpx import Response
 from .. import client as sftk_client
@@ -24,53 +17,10 @@ from more_itertools import chunked
 from ..concurrency import run_concurrently
 from .._models import SObjectAttributes
 from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
-
-_sObject = TypeVar("_sObject", bound="SObject")
+from .fields import FieldConfigurableObject, MultiPicklistField, SObjectFieldDescribe
+_sObject = TypeVar("_sObject", bound=("SObject"))
 
 _T = TypeVar("_T")
-
-
-class ReadOnlyAssignmentException(TypeError): ...
-
-
-class MultiPicklistField(str):
-    values: list[str]
-
-    def __init__(self, source: str):
-        self.values = source.split(";")
-
-    def __str__(self):
-        return ";".join(self.values)
-
-
-class SObjectFieldDescribe(NamedTuple):
-    """Represents metadata about a Salesforce SObject field"""
-
-    name: str
-    label: str
-    type: str
-    length: int = 0
-    nillable: bool = False
-    picklistValues: list[dict] = []
-    referenceTo: list[str] = []
-    relationshipName: str | None = None
-    unique: bool = False
-    updateable: bool = False
-    createable: bool = False
-    defaultValue: Any = None
-    externalId: bool = False
-    autoNumber: bool = False
-    calculated: bool = False
-    caseSensitive: bool = False
-    dependentPicklist: bool = False
-    deprecatedAndHidden: bool = False
-    displayLocationInDecimal: bool = False
-    filterable: bool = False
-    groupable: bool = False
-    permissionable: bool = False
-    restrictedPicklist: bool = False
-    sortable: bool = False
-    writeRequiresMasterRead: bool = False
 
 
 class SObjectDescribe:
@@ -159,64 +109,63 @@ class SObjectDescribe:
         return self._raw_data
 
 
-class SObjectEncoder(JSONEncoder):
-    def default(self, o: Any) -> Any:
-        if isinstance(o, SObject):
-            return self._encode_sobject(o)
-        return super().default(o)
+# class SObjectEncoder(JSONEncoder):
+#     def default(self, o: Any) -> Any:
+#         if isinstance(o, SObject):
+#             return self._encode_sobject(o)
+#         return super().default(o)
 
-    def _encode_sobject(self, o: "SObject"):
-        encoded: dict[str, Any] = {
-            field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
-            for field_name, field_type in o.fields().items()
-            if hasattr(o, field_name) and get_origin(field_type) is not Final
-        }
-        encoded["attributes"] = {"type": o._sf_attrs.type}
-        return encoded
+#     def _encode_sobject(self, o: "SObject"):
+#         encoded: dict[str, Any] = {
+#             field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
+#             for field_name, field_type in o.fields().items()
+#             if hasattr(o, field_name) and get_origin(field_type) is not Final
+#         }
+#         encoded["attributes"] = {"type": o._sf_attrs.type}
+#         return encoded
 
-    def _encode_sobject_field(self, name: str, value: Any, only_changes: bool = False):
-        # assuming any dict instances are already "serialized".
-        if isinstance(value, (NoneType, bool, int, float, dict, str)):
-            return value
-        elif isinstance(value, datetime.datetime):
-            if value.tzinfo is None:
-                value = value.astimezone()
-            return value.isoformat(timespec="milliseconds")
-        elif isinstance(value, datetime.date):
-            return value.isoformat()
-        elif isinstance(value, (list, tuple)):
-            return self.default(value)
-        elif isinstance(value, set):
-            return self.default(list(value))
-        elif isinstance(value, MultiPicklistField):
-            return str(value)
-        elif isinstance(value, SObject):
-            return self._encode_sobject(value)
-        else:
-            raise ValueError("Unexpected Data Type")
-
-
-class SObjectDecoder(JSONDecoder, Generic[_sObject]):
-    def __init__(self, sf_connection: str = "", **kwargs):
-        super().__init__(**kwargs, object_hook=self._object_hook)
-        self.sf_connection = (
-            sf_connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
-        )
-
-    def _object_hook(self, o: Any):
-        if (
-            isinstance(o, dict)
-            and (sobject_type := SObject.typeof(o, self.sf_connection)) is not None
-        ):
-            return sobject_type(**o)
-        return o
+#     def _encode_sobject_field(self, name: str, value: Any, only_changes: bool = False):
+#         # assuming any dict instances are already "serialized".
+#         if isinstance(value, (NoneType, bool, int, float, dict, str)):
+#             return value
+#         elif isinstance(value, datetime.datetime):
+#             if value.tzinfo is None:
+#                 value = value.astimezone()
+#             return value.isoformat(timespec="milliseconds")
+#         elif isinstance(value, datetime.date):
+#             return value.isoformat()
+#         elif isinstance(value, (list, tuple)):
+#             return self.default(value)
+#         elif isinstance(value, set):
+#             return self.default(list(value))
+#         elif isinstance(value, MultiPicklistField):
+#             return str(value)
+#         elif isinstance(value, SObject):
+#             return self._encode_sobject(value)
+#         else:
+#             raise ValueError("Unexpected Data Type")
 
 
-class SObject(I_SObject):
+# class SObjectDecoder(JSONDecoder, Generic[_sObject]):
+#     def __init__(self, sf_connection: str = "", **kwargs):
+#         super().__init__(**kwargs, object_hook=self._object_hook)
+#         self.sf_connection = (
+#             sf_connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
+#         )
+
+#     def _object_hook(self, o: Any):
+#         if (
+#             isinstance(o, dict)
+#             and (sobject_type := SObject.typeof(o, self.sf_connection)) is not None
+#         ):
+#             return sobject_type(**o)
+#         return o
+
+
+class SObject(I_SObject, FieldConfigurableObject):
     _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
         defaultdict(dict)
     )
-    _dirty_fields: set[str]
 
     def __init_subclass__(
         cls,
@@ -225,11 +174,13 @@ class SObject(I_SObject):
         id_field: str = "Id",
         **kwargs,
     ) -> None:
-        super().__init_subclass__(**kwargs)
+        super(I_SObject, cls).__init_subclass__(**kwargs)
+        super(FieldConfigurableObject).__init_subclass__(**kwargs)
         if not api_name:
             api_name = cls.__name__
-        connection = connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
+        connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
         cls._sf_attrs = SObjectAttributes(api_name, connection, id_field)
+
         fields = frozenset(cls.keys())
         if fields in cls._registry[cls._sf_attrs]:
             raise TypeError(
@@ -238,6 +189,7 @@ class SObject(I_SObject):
         cls._registry[cls._sf_attrs][fields] = cls
 
     def __init__(self, /, __strict_fields: bool = True, **fields):
+        super().__init__()
         for name, value in fields.items():
             if name == "attributes":
                 continue
@@ -247,13 +199,13 @@ class SObject(I_SObject):
                         f"Field {name} not defined for {type(self).__qualname__}"
                     )
                 setattr(
-                    self, name, self.revive_value(name, value, strict=__strict_fields)
+                    self, name, value
                 )
             except KeyError:
                 if __strict_fields:
                     continue
                 raise
-        self._dirty_fields = set()
+        self.dirty_fields.clear()
 
     @classmethod
     @property
@@ -277,89 +229,13 @@ class SObject(I_SObject):
         ].get(frozenset(fields))
 
     @classmethod
-    def fields(cls):
-        return cls.__annotations__
-
-    @classmethod
-    def keys(cls):
-        if not getattr(cls, "_keys", None):
-            cls._keys = frozenset(cls.__annotations__.keys())
-        return cls._keys
-
-    def __getitem__(self, name):
-        if name not in self.keys():
-            raise KeyError(f"Undefined field {name} on object {type(self)}")
-        return getattr(self, name, None)
-
-    def __setitem__(self, name, value):
-        if name not in self.keys():
-            raise KeyError(f"Undefined field {name} on object {type(self)}")
-        setattr(self, name, self.revive_value(name, value))
-
-    def __setattr__(self, name, value):
-        # Regular assignment
-        if hasattr(self, "_dirty_fields"):
-            if isinstance(self.fields()[name], Final):
-                raise ReadOnlyAssignmentException(
-                    f"Field {name} on type {type(self).__qualname__} ({self._sf_attrs.type}) is readonly."
-                )
-            if name in self.keys():
-                # Only track fields that are part of the SObject fields,
-                # not internal or special attributes
-                self._dirty_fields.add(name)
-        super().__setattr__(name, value)
-
-    @classmethod
-    def revive_value(cls, name: str, value: Any, *, strict=True):
-        datatype: type | None = cls.fields()[name]
-        if (_origin := get_origin(datatype)) is Final:
-            datatype = get_args(datatype)[0]
-        elif _origin in {Union, UnionType}:
-            _args = get_args(datatype)
-            for arg in _args:
-                if arg is not None:
-                    datatype = arg
-                    break
-        if datatype is None:
-            if strict:
-                raise KeyError(
-                    f"unknown field {name} on {cls.__qualname__} ({cls._sf_attrs.type})"
-                )
-            return value
-
-        if isinstance(value, datatype):
-            return value
-
-        if isinstance(value, (NoneType, bool, int, float)) or isinstance(
-            value, datatype
-        ):
-            return value
-
-        if isinstance(value, str):
-            if issubclass(datatype, datetime.datetime):
-                return datetime.datetime.fromisoformat(value)
-            if issubclass(datatype, datetime.date):
-                return datetime.date.fromisoformat(value)
-            if issubclass(datatype, MultiPicklistField):
-                return MultiPicklistField(value)
-
-        elif isinstance(value, dict):
-            if _is_sobject_subclass(datatype):
-                return datatype(**value)
-            raise TypeError(
-                f"Unexpected 'dict' value for {datatype.__qualname__} field {name}"
-            )
-
-        raise TypeError("Unexpected ")
-
-    @classmethod
     def _client_connection(cls) -> I_SalesforceClient:
         return sftk_client.SalesforceClient.get_connection(cls._sf_attrs.connection)
 
     @classmethod
     def read(
         cls: type[_sObject],
-        record_id: str,
+        record_id: str ,
         sf_client: I_SalesforceClient | None = None,
     ) -> _sObject:
         if sf_client is None:
@@ -387,11 +263,7 @@ class SObject(I_SObject):
             )
 
         # Prepare the payload with all fields
-        payload = {
-            field: value
-            for field, value in SObjectEncoder()._encode_sobject(self).items()
-            if field != self._sf_attrs.id_field and field != "attributes"
-        }
+        payload = self.serialize()
 
         # Create a new record
         response_data = sf_client.post(
@@ -409,7 +281,7 @@ class SObject(I_SObject):
             self.update_values(**type(self).read(_id_val))
 
         # Clear dirty fields since we've saved
-        self._dirty_fields.clear()
+        self.dirty_fields.clear()
 
         return
 
@@ -427,24 +299,12 @@ class SObject(I_SObject):
             raise ValueError(f"Cannot update record without {self._sf_attrs.id_field}")
 
         # If only tracking changes and there are no changes, do nothing
-        if only_changes and not self._dirty_fields:
+        if only_changes and not self.dirty_fields:
             return
 
         # Prepare the payload
-        if only_changes:
-            payload = {
-                field: value
-                for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field
-                and field != "attributes"
-                and field in self._dirty_fields
-            }
-        else:
-            payload = {
-                field: value
-                for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field and field != "attributes"
-            }
+        payload = self.serialize(only_changes)
+        payload.pop(self._sf_attrs.id_field, None)
 
         # Update the record if there's anything to update
         if payload:
@@ -459,7 +319,7 @@ class SObject(I_SObject):
             self.update_values(**type(self).read(_id_val))
 
         # Clear dirty fields since we've saved
-        self._dirty_fields.clear()
+        self.dirty_fields.clear()
 
         return
 
@@ -484,23 +344,8 @@ class SObject(I_SObject):
         ext_id_val = quote_plus(str(ext_id_val))
 
         # Prepare the payload
-        if only_changes:
-            payload = {
-                field: value
-                for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field
-                and field != "attributes"
-                and field != external_id_field
-                and field in self._dirty_fields
-            }
-        else:
-            payload = {
-                field: value
-                for field, value in SObjectEncoder()._encode_sobject(self).items()
-                if field != self._sf_attrs.id_field
-                and field != "attributes"
-                and field != external_id_field
-            }
+        payload = self.serialize(only_changes)
+        payload.pop(external_id_field, None)
 
         # If there's nothing to update when only_changes=True, just return
         if only_changes and not payload:
@@ -531,7 +376,7 @@ class SObject(I_SObject):
             self.update_values(**type(self).read(_id_val))
 
         # Clear dirty fields since we've saved
-        self._dirty_fields.clear()
+        self.dirty_fields.clear()
 
         return self
 
@@ -602,7 +447,7 @@ class SObject(I_SObject):
 
         if len(ids) == 1:
             return [cls.read(ids[0], sf_client)]
-        decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
+        # decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
 
         # pull in batches with composite API
         if concurrency > 1:
@@ -620,9 +465,11 @@ class SObject(I_SObject):
             for chunk in chunked(ids, 2000):
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(cls._sf_attrs.type),
-                    json={"ids": chunk, "fields": list(cls.fields())},
+                    json={"ids": chunk, "fields": list(cls.keys())},
                 )
-                chunk_result: list[_sObject] = decoder.decode(response.text)
+                chunk_result: list[_sObject] = [
+                    cls(**record) for record in response.json()
+                ]
                 result.extend(chunk_result)
                 if on_chunk_received:
                     on_chunk_received(response)
@@ -642,17 +489,16 @@ class SObject(I_SObject):
             tasks = [
                 sf_client.post(
                     sf_client.composite_sobjects_url(cls._sf_attrs.type),
-                    json={"ids": chunk, "fields": list(cls.fields())},
+                    json={"ids": chunk, "fields": list(cls.keys())},
                 )
                 for chunk in chunked(ids, 2000)
             ]
-            decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
             records: list[_sObject] = [  # type: ignore
-                item
+                cls(**record)
                 for response in (
                     await run_concurrently(concurrency, tasks, on_chunk_received)
                 )
-                for item in decoder.decode(response.text)
+                for record in response.json()
             ]
             return records
 

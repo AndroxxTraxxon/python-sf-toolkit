@@ -130,7 +130,3 @@ class I_SObject(ABC):
     @property
     @abstractmethod
     def attributes(cls) -> SObjectAttributes: ...
-
-    @classmethod
-    @abstractmethod
-    def keys(cls) -> frozenset[str]: ...

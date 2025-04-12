@@ -51,7 +51,7 @@ class AsyncSalesforceClient(I_AsyncSalesforceClient):
     async def __aenter__(self):  # type: ignore
         if self._state == ClientState.UNOPENED:
             await super().__aenter__()
-            self._userinfo = await self.send(self._userinfo_request()).json(
+            self._userinfo = (await self.send(self._userinfo_request())).json(
                 object_hook=ApiVersion
             )  # type: ignore
             self._versions = (await self.send(self._versions_request())).json(

@@ -1,30 +1,32 @@
 import pytest
 import datetime
 from sf_toolkit.data.sobject import SObject
-from typing import Final
-
+from sf_toolkit.data.fields import (
+    FieldFlag,
+    IdField, TextField, NumberField, DateTimeField
+)
 
 # Test SObject classes
 class _TestAccount(SObject, api_name="Account"):
-    Id: str
-    Name: str
-    Industry: str
-    Description: str
-    AnnualRevenue: float
-    NumberOfEmployees: int | None
-    CreatedDate: Final[datetime.datetime]  # type: ignore
-    LastModifiedDate: Final[datetime.datetime]  # type: ignore
+    Id = IdField()
+    Name = TextField()
+    Industry = TextField()
+    Description = TextField()
+    AnnualRevenue = TextField()
+    NumberOfEmployees = NumberField()
+    CreatedDate = DateTimeField(FieldFlag.readonly)
+    LastModifiedDate = DateTimeField(FieldFlag.readonly)
 
 
 class _TestContact(SObject, api_name="Contact"):
-    Id: str
-    FirstName: str
-    LastName: str
-    Email: str
-    Phone: str
-    AccountId: str
-    Title: str
-    ExternalId__c: str
+    Id = IdField()
+    FirstName = TextField()
+    LastName = TextField()
+    Email = TextField()
+    Phone = TextField()
+    AccountId = IdField()
+    Title = TextField()
+    ExternalId__c = TextField()
 
 
 def test_insert_and_delete(sf_client):
@@ -46,6 +48,7 @@ def test_insert_and_delete(sf_client):
         # Verify the account was created and has an ID
         assert hasattr(account, "Id")
         assert account.Id is not None
+        assert isinstance(account.Id, str)
 
         # Retrieve the account to verify it exists
         retrieved = _TestAccount.read(account.Id)
@@ -346,9 +349,9 @@ def test_dirty_fields_tracking(sf_client):
     account = _TestAccount(Name=unique_name, Industry="Consulting")
 
     # After initialization, no fields should be dirty
-    assert hasattr(account, "_dirty_fields")
-    assert account._dirty_fields is not None
-    assert not account._dirty_fields
+    assert hasattr(account, "dirty_fields")
+    assert account.dirty_fields is not None
+    assert not account.dirty_fields
 
     # Save the account
     account.save()
