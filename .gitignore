@@ -10,3 +10,4 @@ htmlcov/
 .coverage
 coverage.xml
 .reports/
+docs/build
