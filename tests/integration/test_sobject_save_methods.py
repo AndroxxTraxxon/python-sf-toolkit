@@ -1,10 +1,14 @@
 import pytest
 import datetime
+from time import sleep
 from sf_toolkit.data.sobject import SObject
 from sf_toolkit.data.fields import (
     FieldFlag,
-    IdField, TextField, NumberField, DateTimeField
+    IdField,
+    NumberField, TextField, IntField, DateTimeField
 )
+
+from .models import Product
 
 # Test SObject classes
 class _TestAccount(SObject, api_name="Account"):
@@ -12,8 +16,8 @@ class _TestAccount(SObject, api_name="Account"):
     Name = TextField()
     Industry = TextField()
     Description = TextField()
-    AnnualRevenue = TextField()
-    NumberOfEmployees = NumberField()
+    AnnualRevenue = NumberField()
+    NumberOfEmployees = IntField()
     CreatedDate = DateTimeField(FieldFlag.readonly)
     LastModifiedDate = DateTimeField(FieldFlag.readonly)
 
@@ -167,6 +171,7 @@ def test_save_with_reload(sf_client):
         # Now update a field
         original_modified_date = account.LastModifiedDate
         account.Description = "Added after creation"
+        sleep(0.5)
 
         # Save with reload again
         account.save(reload_after_success=True)
@@ -185,43 +190,41 @@ def test_upsert_existing(sf_client):
     # Generate unique external ID
     unique_external_id = f"EXT-{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
-    # Create a contact with the external ID
-    contact = _TestContact(
-        FirstName="John",
-        LastName="Doe",
-        Email="john.doe.test@example.com",
+    # Create a product with the external ID
+    product = Product(
+        Name="Test Product",
+        Description="Original product description",
         ExternalId__c=unique_external_id,
     )
-    contact.save()
+    product.save()
 
     try:
         # Create a new instance with the same external ID but different data
-        updated_contact = _TestContact(
-            FirstName="Johnny",  # Changed
-            LastName="Doe",
-            Email="john.doe.updated@example.com",  # Changed
+        updated_product = Product(
+            Name="Updated Product Name",  # Changed
+            Description="Updated product description",  # Changed
             ExternalId__c=unique_external_id,  # Same external ID
         )
 
         # Use upsert to update the existing record
-        updated_contact.save_upsert(
+        updated_product.save_upsert(
             external_id_field="ExternalId__c", reload_after_success=True
         )
 
         # Verify the record was updated
-        assert hasattr(updated_contact, "Id")
-        assert updated_contact.Id == contact.Id  # Same record
-        assert updated_contact.FirstName == "Johnny"
-        assert updated_contact.Email == "john.doe.updated@example.com"
+        assert hasattr(updated_product, "Id")
+        assert updated_product.Id == product.Id  # Same record
+        assert updated_product.Name == "Updated Product Name"
+        assert updated_product.Description == "Updated product description"
 
         # Retrieve to double-check
-        retrieved = _TestContact.read(contact.Id)
-        assert retrieved.FirstName == "Johnny"
+        retrieved = Product.read(product.Id)
+        assert retrieved.Name == "Updated Product Name"
 
     finally:
         # Clean up
-        if hasattr(contact, "Id") and contact.Id:
-            contact.delete()
+        if hasattr(product, "Id") and product.Id:
+            product.delete()
 
 
 def test_upsert_new(sf_client):
@@ -229,34 +232,31 @@ def test_upsert_new(sf_client):
     # Generate unique external ID
     unique_external_id = f"EXT-NEW-{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
-    # Create a contact with the external ID but don't save it first
-    contact = _TestContact(
-        FirstName="Jane",
-        LastName="Smith",
-        Email="jane.smith@example.com",
+    # Create a product with the external ID but don't save it first
+    product = Product(
+        Name="Test Product",
+        Description="A test product for upsert",
         ExternalId__c=unique_external_id,
-        Title="Manager",
     )
 
     try:
         # Use upsert to create a new record
-        contact.save_upsert(external_id_field="ExternalId__c")
+        product.save_upsert(external_id_field="ExternalId__c")
 
         # Verify the record was created with a new ID
-        assert hasattr(contact, "Id")
-        assert contact.Id is not None
+        assert hasattr(product, "Id")
+        assert product.Id is not None
 
         # Retrieve to confirm
-        retrieved = _TestContact.read(contact.Id)
-        assert retrieved.FirstName == "Jane"
-        assert retrieved.LastName == "Smith"
-        assert retrieved.Email == "jane.smith@example.com"
+        retrieved = Product.read(product.Id)
+        assert retrieved.Name == "Test Product"
+        assert retrieved.Description == "A test product for upsert"
         assert retrieved.ExternalId__c == unique_external_id
 
     finally:
         # Clean up
-        if hasattr(contact, "Id") and contact.Id:
-            contact.delete()
+        if hasattr(product, "Id") and product.Id:
+            product.delete()
 
 
 def test_update_only_flag(sf_client):

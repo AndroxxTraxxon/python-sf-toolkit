@@ -1,9 +1,7 @@
 import asyncio
 from collections import defaultdict
-import datetime
 from typing import (
     Callable,
-    Final,
     TypeVar,
     Coroutine,
 )
@@ -17,7 +15,7 @@ from more_itertools import chunked
 from ..concurrency import run_concurrently
 from .._models import SObjectAttributes
 from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
-from .fields import FieldConfigurableObject, MultiPicklistField, SObjectFieldDescribe
+from .fields import FIELD_TYPE_LOOKUP, FieldConfigurableObject, FieldFlag, SObjectFieldDescribe
 _sObject = TypeVar("_sObject", bound=("SObject"))
 
 _T = TypeVar("_T")
@@ -109,59 +107,6 @@ class SObjectDescribe:
         return self._raw_data
 
 
-# class SObjectEncoder(JSONEncoder):
-#     def default(self, o: Any) -> Any:
-#         if isinstance(o, SObject):
-#             return self._encode_sobject(o)
-#         return super().default(o)
-
-#     def _encode_sobject(self, o: "SObject"):
-#         encoded: dict[str, Any] = {
-#             field_name: self._encode_sobject_field(field_name, getattr(o, field_name))
-#             for field_name, field_type in o.fields().items()
-#             if hasattr(o, field_name) and get_origin(field_type) is not Final
-#         }
-#         encoded["attributes"] = {"type": o._sf_attrs.type}
-#         return encoded
-
-#     def _encode_sobject_field(self, name: str, value: Any, only_changes: bool = False):
-#         # assuming any dict instances are already "serialized".
-#         if isinstance(value, (NoneType, bool, int, float, dict, str)):
-#             return value
-#         elif isinstance(value, datetime.datetime):
-#             if value.tzinfo is None:
-#                 value = value.astimezone()
-#             return value.isoformat(timespec="milliseconds")
-#         elif isinstance(value, datetime.date):
-#             return value.isoformat()
-#         elif isinstance(value, (list, tuple)):
-#             return self.default(value)
-#         elif isinstance(value, set):
-#             return self.default(list(value))
-#         elif isinstance(value, MultiPicklistField):
-#             return str(value)
-#         elif isinstance(value, SObject):
-#             return self._encode_sobject(value)
-#         else:
-#             raise ValueError("Unexpected Data Type")
-
-
-# class SObjectDecoder(JSONDecoder, Generic[_sObject]):
-#     def __init__(self, sf_connection: str = "", **kwargs):
-#         super().__init__(**kwargs, object_hook=self._object_hook)
-#         self.sf_connection = (
-#             sf_connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME
-#         )
-
-#     def _object_hook(self, o: Any):
-#         if (
-#             isinstance(o, dict)
-#             and (sobject_type := SObject.typeof(o, self.sf_connection)) is not None
-#         ):
-#             return sobject_type(**o)
-#         return o
-
-
 class SObject(I_SObject, FieldConfigurableObject):
     _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
         defaultdict(dict)
@@ -180,13 +125,27 @@ class SObject(I_SObject, FieldConfigurableObject):
             api_name = cls.__name__
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
         cls._sf_attrs = SObjectAttributes(api_name, connection, id_field)
+        cls._register_()
 
+
+    @classmethod
+    def _register_(cls):
         fields = frozenset(cls.keys())
         if fields in cls._registry[cls._sf_attrs]:
             raise TypeError(
                 f"SObject Type {cls} already defined as {cls._registry[cls._sf_attrs][fields]}"
             )
         cls._registry[cls._sf_attrs][fields] = cls
+
+    @classmethod
+    def _unregister_(cls):
+        fields = frozenset(cls.keys())
+        sobject_registry = cls._registry[cls._sf_attrs]
+        if fields in sobject_registry and sobject_registry[fields] is cls:
+            del sobject_registry[fields]
+            # Remove the entire entry if there are no more classes for this SObject type
+            if not sobject_registry:
+                del cls._registry[cls._sf_attrs]
 
     def __init__(self, /, __strict_fields: bool = True, **fields):
         super().__init__()
@@ -278,7 +237,7 @@ class SObject(I_SObject, FieldConfigurableObject):
 
         # Reload the record if requested
         if reload_after_success:
-            self.update_values(**type(self).read(_id_val))
+            self.reload(sf_client)
 
         # Clear dirty fields since we've saved
         self.dirty_fields.clear()
@@ -288,7 +247,7 @@ class SObject(I_SObject, FieldConfigurableObject):
     def save_update(
         self,
         sf_client: I_SalesforceClient | None = None,
-        only_changes: bool = True,
+        only_changes: bool = False,
         reload_after_success: bool = False,
     ):
         if sf_client is None:
@@ -316,7 +275,7 @@ class SObject(I_SObject, FieldConfigurableObject):
 
         # Reload the record if requested
         if reload_after_success:
-            self.update_values(**type(self).read(_id_val))
+            self.reload(sf_client)
 
         # Clear dirty fields since we've saved
         self.dirty_fields.clear()
@@ -329,7 +288,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         sf_client: I_SalesforceClient | None = None,
         reload_after_success: bool = False,
         update_only: bool = False,
-        only_changes: bool = True,
+        only_changes: bool = False,
     ):
         if sf_client is None:
             sf_client = self._client_connection()
@@ -355,11 +314,11 @@ class SObject(I_SObject, FieldConfigurableObject):
         response = sf_client.patch(
             f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{external_id_field}/{ext_id_val}",
             json=payload,
+            params={"updateOnly": update_only} if update_only else None,
             headers={"Content-Type": "application/json"},
         )
-
         # For an insert via upsert, the response contains the new ID
-        if response.status_code == 201:  # Created
+        if response.is_success:
             response_data = response.json()
             _id_val = response_data.get("id")
             if _id_val:
@@ -373,7 +332,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         if reload_after_success and (
             _id_val := getattr(self, self._sf_attrs.id_field, None)
         ):
-            self.update_values(**type(self).read(_id_val))
+            self.reload(sf_client)
 
         # Clear dirty fields since we've saved
         self.dirty_fields.clear()
@@ -383,13 +342,13 @@ class SObject(I_SObject, FieldConfigurableObject):
     def save(
         self,
         sf_client: I_SalesforceClient | None = None,
-        only_changes: bool = True,
+        only_changes: bool = False,
         reload_after_success: bool = False,
         external_id_field: str | None = None,
         update_only: bool = False,
     ):
         # If we have an ID value, use save_update
-        if getattr(self, self._sf_attrs.id_field, None):
+        if (_id_value := getattr(self, self._sf_attrs.id_field, None)) is not None:
             return self.save_update(
                 sf_client=sf_client,
                 only_changes=only_changes,
@@ -429,7 +388,14 @@ class SObject(I_SObject, FieldConfigurableObject):
         if clear_id_field:
             delattr(self, self._sf_attrs.id_field)
 
-    def update_values(self, **kwargs):
+    def reload(self, sf_client: I_SalesforceClient | None = None):
+        record_id: str = getattr(self, self._sf_attrs.id_field)
+        if sf_client is None:
+            sf_client = self._client_connection()
+        reloaded = type(self).read(record_id, sf_client)
+        self._values.update(reloaded._values)
+
+    def update_values(self, /, **kwargs):
         for key, value in kwargs.items():
             if key in self.keys():
                 self[key] = value
@@ -541,38 +507,27 @@ class SObject(I_SObject, FieldConfigurableObject):
         describe_data = SObjectDescribe.from_dict(sf_client.get(describe_url).json())
 
         # Extract field information
-        field_annotations = {}
+        fields = {}
         for field in describe_data.fields:
             field_name = field.name
             field_type = field.type
 
-            # Map Salesforce field types to Python types
-            python_type = str  # Default type
-            if field_type == "boolean":
-                python_type = bool
-            elif field_type in ("int", "double", "currency", "percent"):
-                python_type = float
-            elif field_type == "date":
-                python_type = datetime.date
-            elif field_type == "datetime":
-                python_type = datetime.datetime
-            elif field_type == "time":
-                python_type = datetime.time
-            elif field_type == "multipicklist":
-                python_type = MultiPicklistField
+            field_cls = FIELD_TYPE_LOOKUP[field_type]
+            kwargs = {}
+            flags = []
 
             if not field.updateable:
-                python_type = Final[python_type]
+                flags.append(FieldFlag.readonly)
 
-            field_annotations[field_name] = python_type
+            fields[field_name] = field_cls(*flags, **kwargs)
 
         # Create a new SObject subclass
         sobject_class: type[_sObject] = type(  # type: ignore
             f"SObject__{sobject}",
             (SObject,),
             {
-                "__annotations__": field_annotations,
                 "__doc__": f"Auto-generated SObject class for {sobject} ({describe_data.label})",
+                **fields
             },
             api_name=sobject,
             connection=connection,

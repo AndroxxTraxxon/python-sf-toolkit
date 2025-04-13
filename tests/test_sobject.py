@@ -9,7 +9,7 @@ from sf_toolkit.data.fields import (
     DateTimeField,
     FieldFlag,
     IdField,
-    MultiPicklistField,
+    MultiPicklistValue,
     NumberField,
     TextField,
     ReadOnlyAssignmentException
@@ -252,8 +252,8 @@ def test_from_description(mock_sf_client):
     assert obj["Name"] == "Test Object"
     assert obj["CustomDate__c"] == datetime.date(2023, 1, 15)
     assert obj["IsActive__c"] is True
-    assert isinstance(obj["Categories__c"], MultiPicklistField)
-    assert obj["Categories__c"].values == ["one", "two", "three"]
+    assert isinstance(obj["Categories__c"], MultiPicklistValue)
+    assert obj["Categories__c"].values == ["one", "two", "three"]  # type: ignore
 
 
 def test_query_builder(mock_sf_client):
@@ -408,7 +408,7 @@ def test_save_update(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Update the account
-    account.save_update()
+    account.save_update(only_changes=True)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -450,7 +450,7 @@ def test_save_update_only_changes(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Update the account with only_changes=False
-    account.save_update(only_changes=False)
+    account.save_update()
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -490,10 +490,13 @@ def test_save_upsert(mock_sf_client):
     # Mock the response for the PATCH request (successful update)
     mock_response = Mock()
     mock_response.status_code = 204  # No Content (record was updated)
+    mock_response.json.return_value = {
+        "id": "ABC000000123456XYZ"
+    }
     mock_sf_client.patch.return_value = mock_response
 
     # Perform the upsert
-    custom_obj.save_upsert(external_id_field="External_Id__c")
+    custom_obj.save_upsert(external_id_field="External_Id__c", only_changes=True)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -514,6 +517,7 @@ def test_save_upsert(mock_sf_client):
 
     # Verify dirty fields were cleared
     assert len(custom_obj.dirty_fields) == 0
+    CustomObject._unregister_()
 
 def test_save_upsert_insert(mock_sf_client):
     """Test the save_upsert method creating a new record"""
@@ -532,6 +536,12 @@ def test_save_upsert_insert(mock_sf_client):
         Custom_Field__c="New Value",
     )
 
+    # Clear dirty fields to simulate a clean state before making changes
+    assert not custom_obj.dirty_fields, "No dirty fields should be present after init"
+
+    # Set a field to make it dirty - this ensures serialization includes this field
+    custom_obj.Custom_Field__c = "New Value"
+
     # Mock the response for the PATCH request (successful insert)
     mock_response = Mock()
     mock_response.status_code = 201  # Created (new record)
@@ -543,7 +553,7 @@ def test_save_upsert_insert(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Perform the upsert
-    custom_obj.save_upsert(external_id_field="External_Id__c")
+    custom_obj.save_upsert(external_id_field="External_Id__c", only_changes=True)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -557,6 +567,7 @@ def test_save_upsert_insert(mock_sf_client):
 
     # Verify the ID was set from the response
     assert custom_obj.Id == "a01XX000003GabcNEW"
+    CustomObject._unregister_()
 
 def test_save_method_with_id(mock_sf_client):
     """Test the general save method with an existing ID (should use save_update)"""
@@ -566,7 +577,7 @@ def test_save_method_with_id(mock_sf_client):
     )
 
     # Clear dirty fields set by initialization
-    account.dirty_fields.clear()
+    assert not account.dirty_fields
 
     # Make a change
     account.Name = "Save Method Updated"
@@ -577,7 +588,7 @@ def test_save_method_with_id(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call the general save method
-    account.save()
+    account.save(only_changes=True)
 
     # Verify update was called (PATCH request)
     mock_sf_client.patch.assert_called_once()
@@ -628,15 +639,19 @@ def test_save_method_with_external_id(mock_sf_client):
         External_Id__c="EXT-SAVE-1",
         Description__c="Test Description",
     )
-
     # Mock the response for the PATCH request (successful upsert)
     mock_response = Mock()
-    mock_response.status_code = 204  # No Content (updated existing record)
+    mock_response.status_code = 201  # No Content (updated existing record)
+    mock_response.json.return_value = {
+        "id" : "ABC90000001pPvHAAU",
+        "errors" : [ ],
+        "success" : True,
+        "created": True
+    }
     mock_sf_client.patch.return_value = mock_response
 
     # Call the general save method with external_id_field parameter
     custom_obj.save(external_id_field="External_Id__c")
-
     # Verify upsert was called (PATCH request to the external ID endpoint)
     mock_sf_client.patch.assert_called_once()
     args, kwargs = mock_sf_client.patch.call_args
@@ -646,6 +661,7 @@ def test_save_method_with_external_id(mock_sf_client):
         args[0]
         == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
     )
+    CustomObject._unregister_()
 
 def test_readonly_assignment_exception():
     """Test that assignment to readonly fields raises an exception"""

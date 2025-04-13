@@ -1,16 +1,10 @@
 import pytest
 from datetime import datetime, timedelta
-from sf_toolkit.data.sobject import SObject
 from sf_toolkit.exceptions import SalesforceError
 
 from ..test_sobject import Opportunity, Account
 
-
-class Product(SObject, api_name="Product2"):
-    Id: str
-    Name: str
-    ExternalId__c: str
-    Description: str
+from .models import Product
 
 
 def test_opportunity_crud(sf_client):
@@ -82,7 +76,7 @@ def test_reload_after_success_flag(sf_client):
         # Update using first reference with reload_after_success=True
         new_name = f"{unique_name} - Updated"
         account_ref1.Name = new_name
-        account_ref1.save(reload_after_success=True)
+        account_ref1.save(reload_after_success=True, only_changes=True)
 
         # Verify first reference has updated data
         assert account_ref1.Name == new_name
@@ -93,7 +87,7 @@ def test_reload_after_success_flag(sf_client):
         # Now update second reference with reload_after_success=True
         description = "This is a test description"
         account_ref2.Description = description
-        account_ref2.save(reload_after_success=True)
+        account_ref2.save(reload_after_success=True, only_changes=True)
 
         # Verify second reference now has both updated name and description
         assert account_ref2.Name == new_name
@@ -122,7 +116,7 @@ def test_upsert_with_external_id(sf_client):
 
     try:
         # First save - should create the record
-        product.save()
+        product.save(external_id_field="ExternalId__c")
 
         # Verify the record was created and has an ID
         assert hasattr(product, "Id")

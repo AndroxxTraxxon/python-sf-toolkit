@@ -1,7 +1,6 @@
 import datetime
 from enum import Flag, auto
 import typing
-from typing_extensions import ReadOnly, override
 
 T = typing.TypeVar('T')
 U = typing.TypeVar('U')
@@ -38,7 +37,7 @@ class SObjectFieldDescribe(typing.NamedTuple):
     writeRequiresMasterRead: bool = False
 
 
-class MultiPicklistField(str):
+class MultiPicklistValue(str):
     values: list[str]
 
     def __init__(self, source: str):
@@ -66,12 +65,12 @@ class FieldFlag(Flag):
 T = typing.TypeVar("T")
 
 class FieldConfigurableObject:
-    __values: dict[str, typing.Any]
-    __dirty_fields: set[str]
-    __fields: typing.ClassVar[dict[str, "Field"]]
+    _values: dict[str, typing.Any]
+    _dirty_fields: set[str]
+    _fields: typing.ClassVar[dict[str, "Field"]]
 
     def __init_subclass__(cls, **_) -> None:
-        cls.__fields = {}
+        cls._fields = {}
         for attr_name in dir(cls):
             if attr_name.startswith("__"):
                 continue
@@ -79,37 +78,39 @@ class FieldConfigurableObject:
                 continue
             attr = getattr(cls, attr_name)
             if isinstance(attr, Field):
-                cls.__fields[attr_name] = attr
+                cls._fields[attr_name] = attr
 
     def __init__(self):
-        setattr(self, "__values", {})
-        setattr(self, "__dirty_fields", set())
+        self._values = {}
+        self._dirty_fields = set()
 
     @classmethod
     def keys(cls) -> frozenset[str]:
-        return frozenset(cls.__fields.keys())
+        return frozenset(cls._fields.keys())
 
     @property
     def dirty_fields(self):
-        return getattr(self, "__dirty_fields")
+        return self._dirty_fields
 
     @dirty_fields.deleter
     def dirty_fields(self):
-        setattr(self, "__dirty_fields", set())
+        self._dirty_fields = set()
 
     def serialize(self, only_changes = False):
         if only_changes:
             return {
                 name: field.format(value)
-                for name, value in getattr(self, "__values").items()
-                if (field := self.__fields[name])
+                for name, value in self._values.items()
+                if (field := self._fields[name])
                 and name in self.dirty_fields
+                and FieldFlag.readonly not in field.flags
             }
 
         return {
             name: field.format(value)
-            for name, value in getattr(self, "__values").items()
-            if (field := self.__fields[name])
+            for name, value in self._values.items()
+            if (field := self._fields[name])
+            and FieldFlag.readonly not in field.flags
         }
 
     def __getitem__(self, name):
@@ -134,16 +135,15 @@ class Field(typing.Generic[T]):
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> T:
         if obj is None:
             return self  # type: ignore
-        return getattr(obj, "__values").get(self.__name__, None)
+        return obj._values.get(self._name)  # type: ignore
 
     def __set__(self, obj: FieldConfigurableObject, value: typing.Any):
         value = self.revive(value)
         self.validate(value)
-        object_values = getattr(obj, "__values")
-        if FieldFlag.readonly in self.flags and self.__name__ in object_values:
-            raise ReadOnlyAssignmentException(f"Field {self.__name__} is readonly")
-        object_values[self.__name__] = value
-        obj.dirty_fields.add(self.__name__)
+        if FieldFlag.readonly in self.flags and self._name in obj._values:
+            raise ReadOnlyAssignmentException(f"Field {self._name} is readonly on object {self._owner.__name__}")
+        obj._values[self._name] = value
+        obj.dirty_fields.add(self._name)
 
     def revive(self, value: typing.Any):
         return value
@@ -152,19 +152,21 @@ class Field(typing.Generic[T]):
         return value
 
     def __set_name__(self, owner, name):
-        self.__owner__ = owner
-        self.__name__ = name
+        self._owner = owner
+        self._name = name
 
     def __delete__(self, obj: FieldConfigurableObject):
-        del obj.__dict__[self.__name__]
+        del obj._values[self._name]
         if hasattr(obj, "_dirty_fields"):
-            obj.__dirty_fields.discard(self.__name__)
+            obj._dirty_fields.discard(self._name)
 
     def validate(self, value):
+        if value is None:
+            return
         if self._py_type is not None and not isinstance(value, self._py_type):
             raise TypeError(
-                f"Expected {self._py_type.__qualname__} for field {self.__name__} "
-                f"on {self.__owner__.__name__}, got {type(value).__name__}"
+                f"Expected {self._py_type.__qualname__} for field {self._name} "
+                f"on {self._owner.__name__}, got {type(value).__name__}"
             )
 
     def __str__(self):
@@ -185,10 +187,43 @@ class IdField(TextField):
             f" '{value}' is not a valid Salesforce Id"
 
 
+class PicklistField(TextField):
+
+    _options_: list[str]
+
+    def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
+        super().__init__(*flags)
+        self._options_ = options or []
+
+    def validate(self, value: str):
+        if self._options_ and value not in self._options_:
+            raise ValueError(f"Selection '{value}' is not in configured values for field {self._name}")
+
+
+class MultiPicklistField(Field[MultiPicklistValue]):
+
+    _options_: list[str]
+
+    def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
+        super().__init__(MultiPicklistValue, *flags)
+        self._options_ = options or []
+
+    def revive(self, value: str):
+        return MultiPicklistValue(value)
+
+    def validate(self, value: MultiPicklistValue):
+        for item in value.values:
+            if self._options_ and item not in self._options_:
+                raise ValueError(f"Selection '{item}' is not in configured values for {self._name}")
+
 class NumberField(Field[float]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(float, *flags)
 
+
+class IntField(Field[int]):
+    def __init__(self, *flags: FieldFlag):
+        super().__init__(int, *flags)
 
 class CheckboxField(Field[bool]):
     def __init__(self, *flags: FieldFlag):
@@ -199,7 +234,6 @@ class DateField(Field[datetime.date]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(datetime.date, *flags)
 
-    @override
     def revive(self, value: datetime.date | str):
         if isinstance(value, datetime.date):
             return value
@@ -240,3 +274,24 @@ class ReferenceField(Field[T]):
             return value
         if isinstance(value, dict):
             return self._py_type(**value)
+
+
+FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
+    "boolean": CheckboxField,
+    "id": IdField,
+    "string": TextField,
+    "phone": TextField,
+    "url": TextField,
+    "email": TextField,
+    "textarea": TextField,
+    "picklist": TextField,
+    "multipicklist": MultiPicklistField,
+    "reference": ReferenceField,
+    "currency": NumberField,
+    "double": NumberField,
+    "percent": NumberField,
+    "int": NumberField,
+    "date": DateField,
+    "datetime": DateTimeField,
+    "time": TimeField,
+}
