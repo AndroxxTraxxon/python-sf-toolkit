@@ -2,9 +2,9 @@ name: Build Documentation
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   # Allow manual running from the GitHub UI
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -29,7 +29,7 @@ jobs:
           sphinx-build -b html docs/source docs/build/html
 
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: docs/build/html/
