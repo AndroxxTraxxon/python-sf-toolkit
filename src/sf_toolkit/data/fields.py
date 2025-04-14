@@ -80,6 +80,7 @@ class FieldConfigurableObject:
             if isinstance(attr, Field):
                 cls._fields[attr_name] = attr
 
+
     def __init__(self):
         self._values = {}
         self._dirty_fields = set()

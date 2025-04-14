@@ -107,7 +107,7 @@ class SObjectDescribe:
         return self._raw_data
 
 
-class SObject(I_SObject, FieldConfigurableObject):
+class SObject(FieldConfigurableObject, I_SObject):
     _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
         defaultdict(dict)
     )
@@ -119,8 +119,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         id_field: str = "Id",
         **kwargs,
     ) -> None:
-        super(I_SObject, cls).__init_subclass__(**kwargs)
-        super(FieldConfigurableObject).__init_subclass__(**kwargs)
+        super().__init_subclass__(**kwargs)
         if not api_name:
             api_name = cls.__name__
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME

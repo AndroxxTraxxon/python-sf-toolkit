@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
+from typing import Iterable
 from httpx import AsyncClient, Client
 from httpx._client import BaseClient  # type: ignore
 
@@ -127,3 +128,7 @@ class I_SObject(ABC):
     @classmethod
     @abstractmethod
     def _client_connection(cls) -> I_SalesforceClient: ...
+
+    @classmethod
+    @abstractmethod
+    def keys(cls) -> Iterable[str]: ...

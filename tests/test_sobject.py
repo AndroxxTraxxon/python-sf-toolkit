@@ -1,16 +1,12 @@
 import pytest
 from unittest.mock import MagicMock, Mock
 import datetime
-from sf_toolkit.data.sobject import (
-    SObject,
-)
+from sf_toolkit.data.sobject import SObject
 from sf_toolkit.data.fields import (
     DateField,
     DateTimeField,
-    FieldFlag,
     IdField,
     MultiPicklistValue,
-    NumberField,
     TextField,
     ReadOnlyAssignmentException
 )
@@ -19,22 +15,7 @@ from sf_toolkit.client import SalesforceClient
 from sf_toolkit.interfaces import I_SalesforceClient
 
 
-class Opportunity(SObject):
-    Id = IdField()
-    Name = TextField()
-    Amount = NumberField()
-    CloseDate = DateField()
-    StageName = TextField()
-
-
-class Account(SObject):
-    Id = IdField()
-    Name = TextField()
-    Industry = TextField()
-    AnnualRevenue = NumberField()
-    Description = TextField()
-    CreatedDate = DateTimeField(FieldFlag.readonly)
-    LastModifiedDate = DateTimeField(FieldFlag.readonly)
+from .test_models import Opportunity, Account
 
 
 @pytest.fixture()
@@ -63,6 +44,7 @@ def mock_sf_client():
 
 def test_sobject_class_definition():
     # Test basic class properties
+
     assert Account.attributes.type == "Account"
     assert Account.keys() == frozenset({
         "Id",
@@ -72,6 +54,7 @@ def test_sobject_class_definition():
         "CreatedDate",
         "LastModifiedDate",
         "Description",
+        "NumberOfEmployees"
     })
 
     # Test instance creation
@@ -133,6 +116,7 @@ def test_sobject_get(mock_sf_client):
 
     # Verify the API call
     mock_sf_client.get.assert_called_once()
+    Contact._unregister_()
 
 
 def test_sobject_fetch(mock_sf_client):
@@ -176,36 +160,41 @@ def test_sobject_fetch(mock_sf_client):
 
 def test_sobject_describe(mock_sf_client):
     # Define an SObject subclass
-    class Lead(SObject, api_name="Lead"):
+    class Lead(SObject):
         Id = IdField()
         FirstName = TextField()
         LastName = TextField()
         Company = TextField()
         Status = TextField()
 
-    # Mock the response
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "name": "Lead",
-        "label": "Lead",
-        "labelPlural": "Leads",
-        "fields": [
-            {"name": "Id", "type": "id", "label": "Lead ID"},
-            {"name": "FirstName", "type": "string", "label": "First Name"},
-        ],
-    }
-    mock_sf_client.get.return_value = mock_response
 
-    # Call describe method
-    describe_result = Lead.describe()
+    try:
 
-    # Verify the result
-    assert describe_result["name"] == "Lead"
-    assert describe_result["labelPlural"] == "Leads"
-    assert len(describe_result["fields"]) == 2
+        # Mock the response
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "name": "Lead",
+            "label": "Lead",
+            "labelPlural": "Leads",
+            "fields": [
+                {"name": "Id", "type": "id", "label": "Lead ID"},
+                {"name": "FirstName", "type": "string", "label": "First Name"},
+            ],
+        }
+        mock_sf_client.get.return_value = mock_response
 
-    # Verify the API call
-    mock_sf_client.get.assert_called_once()
+        # Call describe method
+        describe_result = Lead.describe()
+
+        # Verify the result
+        assert describe_result["name"] == "Lead"
+        assert describe_result["labelPlural"] == "Leads"
+        assert len(describe_result["fields"]) == 2
+
+        # Verify the API call
+        mock_sf_client.get.assert_called_once()
+    finally:
+        Lead._unregister_()
 
 
 def test_from_description(mock_sf_client):
@@ -266,46 +255,51 @@ def test_query_builder(mock_sf_client):
         Priority = TextField()
         CreatedDate = DateTimeField()
 
-    # Mock the response
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "done": True,
-        "totalSize": 2,
-        "records": [
-            {
-                "attributes": {"type": "Case"},
-                "Id": "500XX000001MxWtIAK",
-                "Subject": "Case 1",
-                "Status": "New",
-                "Priority": "High",
-            },
-            {
-                "attributes": {"type": "Case"},
-                "Id": "500XX000001MxWuIAK",
-                "Subject": "Case 2",
-                "Status": "Working",
-                "Priority": "Medium",
-            },
-        ],
-    }
-    mock_sf_client.get.return_value = mock_response
+    try:
 
-    # Create a query
-    query = SoqlSelect(Case)
+        # Mock the response
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "done": True,
+            "totalSize": 2,
+            "records": [
+                {
+                    "attributes": {"type": "Case"},
+                    "Id": "500XX000001MxWtIAK",
+                    "Subject": "Case 1",
+                    "Status": "New",
+                    "Priority": "High",
+                },
+                {
+                    "attributes": {"type": "Case"},
+                    "Id": "500XX000001MxWuIAK",
+                    "Subject": "Case 2",
+                    "Status": "Working",
+                    "Priority": "Medium",
+                },
+            ],
+        }
+        mock_sf_client.get.return_value = mock_response
 
-    # Execute the query
-    results = query.query(["Id", "Subject", "Status", "Priority"])
+        # Create a query
+        query = SoqlSelect(Case)
 
-    # Verify the results
-    assert results.totalSize == 2
-    assert len(results.records) == 2
-    assert results.records[0].Id == "500XX000001MxWtIAK"
-    assert results.records[0].Subject == "Case 1"
-    assert results.records[0].Status == "New"
-    assert results.records[1].Priority == "Medium"
+        # Execute the query
+        results = query.query(["Id", "Subject", "Status", "Priority"])
 
-    # Verify the API call
-    mock_sf_client.get.assert_called_once()
+        # Verify the results
+        assert results.totalSize == 2
+        assert len(results.records) == 2
+        assert results.records[0].Id == "500XX000001MxWtIAK"
+        assert results.records[0].Subject == "Case 1"
+        assert results.records[0].Status == "New"
+        assert results.records[1].Priority == "Medium"
+
+        # Verify the API call
+        mock_sf_client.get.assert_called_once()
+
+    finally:
+        Case._unregister_()
 
 def test_save_insert(mock_sf_client):
     """Test the save_insert method for creating a new SObject record"""
@@ -474,50 +468,54 @@ def test_save_upsert(mock_sf_client):
         External_Id__c = TextField()
         Custom_Field__c = TextField()
 
-    # Create an instance with an external ID but no Salesforce ID
-    custom_obj = CustomObject(
-        Name="Test Upsert",
-        External_Id__c="EXT-12345",
-        Custom_Field__c="Original Value",
-    )
+    try:
 
-    # Clear dirty fields set by initialization
-    custom_obj.dirty_fields.clear()
+        # Create an instance with an external ID but no Salesforce ID
+        custom_obj = CustomObject(
+            Name="Test Upsert",
+            External_Id__c="EXT-12345",
+            Custom_Field__c="Original Value",
+        )
 
-    # Update a field
-    custom_obj.Custom_Field__c = "Updated Value"
+        # Clear dirty fields set by initialization
+        custom_obj.dirty_fields.clear()
 
-    # Mock the response for the PATCH request (successful update)
-    mock_response = Mock()
-    mock_response.status_code = 204  # No Content (record was updated)
-    mock_response.json.return_value = {
-        "id": "ABC000000123456XYZ"
-    }
-    mock_sf_client.patch.return_value = mock_response
+        # Update a field
+        custom_obj.Custom_Field__c = "Updated Value"
 
-    # Perform the upsert
-    custom_obj.save_upsert(external_id_field="External_Id__c", only_changes=True)
+        # Mock the response for the PATCH request (successful update)
+        mock_response = Mock()
+        mock_response.status_code = 204  # No Content (record was updated)
+        mock_response.json.return_value = {
+            "id": "ABC000000123456XYZ"
+        }
+        mock_sf_client.patch.return_value = mock_response
 
-    # Verify the API call was made correctly
-    mock_sf_client.patch.assert_called_once()
-    args, kwargs = mock_sf_client.patch.call_args
+        # Perform the upsert
+        custom_obj.save_upsert(external_id_field="External_Id__c", only_changes=True)
 
-    # Check the endpoint includes the external ID field and value
-    assert (
-        args[0]
-        == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-12345"
-    )
+        # Verify the API call was made correctly
+        mock_sf_client.patch.assert_called_once()
+        args, kwargs = mock_sf_client.patch.call_args
 
-    # Check the payload only includes the changed field
-    assert "Id" not in kwargs["json"]
-    assert "Name" not in kwargs["json"]
-    assert "External_Id__c" not in kwargs["json"]
-    assert "attributes" not in kwargs["json"]
-    assert kwargs["json"]["Custom_Field__c"] == "Updated Value"
+        # Check the endpoint includes the external ID field and value
+        assert (
+            args[0]
+            == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-12345"
+        )
 
-    # Verify dirty fields were cleared
-    assert len(custom_obj.dirty_fields) == 0
-    CustomObject._unregister_()
+        # Check the payload only includes the changed field
+        assert "Id" not in kwargs["json"]
+        assert "Name" not in kwargs["json"]
+        assert "External_Id__c" not in kwargs["json"]
+        assert "attributes" not in kwargs["json"]
+        assert kwargs["json"]["Custom_Field__c"] == "Updated Value"
+
+        # Verify dirty fields were cleared
+        assert len(custom_obj.dirty_fields) == 0
+    finally:
+        CustomObject._unregister_()
+
 
 def test_save_upsert_insert(mock_sf_client):
     """Test the save_upsert method creating a new record"""
@@ -633,35 +631,38 @@ def test_save_method_with_external_id(mock_sf_client):
         External_Id__c = TextField()
         Description__c = TextField()
 
-    # Create an instance with an external ID but no Salesforce ID
-    custom_obj = CustomObject(
-        Name="External ID Save Test",
-        External_Id__c="EXT-SAVE-1",
-        Description__c="Test Description",
-    )
-    # Mock the response for the PATCH request (successful upsert)
-    mock_response = Mock()
-    mock_response.status_code = 201  # No Content (updated existing record)
-    mock_response.json.return_value = {
-        "id" : "ABC90000001pPvHAAU",
-        "errors" : [ ],
-        "success" : True,
-        "created": True
-    }
-    mock_sf_client.patch.return_value = mock_response
+    try:
+        # Create an instance with an external ID but no Salesforce ID
+        custom_obj = CustomObject(
+            Name="External ID Save Test",
+            External_Id__c="EXT-SAVE-1",
+            Description__c="Test Description",
+        )
+        # Mock the response for the PATCH request (successful upsert)
+        mock_response = Mock()
+        mock_response.status_code = 201  # No Content (updated existing record)
+        mock_response.json.return_value = {
+            "id" : "ABC90000001pPvHAAU",
+            "errors" : [ ],
+            "success" : True,
+            "created": True
+        }
+        mock_sf_client.patch.return_value = mock_response
 
-    # Call the general save method with external_id_field parameter
-    custom_obj.save(external_id_field="External_Id__c")
-    # Verify upsert was called (PATCH request to the external ID endpoint)
-    mock_sf_client.patch.assert_called_once()
-    args, kwargs = mock_sf_client.patch.call_args
+        # Call the general save method with external_id_field parameter
+        custom_obj.save(external_id_field="External_Id__c")
+        # Verify upsert was called (PATCH request to the external ID endpoint)
+        mock_sf_client.patch.assert_called_once()
+        args, kwargs = mock_sf_client.patch.call_args
 
-    # Check the endpoint includes the external ID field and value
-    assert (
-        args[0]
-        == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
-    )
-    CustomObject._unregister_()
+        # Check the endpoint includes the external ID field and value
+        assert (
+            args[0]
+            == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
+        )
+
+    finally:
+        CustomObject._unregister_()
 
 def test_readonly_assignment_exception():
     """Test that assignment to readonly fields raises an exception"""

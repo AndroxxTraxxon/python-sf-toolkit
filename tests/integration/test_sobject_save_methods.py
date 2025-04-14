@@ -1,36 +1,8 @@
 import pytest
 import datetime
 from time import sleep
-from sf_toolkit.data.sobject import SObject
-from sf_toolkit.data.fields import (
-    FieldFlag,
-    IdField,
-    NumberField, TextField, IntField, DateTimeField
-)
 
-from .models import Product
-
-# Test SObject classes
-class _TestAccount(SObject, api_name="Account"):
-    Id = IdField()
-    Name = TextField()
-    Industry = TextField()
-    Description = TextField()
-    AnnualRevenue = NumberField()
-    NumberOfEmployees = IntField()
-    CreatedDate = DateTimeField(FieldFlag.readonly)
-    LastModifiedDate = DateTimeField(FieldFlag.readonly)
-
-
-class _TestContact(SObject, api_name="Contact"):
-    Id = IdField()
-    FirstName = TextField()
-    LastName = TextField()
-    Email = TextField()
-    Phone = TextField()
-    AccountId = IdField()
-    Title = TextField()
-    ExternalId__c = TextField()
+from ..test_models import Product, Account
 
 
 def test_insert_and_delete(sf_client):
@@ -41,12 +13,12 @@ def test_insert_and_delete(sf_client):
     )
 
     # Create new account
-    account = _TestAccount(
+    account = Account(
         Name=unique_name, Industry="Technology", Description="Test insert account"
     )
 
     try:
-        # Test save_insert method
+        # Directly test save_insert method
         account.save_insert()
 
         # Verify the account was created and has an ID
@@ -55,7 +27,7 @@ def test_insert_and_delete(sf_client):
         assert isinstance(account.Id, str)
 
         # Retrieve the account to verify it exists
-        retrieved = _TestAccount.read(account.Id)
+        retrieved = Account.read(account.Id)
         assert retrieved.Name == unique_name
         assert retrieved.Industry == "Technology"
         assert retrieved.Description == "Test insert account"
@@ -74,7 +46,7 @@ def test_update(sf_client):
     )
 
     # Create new account first
-    account = _TestAccount(
+    account = Account(
         Name=unique_name, Industry="Healthcare", Description="Original description"
     )
     account.save()
@@ -89,7 +61,7 @@ def test_update(sf_client):
         account.save_update()
 
         # Retrieve the account to verify changes
-        retrieved = _TestAccount.read(account.Id)
+        retrieved = Account.read(account.Id)
         assert retrieved.Name == unique_name  # Unchanged
         assert retrieved.Industry == "Financial Services"  # Changed
         assert retrieved.Description == "Updated description"  # Changed
@@ -109,7 +81,7 @@ def test_only_changes_flag(sf_client):
     )
 
     # Create new account with multiple fields
-    account = _TestAccount(
+    account = Account(
         Name=unique_name,
         Industry="Retail",
         Description="Original description",
@@ -119,7 +91,7 @@ def test_only_changes_flag(sf_client):
 
     try:
         # Get a fresh copy to manipulate
-        account = _TestAccount.read(account.Id)
+        account = Account.read(account.Id)
 
         # Only change one field
         account.Description = "Modified description"
@@ -128,7 +100,7 @@ def test_only_changes_flag(sf_client):
         account.save_update()
 
         # Retrieve a fresh copy
-        retrieved = _TestAccount.read(account.Id)
+        retrieved = Account.read(account.Id)
         assert retrieved.Description == "Modified description"
 
         # Check if the client calls match the expected behavior by making another change
@@ -140,7 +112,7 @@ def test_only_changes_flag(sf_client):
         retrieved.save_update()
 
         # Get a final copy to verify
-        final = _TestAccount.read(account.Id)
+        final = Account.read(account.Id)
         assert final.Industry == "Education"
         assert final.NumberOfEmployees is None
 
@@ -156,7 +128,7 @@ def test_save_with_reload(sf_client):
     unique_name = f"Test Reload {datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
     # Create new account
-    account = _TestAccount(Name=unique_name, Industry="Construction")
+    account = Account(Name=unique_name, Industry="Construction")
 
     try:
         # Save with reload_after_success=True
@@ -267,7 +239,7 @@ def test_update_only_flag(sf_client):
     )
 
     # Create account but don't save it
-    account = _TestAccount(Name=unique_name, Industry="Technology")
+    account = Account(Name=unique_name, Industry="Technology")
 
     # Attempt to save with update_only=True should fail
     with pytest.raises(
@@ -284,7 +256,7 @@ def test_update_only_flag(sf_client):
         account.save(update_only=True)
 
         # Verify update worked
-        retrieved = _TestAccount.read(account.Id)
+        retrieved = Account.read(account.Id)
         assert retrieved.Name == f"{unique_name} - Updated"
 
     finally:
@@ -302,7 +274,7 @@ def test_batch_modify_and_save(sf_client):
     # Create accounts
     accounts = []
     for i in range(num_records):
-        account = _TestAccount(
+        account = Account(
             Name=f"{base_name} #{i}",
             Industry="Technology",
             Description=f"Initial description #{i}",
@@ -323,7 +295,7 @@ def test_batch_modify_and_save(sf_client):
             account.save()
 
         # Retrieve all accounts to verify changes
-        retrieved_accounts = _TestAccount.list(*ids)
+        retrieved_accounts = Account.list(*ids)
 
         # Verify all changes were saved
         for i, account in enumerate(retrieved_accounts):
@@ -346,7 +318,7 @@ def test_dirty_fields_tracking(sf_client):
     )
 
     # Create account
-    account = _TestAccount(Name=unique_name, Industry="Consulting")
+    account = Account(Name=unique_name, Industry="Consulting")
 
     # After initialization, no fields should be dirty
     assert hasattr(account, "dirty_fields")
@@ -382,7 +354,7 @@ def test_dirty_fields_tracking(sf_client):
         assert len(account._dirty_fields) == 0
 
         # Retrieve the account to verify changes
-        retrieved = _TestAccount.read(account.Id)
+        retrieved = Account.read(account.Id)
         assert retrieved.Description == "New description"
         assert retrieved.Industry == "Education"
 
