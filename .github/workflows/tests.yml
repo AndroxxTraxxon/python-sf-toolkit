@@ -27,15 +27,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install poetry
+          poetry config virtualenvs.create false
 
       - name: Install dependencies
         run: |
-          poetry env use python
-          poetry install --with dev
+          poetry install --with dev --no-interaction
 
       - name: Run tests
         run: |
-          poetry env use python
           pytest tests/ --cov=sf_toolkit -m "not integration" -v
 
       - name: Upload coverage reports to Codecov
