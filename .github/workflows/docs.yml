@@ -34,10 +34,6 @@ jobs:
           poetry run sphinx-build -b html docs/source docs/build/html
 
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: documentation
           path: docs/build/html/
-
-      # Optionally, deploy to GitHub Pages or Read the Docs
-      # This step would go here if you want to automate deployment
