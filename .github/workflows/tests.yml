@@ -30,6 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          poetry env use python
           poetry install --with dev
 
       - name: Run tests
