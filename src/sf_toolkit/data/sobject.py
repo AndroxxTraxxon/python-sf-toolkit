@@ -124,28 +124,28 @@ class SObject(I_SObject, FieldConfigurableObject):
         if not api_name:
             api_name = cls.__name__
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
-        cls._sf_attrs = SObjectAttributes(api_name, connection, id_field)
+        cls.attributes = SObjectAttributes(api_name, connection, id_field)
         cls._register_()
 
 
     @classmethod
     def _register_(cls):
         fields = frozenset(cls.keys())
-        if fields in cls._registry[cls._sf_attrs]:
+        if fields in cls._registry[cls.attributes]:
             raise TypeError(
-                f"SObject Type {cls} already defined as {cls._registry[cls._sf_attrs][fields]}"
+                f"SObject Type {cls} already defined as {cls._registry[cls.attributes][fields]}"
             )
-        cls._registry[cls._sf_attrs][fields] = cls
+        cls._registry[cls.attributes][fields] = cls
 
     @classmethod
     def _unregister_(cls):
         fields = frozenset(cls.keys())
-        sobject_registry = cls._registry[cls._sf_attrs]
+        sobject_registry = cls._registry[cls.attributes]
         if fields in sobject_registry and sobject_registry[fields] is cls:
             del sobject_registry[fields]
             # Remove the entire entry if there are no more classes for this SObject type
             if not sobject_registry:
-                del cls._registry[cls._sf_attrs]
+                del cls._registry[cls.attributes]
 
     def __init__(self, /, __strict_fields: bool = True, **fields):
         super().__init__()
@@ -166,10 +166,6 @@ class SObject(I_SObject, FieldConfigurableObject):
                 raise
         self.dirty_fields.clear()
 
-    @classmethod
-    @property
-    def attributes(cls):
-        return cls._sf_attrs
 
     @classmethod
     def typeof(
@@ -189,7 +185,7 @@ class SObject(I_SObject, FieldConfigurableObject):
 
     @classmethod
     def _client_connection(cls) -> I_SalesforceClient:
-        return sftk_client.SalesforceClient.get_connection(cls._sf_attrs.connection)
+        return sftk_client.SalesforceClient.get_connection(cls.attributes.connection)
 
     @classmethod
     def read(
@@ -200,7 +196,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         if sf_client is None:
             sf_client = cls._client_connection()
         response_data = sf_client.get(
-            f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/{record_id}",
+            f"{sf_client.sobjects_url}/{cls.attributes.type}/{record_id}",
             params={"fields": ",".join(cls.keys())},
         ).json()
 
@@ -216,9 +212,9 @@ class SObject(I_SObject, FieldConfigurableObject):
             sf_client = self._client_connection()
 
         # Assert that there is no ID on the record
-        if _id := getattr(self, self._sf_attrs.id_field, None):
+        if _id := getattr(self, self.attributes.id_field, None):
             raise ValueError(
-                f"Cannot insert record that already has an {self._sf_attrs.id_field} set: {_id}"
+                f"Cannot insert record that already has an {self.attributes.id_field} set: {_id}"
             )
 
         # Prepare the payload with all fields
@@ -226,14 +222,14 @@ class SObject(I_SObject, FieldConfigurableObject):
 
         # Create a new record
         response_data = sf_client.post(
-            f"{sf_client.sobjects_url}/{self._sf_attrs.type}",
+            f"{sf_client.sobjects_url}/{self.attributes.type}",
             json=payload,
             headers={"Content-Type": "application/json"},
         ).json()
 
         # Set the new ID on the object
         _id_val = response_data["id"]
-        setattr(self, self._sf_attrs.id_field, _id_val)
+        setattr(self, self.attributes.id_field, _id_val)
 
         # Reload the record if requested
         if reload_after_success:
@@ -254,8 +250,8 @@ class SObject(I_SObject, FieldConfigurableObject):
             sf_client = self._client_connection()
 
         # Assert that there is an ID on the record
-        if not (_id_val := getattr(self, self._sf_attrs.id_field, None)):
-            raise ValueError(f"Cannot update record without {self._sf_attrs.id_field}")
+        if not (_id_val := getattr(self, self.attributes.id_field, None)):
+            raise ValueError(f"Cannot update record without {self.attributes.id_field}")
 
         # If only tracking changes and there are no changes, do nothing
         if only_changes and not self.dirty_fields:
@@ -263,12 +259,12 @@ class SObject(I_SObject, FieldConfigurableObject):
 
         # Prepare the payload
         payload = self.serialize(only_changes)
-        payload.pop(self._sf_attrs.id_field, None)
+        payload.pop(self.attributes.id_field, None)
 
         # Update the record if there's anything to update
         if payload:
             sf_client.patch(
-                f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
+                f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}",
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
@@ -312,7 +308,7 @@ class SObject(I_SObject, FieldConfigurableObject):
 
         # Execute the upsert
         response = sf_client.patch(
-            f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{external_id_field}/{ext_id_val}",
+            f"{sf_client.sobjects_url}/{self.attributes.type}/{external_id_field}/{ext_id_val}",
             json=payload,
             params={"updateOnly": update_only} if update_only else None,
             headers={"Content-Type": "application/json"},
@@ -322,7 +318,7 @@ class SObject(I_SObject, FieldConfigurableObject):
             response_data = response.json()
             _id_val = response_data.get("id")
             if _id_val:
-                setattr(self, self._sf_attrs.id_field, _id_val)
+                setattr(self, self.attributes.id_field, _id_val)
         elif update_only and response.status_code == 404:
             raise ValueError(
                 f"Record not found for external ID field {external_id_field} with value {ext_id_val}"
@@ -330,7 +326,7 @@ class SObject(I_SObject, FieldConfigurableObject):
 
         # Reload the record if requested
         if reload_after_success and (
-            _id_val := getattr(self, self._sf_attrs.id_field, None)
+            _id_val := getattr(self, self.attributes.id_field, None)
         ):
             self.reload(sf_client)
 
@@ -348,7 +344,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         update_only: bool = False,
     ):
         # If we have an ID value, use save_update
-        if (_id_value := getattr(self, self._sf_attrs.id_field, None)) is not None:
+        if (_id_value := getattr(self, self.attributes.id_field, None)) is not None:
             return self.save_update(
                 sf_client=sf_client,
                 only_changes=only_changes,
@@ -377,19 +373,19 @@ class SObject(I_SObject, FieldConfigurableObject):
     ):
         if sf_client is None:
             sf_client = self._client_connection()
-        _id_val = getattr(self, self._sf_attrs.id_field, None)
+        _id_val = getattr(self, self.attributes.id_field, None)
 
         if not _id_val:
             raise ValueError("Cannot delete unsaved record (missing ID to delete)")
 
         sf_client.delete(
-            f"{sf_client.sobjects_url}/{self._sf_attrs.type}/{_id_val}",
+            f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}",
         )
         if clear_id_field:
-            delattr(self, self._sf_attrs.id_field)
+            delattr(self, self.attributes.id_field)
 
     def reload(self, sf_client: I_SalesforceClient | None = None):
-        record_id: str = getattr(self, self._sf_attrs.id_field)
+        record_id: str = getattr(self, self.attributes.id_field)
         if sf_client is None:
             sf_client = self._client_connection()
         reloaded = type(self).read(record_id, sf_client)
@@ -430,7 +426,7 @@ class SObject(I_SObject, FieldConfigurableObject):
             result = []
             for chunk in chunked(ids, 2000):
                 response = sf_client.post(
-                    sf_client.composite_sobjects_url(cls._sf_attrs.type),
+                    sf_client.composite_sobjects_url(cls.attributes.type),
                     json={"ids": chunk, "fields": list(cls.keys())},
                 )
                 chunk_result: list[_sObject] = [
@@ -454,7 +450,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         async with sf_client:
             tasks = [
                 sf_client.post(
-                    sf_client.composite_sobjects_url(cls._sf_attrs.type),
+                    sf_client.composite_sobjects_url(cls.attributes.type),
                     json={"ids": chunk, "fields": list(cls.keys())},
                 )
                 for chunk in chunked(ids, 2000)
@@ -480,7 +476,7 @@ class SObject(I_SObject, FieldConfigurableObject):
         sf_client = cls._client_connection()
 
         # Use the describe endpoint for this SObject type
-        describe_url = f"{sf_client.sobjects_url}/{cls._sf_attrs.type}/describe"
+        describe_url = f"{sf_client.sobjects_url}/{cls.attributes.type}/describe"
 
         # Make the request to get the describe metadata
         response = sf_client.get(describe_url)

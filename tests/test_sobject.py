@@ -63,7 +63,7 @@ def mock_sf_client():
 
 def test_sobject_class_definition():
     # Test basic class properties
-    assert Account._sf_attrs.type == "Account"
+    assert Account.attributes.type == "Account"
     assert Account.keys() == frozenset({
         "Id",
         "Name",
@@ -229,7 +229,7 @@ def test_from_description(mock_sf_client):
     CustomObject = SObject.from_description("CustomObject__c")
 
     # Verify the class was created correctly
-    assert CustomObject._sf_attrs.type == "CustomObject__c"
+    assert CustomObject.attributes.type == "CustomObject__c"
     assert CustomObject.keys() == frozenset({
         "Id",
         "Name",
