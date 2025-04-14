@@ -35,6 +35,7 @@ jobs:
 
       - name: Run tests
         run: |
+          poetry env use python
           pytest tests/ --cov=sf_toolkit -m "not integration" -v
 
       - name: Upload coverage reports to Codecov
