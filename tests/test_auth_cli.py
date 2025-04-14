@@ -49,7 +49,7 @@ def test_cli_login_with_alias():
         except StopIteration as result:
             generated_token: SalesforceToken = result.value
         assert iter_count <= 2
-        assert mock_run.called_once()
+        mock_run.assert_called_once()
         # Verify the command included the alias
         cmd_args = mock_run.call_args[0][0]
         assert "-o" in cmd_args
