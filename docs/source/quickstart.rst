@@ -44,6 +44,7 @@ Querying Records
 
    from sf_toolkit.data.query_builder import SoqlSelect
 
+   # ... later, within the context of a Salesforce client ...
    # Query contacts
    query = SoqlSelect(Contact)
    results = query.query()
@@ -63,7 +64,7 @@ Creating Records
        LastName="Doe",
        Email="john.doe@example.com"
    )
-   
+
    # Save to Salesforce
    new_contact.save()
 

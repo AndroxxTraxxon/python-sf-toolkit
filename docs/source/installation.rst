@@ -25,7 +25,7 @@ You can install the package from source:
 
 .. code-block:: bash
 
-   git clone https://github.com/yourusername/python-sf-toolkit.git
+   git clone https://github.com/AndroxxTraxxon/python-sf-toolkit.git
    cd python-sf-toolkit
    pip install .
 
@@ -33,6 +33,6 @@ Or with Poetry:
 
 .. code-block:: bash
 
-   git clone https://github.com/yourusername/python-sf-toolkit.git
+   git clone https://github.com/AndroxxTraxxon/python-sf-toolkit.git
    cd python-sf-toolkit
    poetry install
