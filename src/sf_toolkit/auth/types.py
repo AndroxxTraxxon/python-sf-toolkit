@@ -7,8 +7,10 @@ class SalesforceToken(typing.NamedTuple):
     token: str
 
 
+SalesforceTokenGenerator = typing.Generator[httpx.Request | None, httpx.Response, SalesforceToken]
+
 SalesforceLogin = typing.Callable[
-    [], typing.Generator[httpx.Request | None, httpx.Response, SalesforceToken]
+    [], SalesforceTokenGenerator
 ]
 
 TokenRefreshCallback = typing.Callable[[SalesforceToken], typing.Any]
