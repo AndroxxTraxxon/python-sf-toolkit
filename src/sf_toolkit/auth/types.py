@@ -1,6 +1,13 @@
 import typing
 import httpx
 
+class LazyParametersMissing(RuntimeError):
+    pass
+
+class AuthMissingResponse(RuntimeError):
+    pass
+
+
 
 class SalesforceToken(typing.NamedTuple):
     instance: httpx.URL

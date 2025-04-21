@@ -61,10 +61,10 @@ def test_security_token_login(mock_soap_login):
     mock_soap_login.assert_called_once()
     args = mock_soap_login.call_args[0]
     assert args[0] == "test"  # domain
-    assert args[1] == 57.0  # api_version
+    assert args[2] == 57.0  # api_version
 
     # Verify request body contains expected values
-    request_body = args[2]
+    request_body = args[1]
     assert "test@example.com" in request_body
     assert "password123SECURITY_TOKEN" in request_body
     assert f"{DEFAULT_CLIENT_ID_PREFIX}/test_client" in request_body
@@ -90,7 +90,7 @@ def test_security_token_login_default_client_id(mock_soap_login):
     assert next(login_gen) == expected_token
 
     # Check request body contains default client ID
-    request_body = mock_soap_login.call_args[0][2]
+    request_body = mock_soap_login.call_args[0][1]
     assert DEFAULT_CLIENT_ID_PREFIX in request_body
     assert "/" not in request_body.split(DEFAULT_CLIENT_ID_PREFIX)[1].split("<")[0]
 
@@ -122,7 +122,7 @@ def test_ip_filtering_org_login(mock_soap_login):
     args = mock_soap_login.call_args[0]
 
     # Verify request body contains expected values
-    request_body = args[2]
+    request_body = args[1]
     assert "test@example.com" in request_body
     assert "password123" in request_body
     assert "00D000000000001" in request_body
@@ -155,7 +155,7 @@ def test_ip_filtering_non_service_login(mock_soap_login):
     args = mock_soap_login.call_args[0]
 
     # Verify request body contains expected values
-    request_body = args[2]
+    request_body = args[1]
     assert "test@example.com" in request_body
     assert "password123" in request_body
     assert f"{DEFAULT_CLIENT_ID_PREFIX}/test_client" in request_body
@@ -182,7 +182,7 @@ def test_soap_login_success():
     """
 
     # Create and start the generator
-    login_gen = soap_login("test", 57.0, "<soap_request_body>")
+    login_gen = soap_login("test", "<soap_request_body>", 57.0)
 
     # First yield should be a request to be sent
     request = next(login_gen)
@@ -229,7 +229,7 @@ def test_soap_login_error():
     """
 
     # Create and start the generator
-    login_gen = soap_login("test", 57.0, "<soap_request_body>")
+    login_gen = soap_login("test", "<soap_request_body>", 57.0)
 
     # First yield should be a request to be sent
     next(login_gen)
@@ -263,7 +263,7 @@ def test_soap_login_missing_session_data():
     """
 
     # Create and start the generator
-    login_gen = soap_login("test", 57.0, "<soap_request_body>")
+    login_gen = soap_login("test", "<soap_request_body>", 57.0)
 
     # First yield should be a request to be sent
     next(login_gen)

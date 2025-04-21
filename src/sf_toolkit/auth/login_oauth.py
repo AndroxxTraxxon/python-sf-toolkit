@@ -9,7 +9,13 @@ import jwt
 
 from sf_toolkit.exceptions import SalesforceAuthenticationFailed
 
-from .types import SalesforceLogin, SalesforceToken, SalesforceTokenGenerator
+from .types import (
+    AuthMissingResponse,
+    LazyParametersMissing,
+    SalesforceLogin,
+    SalesforceToken,
+    SalesforceTokenGenerator
+)
 
 
 
@@ -28,7 +34,7 @@ def token_login(
     )
 
     if not response:
-        raise ValueError("No response received")
+        raise AuthMissingResponse("No response received")
 
     try:
         json_response = response.json()
@@ -69,7 +75,7 @@ def password_login(
 
     domain = domain.removesuffix(".salesforce.com")
     return lambda: token_login(
-        f"https://{domain}.salesforce.com/services/oauth2/token",
+        domain,
         {
             "grant_type": "password",
             "username": unescape(username),
@@ -77,7 +83,8 @@ def password_login(
             "client_id": consumer_key,
             "client_secret": consumer_secret
         },
-        domain,
+        consumer_key,
+        None
     )
 
 def client_credentials_flow_login(
@@ -109,7 +116,7 @@ def public_key_auth_login(
     domain = domain.removesuffix(".salesforce.com")
     def _token_login():
         return token_login(
-            f"https://{domain}.salesforce.com/services/oauth2/token",
+            domain,
             {
                 "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                 "assertion": jwt.encode(
@@ -156,7 +163,7 @@ def lazy_oauth_login(**kwargs):
             domain=kwargs.get("domain", "login")
         )
     else:
-        raise ValueError(
+        raise LazyParametersMissing(
             "Unable to determine authentication method from provided parameters. "
             "Please provide appropriate parameters for one of the supported flows."
         )

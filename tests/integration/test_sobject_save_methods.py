@@ -143,7 +143,7 @@ def test_save_with_reload(sf_client):
         # Now update a field
         original_modified_date = account.LastModifiedDate
         account.Description = "Added after creation"
-        sleep(0.5)
+        sleep(1)
 
         # Save with reload again
         account.save(reload_after_success=True)

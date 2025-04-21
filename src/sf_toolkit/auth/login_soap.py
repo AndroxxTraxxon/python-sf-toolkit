@@ -8,7 +8,7 @@ from html import escape
 
 import httpx
 
-from .types import SalesforceLogin, SalesforceToken, SalesforceTokenGenerator
+from .types import AuthMissingResponse, SalesforceLogin, SalesforceToken, SalesforceTokenGenerator
 
 from ..exceptions import SalesforceAuthenticationFailed
 
@@ -37,9 +37,30 @@ def get_xml_element_value(xmlString: bytes | str, elementName: str) -> str | Non
 
 XML_NS = "sf"
 
-def soap_login(domain: str, sf_version: float | int, request_body: str) -> SalesforceTokenGenerator:
+def soap_login(domain: str, request_body: str | None, sf_version: float | int | None = None) -> SalesforceTokenGenerator:
     """Process SOAP specific login workflow."""
-    soap_url = httpx.URL(f"https://{domain}.salesforce.com/services/Soap/u/{sf_version:.01f}")
+    if domain.casefold() not in ["login", "test"] and not domain.casefold().endswith(".my"):
+        if "--" in domain and not domain.endswith(".sandbox"):
+            domain = domain + ".sandbox"
+        domain = domain + ".my"
+    full_domain = f"https://{domain}.salesforce.com"
+
+    if not sf_version:
+        if domain in ["login", "test"]:
+            raise ValueError("Cannot infer API version using the shared `login` or `test` domains")
+        response = yield httpx.Request(
+            "GET",
+            f"{full_domain}/services/data",
+            headers={"Accept": "application/json"}
+        )
+        if not response:
+            raise ValueError("Unable to infer API version from response")
+        response.raise_for_status()
+        sf_version = float(max(response.json(), key=lambda x: x["version"])["version"])
+
+    soap_url = httpx.URL(f"{full_domain}/services/Soap/u/{sf_version:.01f}")
+
+
     response = yield httpx.Request(
         "POST",
         soap_url,
@@ -51,7 +72,7 @@ def soap_login(domain: str, sf_version: float | int, request_body: str) -> Sales
         },
     )
     if not response:
-        raise ValueError("No response received")
+        raise AuthMissingResponse("No response provided for SOAP login")
 
     if not response.is_success:
         except_code = get_xml_element_value(
@@ -76,7 +97,7 @@ def security_token_login(
     security_token: str,
     client_id: str | None = None,
     domain: str = 'login',
-    api_version: float | int = 63.0
+    api_version: float | int | None = None
 ) -> SalesforceLogin:
     if client_id:
         client_id = DEFAULT_CLIENT_ID_PREFIX + "/" +client_id
@@ -107,8 +128,8 @@ def security_token_login(
 </env:Envelope>"""
     return lambda: soap_login(
         domain,
-        api_version,
         login_soap_request_body,
+        api_version,
     )
 
 
@@ -118,7 +139,7 @@ def ip_filtering_org_login(
     organizationId: str,
     client_id: str | None = None,
     domain: str = 'login',
-    api_version: float | int = 63.0
+    api_version: float | int | None = None
 ) -> SalesforceLogin:
     if client_id:
         client_id = DEFAULT_CLIENT_ID_PREFIX + "/" +client_id
@@ -150,8 +171,8 @@ def ip_filtering_org_login(
 </soapenv:Envelope>"""
     return lambda: soap_login(
         domain,
-        api_version,
         login_soap_request_body,
+        api_version,
     )
 
 
@@ -161,7 +182,7 @@ def ip_filtering_non_service_login(
     password: str,
     client_id: str | None = None,
     domain: str = 'login',
-    api_version: float | int = 63.0,
+    api_version: float | int | None = None,
 ) -> SalesforceLogin:
     if client_id:
         client_id = DEFAULT_CLIENT_ID_PREFIX + "/" +client_id
@@ -190,8 +211,8 @@ def ip_filtering_non_service_login(
 </soapenv:Envelope>"""
     return lambda: soap_login(
         domain,
-        api_version,
         login_soap_request_body,
+        api_version,
     )
 
 
@@ -220,7 +241,7 @@ def lazy_soap_login(**kwargs):
             security_token=kwargs['security_token'],
             client_id=kwargs.get('client_id'),
             domain=kwargs.get('domain', 'login'),
-            api_version=kwargs.get('api_version', 63.0)
+            api_version=kwargs.get('api_version')
         )
 
     # If organizationId is provided, use ip_filtering_org_login
@@ -231,7 +252,7 @@ def lazy_soap_login(**kwargs):
             organizationId=kwargs['organizationId'],
             client_id=kwargs.get('client_id'),
             domain=kwargs.get('domain', 'login'),
-            api_version=kwargs.get('api_version', 63.0)
+            api_version=kwargs.get('api_version')
         )
 
     # Otherwise, use ip_filtering_non_service_login
@@ -241,5 +262,5 @@ def lazy_soap_login(**kwargs):
             password=kwargs['password'],
             client_id=kwargs.get('client_id'),
             domain=kwargs.get('domain', 'login'),
-            api_version=kwargs.get('api_version', 63.0)
+            api_version=kwargs.get('api_version')
         )
