@@ -27,6 +27,9 @@ def token_login(
         headers=headers
     )
 
+    if not response:
+        raise ValueError("No response received")
+
     try:
         json_response = response.json()
     except JSONDecodeError as exc:
@@ -57,9 +60,6 @@ def token_login(
     access_token = json_response.get("access_token")
     instance_url = json_response.get("instance_url")
     return SalesforceToken(httpx.URL(instance_url), access_token)
-
-
-
 
 
 def password_login(
@@ -127,3 +127,36 @@ def public_key_auth_login(
         )
 
     return _token_login
+
+
+def lazy_oauth_login(**kwargs):
+    """Determine which login method to use based on the provided kwargs."""
+    if "private_key" in kwargs:
+        # Public Key JWT Flow
+        return public_key_auth_login(
+            username=kwargs["username"],
+            consumer_key=kwargs["consumer_key"],
+            private_key=kwargs["private_key"],
+            domain=kwargs.get("domain", "login")
+        )
+    elif "consumer_secret" in kwargs and "username" in kwargs and "password" in kwargs:
+        # Password Flow
+        return password_login(
+            username=kwargs["username"],
+            password=kwargs["password"],
+            consumer_key=kwargs["consumer_key"],
+            consumer_secret=kwargs["consumer_secret"],
+            domain=kwargs.get("domain", "login")
+        )
+    elif "consumer_secret" in kwargs and "username" not in kwargs:
+        # Client Credentials Flow
+        return client_credentials_flow_login(
+            consumer_key=kwargs["consumer_key"],
+            consumer_secret=kwargs["consumer_secret"],
+            domain=kwargs.get("domain", "login")
+        )
+    else:
+        raise ValueError(
+            "Unable to determine authentication method from provided parameters. "
+            "Please provide appropriate parameters for one of the supported flows."
+        )

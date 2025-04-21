@@ -52,7 +52,7 @@ def test_security_token_login(mock_soap_login):
         client_id="test_client",
         domain="test",
         api_version=57.0
-    )
+    )()
 
     # Verify the generator returns the expected token
     assert next(login_gen) == expected_token
@@ -84,7 +84,7 @@ def test_security_token_login_default_client_id(mock_soap_login):
         username="test@example.com",
         password="password123",
         security_token="SECURITY_TOKEN"
-    )
+    )()
 
     # Verify the generator returns the expected token
     assert next(login_gen) == expected_token
@@ -112,7 +112,7 @@ def test_ip_filtering_org_login(mock_soap_login):
         client_id="test_client",
         domain="test",
         api_version=57.0
-    )
+    )()
 
     # Verify the generator returns the expected token
     assert next(login_gen) == expected_token
@@ -145,7 +145,7 @@ def test_ip_filtering_non_service_login(mock_soap_login):
         client_id="test_client",
         domain="test",
         api_version=57.0
-    )
+    )()
 
     # Verify the generator returns the expected token
     assert next(login_gen) == expected_token
