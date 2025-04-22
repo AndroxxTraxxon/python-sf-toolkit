@@ -709,13 +709,18 @@ class SObjectList(list[SObject]):
 
         if concurrency > 1 and len(record_chunks) > 1:
             # execute async
-            return asyncio.run(self.save_insert_async(record_chunks, headers, sf_client))
+            return asyncio.run(
+                self.save_insert_async(record_chunks, headers, sf_client)
+            )
 
         # execute sync
         results = []
         for chunk in record_chunks:
             response = sf_client.post(
-                sf_client.composite_sobjects_url(), json=chunk, headers=headers, **callout_options
+                sf_client.composite_sobjects_url(),
+                json=chunk,
+                headers=headers,
+                **callout_options,
             )
             results.extend([SObjectSaveResult(**result) for result in response.json()])
 
@@ -800,7 +805,9 @@ class SObjectList(list[SObject]):
 
         if concurrency > 1:
             # execute async
-            return asyncio.run(self.save_update_async(record_chunks, headers, sf_client))
+            return asyncio.run(
+                self.save_update_async(record_chunks, headers, sf_client)
+            )
 
         # execute sync
         results = []
@@ -883,7 +890,11 @@ class SObjectList(list[SObject]):
         if headers_option := callout_options.pop("headers", None):
             headers.update(headers_option)
 
-        url = sf_client.composite_sobjects_url(object_type.attributes.type) + "/" + external_id_field
+        url = (
+            sf_client.composite_sobjects_url(object_type.attributes.type)
+            + "/"
+            + external_id_field
+        )
         results: list[SObjectSaveResult]
         if concurrency > 1 and len(composite_request_chunks) > 1:
             # execute async
@@ -895,7 +906,7 @@ class SObjectList(list[SObject]):
                     headers,
                     concurrency,
                     all_or_none,
-                    **callout_options
+                    **callout_options,
                 )
             )
         else:
@@ -908,7 +919,9 @@ class SObjectList(list[SObject]):
                     headers=headers,
                 )
 
-                results.extend([SObjectSaveResult(**result) for result in response.json()])
+                results.extend(
+                    [SObjectSaveResult(**result) for result in response.json()]
+                )
 
         # Clear dirty fields as operations were successful
         for record, result in zip(self, results):
@@ -925,7 +938,7 @@ class SObjectList(list[SObject]):
         headers: dict[str, str],
         concurrency: int,
         all_or_none: bool,
-        **callout_options
+        **callout_options,
     ):
         async with sf_client.as_async as a_client:
             tasks = [
@@ -933,7 +946,7 @@ class SObjectList(list[SObject]):
                     url,
                     json={"allOrNone": all_or_none, "records": chunk},
                     headers=headers,
-                    **callout_options
+                    **callout_options,
                 )
                 for chunk in record_chunks
             ]
@@ -953,7 +966,7 @@ class SObjectList(list[SObject]):
         batch_size: int = 200,
         concurrency: int = 1,
         all_or_none: bool = False,
-        **callout_options
+        **callout_options,
     ):
         """
         Delete all SObjects in the list.
@@ -966,7 +979,6 @@ class SObjectList(list[SObject]):
         """
         if not self:
             return []
-
 
         record_id_batches = list(
             chunked(
@@ -981,13 +993,15 @@ class SObjectList(list[SObject]):
         sf_client = self._get_client()
         results: list[SObjectSaveResult]
         if len(record_id_batches) > 1 and concurrency > 1:
-            results = asyncio.run(self.delete_async(
-                sf_client,
-                record_id_batches,
-                all_or_none,
-                concurrency,
-                **callout_options
-            ))
+            results = asyncio.run(
+                self.delete_async(
+                    sf_client,
+                    record_id_batches,
+                    all_or_none,
+                    concurrency,
+                    **callout_options,
+                )
+            )
         else:
             headers = {"Content-Type": "application/json"}
             if headers_option := callout_options.pop("headers", None):
@@ -999,9 +1013,11 @@ class SObjectList(list[SObject]):
                     url,
                     params={"allOrNone": all_or_none, "ids": ",".join(batch)},
                     headers=headers,
-                    **callout_options
+                    **callout_options,
                 )
-                results.extend([SObjectSaveResult(**result) for result in response.json()])
+                results.extend(
+                    [SObjectSaveResult(**result) for result in response.json()]
+                )
 
         if clear_id_field:
             for record, result in zip(self, results):
@@ -1016,7 +1032,7 @@ class SObjectList(list[SObject]):
         record_id_batches: list[list[str]],
         all_or_none: bool,
         concurrency: int,
-        **callout_options
+        **callout_options,
     ):
         """
         Delete all SObjects in the list asynchronously.
@@ -1040,7 +1056,7 @@ class SObjectList(list[SObject]):
                     url,
                     params={"allOrNone": all_or_none, "ids": ",".join(record_id)},
                     headers=headers,
-                    **callout_options
+                    **callout_options,
                 )
                 for record_id in record_id_batches
             ]

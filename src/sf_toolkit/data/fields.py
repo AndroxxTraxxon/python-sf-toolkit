@@ -98,7 +98,12 @@ class FieldConfigurableObject:
         fields = set()
         for field, fieldtype in cls._fields.items():
             if isinstance(fieldtype, ReferenceField) and fieldtype._py_type:
-                fields.update({field + "." + subfield for subfield in fieldtype._py_type.query_fields()})
+                fields.update(
+                    {
+                        field + "." + subfield
+                        for subfield in fieldtype._py_type.query_fields()
+                    }
+                )
             # elif isinstance(fieldtype, ListField) and fieldtype._py_type:
             #     fields.update({field + "." + subfield for subfield in fieldtype._py_type.query_fields()})
             else:
