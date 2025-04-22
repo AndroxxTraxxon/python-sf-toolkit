@@ -1,12 +1,13 @@
 import typing
 import httpx
 
+
 class LazyParametersMissing(RuntimeError):
     pass
 
+
 class AuthMissingResponse(RuntimeError):
     pass
-
 
 
 class SalesforceToken(typing.NamedTuple):
@@ -14,11 +15,11 @@ class SalesforceToken(typing.NamedTuple):
     token: str
 
 
-SalesforceTokenGenerator = typing.Generator[httpx.Request | None, httpx.Response | None, SalesforceToken]
-
-SalesforceLogin = typing.Callable[
-    [], SalesforceTokenGenerator
+SalesforceTokenGenerator = typing.Generator[
+    httpx.Request | None, httpx.Response | None, SalesforceToken
 ]
+
+SalesforceLogin = typing.Callable[[], SalesforceTokenGenerator]
 
 TokenRefreshCallback = typing.Callable[[SalesforceToken], typing.Any]
 

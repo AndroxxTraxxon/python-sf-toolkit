@@ -8,7 +8,12 @@ from html import escape
 
 import httpx
 
-from .types import AuthMissingResponse, SalesforceLogin, SalesforceToken, SalesforceTokenGenerator
+from .types import (
+    AuthMissingResponse,
+    SalesforceLogin,
+    SalesforceToken,
+    SalesforceTokenGenerator,
+)
 
 from ..exceptions import SalesforceAuthenticationFailed
 
@@ -25,7 +30,7 @@ def get_xml_element_value(xmlString: bytes | str, elementName: str) -> str | Non
     should return the value 'bar'.
     """
     if isinstance(xmlString, str):
-        xmlString = xmlString.encode('utf-8')
+        xmlString = xmlString.encode("utf-8")
 
     root = etree.fromstring(xmlString)
 
@@ -35,11 +40,17 @@ def get_xml_element_value(xmlString: bytes | str, elementName: str) -> str | Non
         return elements[0].text
     return None
 
+
 XML_NS = "sf"
 
-def soap_login(domain: str, request_body: str | None, sf_version: float | int | None = None) -> SalesforceTokenGenerator:
+
+def soap_login(
+    domain: str, request_body: str | None, sf_version: float | int | None = None
+) -> SalesforceTokenGenerator:
     """Process SOAP specific login workflow."""
-    if domain.casefold() not in ["login", "test"] and not domain.casefold().endswith(".my"):
+    if domain.casefold() not in ["login", "test"] and not domain.casefold().endswith(
+        ".my"
+    ):
         if "--" in domain and not domain.endswith(".sandbox"):
             domain = domain + ".sandbox"
         domain = domain + ".my"
@@ -47,11 +58,13 @@ def soap_login(domain: str, request_body: str | None, sf_version: float | int | 
 
     if not sf_version:
         if domain in ["login", "test"]:
-            raise ValueError("Cannot infer API version using the shared `login` or `test` domains")
+            raise ValueError(
+                "Cannot infer API version using the shared `login` or `test` domains"
+            )
         response = yield httpx.Request(
             "GET",
             f"{full_domain}/services/data",
-            headers={"Accept": "application/json"}
+            headers={"Accept": "application/json"},
         )
         if not response:
             raise ValueError("Unable to infer API version from response")
@@ -59,7 +72,6 @@ def soap_login(domain: str, request_body: str | None, sf_version: float | int | 
         sf_version = float(max(response.json(), key=lambda x: x["version"])["version"])
 
     soap_url = httpx.URL(f"{full_domain}/services/Soap/u/{sf_version:.01f}")
-
 
     response = yield httpx.Request(
         "POST",
@@ -75,12 +87,8 @@ def soap_login(domain: str, request_body: str | None, sf_version: float | int | 
         raise AuthMissingResponse("No response provided for SOAP login")
 
     if not response.is_success:
-        except_code = get_xml_element_value(
-            response.text, f"{XML_NS}:exceptionCode"
-        )
-        except_msg = get_xml_element_value(
-            response.text, f"{XML_NS}:exceptionMessage"
-        )
+        except_code = get_xml_element_value(response.text, f"{XML_NS}:exceptionCode")
+        except_msg = get_xml_element_value(response.text, f"{XML_NS}:exceptionMessage")
         raise SalesforceAuthenticationFailed(except_code, except_msg)
 
     session_id = get_xml_element_value(response.text, "sessionId")
@@ -96,11 +104,11 @@ def security_token_login(
     password: str,
     security_token: str,
     client_id: str | None = None,
-    domain: str = 'login',
-    api_version: float | int | None = None
+    domain: str = "login",
+    api_version: float | int | None = None,
 ) -> SalesforceLogin:
     if client_id:
-        client_id = DEFAULT_CLIENT_ID_PREFIX + "/" +client_id
+        client_id = DEFAULT_CLIENT_ID_PREFIX + "/" + client_id
     else:
         client_id = DEFAULT_CLIENT_ID_PREFIX
 
@@ -138,11 +146,11 @@ def ip_filtering_org_login(
     password: str,
     organizationId: str,
     client_id: str | None = None,
-    domain: str = 'login',
-    api_version: float | int | None = None
+    domain: str = "login",
+    api_version: float | int | None = None,
 ) -> SalesforceLogin:
     if client_id:
-        client_id = DEFAULT_CLIENT_ID_PREFIX + "/" +client_id
+        client_id = DEFAULT_CLIENT_ID_PREFIX + "/" + client_id
     else:
         client_id = DEFAULT_CLIENT_ID_PREFIX
 
@@ -176,16 +184,15 @@ def ip_filtering_org_login(
     )
 
 
-
 def ip_filtering_non_service_login(
     username: str,
     password: str,
     client_id: str | None = None,
-    domain: str = 'login',
+    domain: str = "login",
     api_version: float | int | None = None,
 ) -> SalesforceLogin:
     if client_id:
-        client_id = DEFAULT_CLIENT_ID_PREFIX + "/" +client_id
+        client_id = DEFAULT_CLIENT_ID_PREFIX + "/" + client_id
     else:
         client_id = DEFAULT_CLIENT_ID_PREFIX
 
@@ -230,37 +237,37 @@ def lazy_soap_login(**kwargs):
         SalesforceLogin: A callable that will perform the login workflow
     """
     # Username and password are always required
-    if 'username' not in kwargs or 'password' not in kwargs:
+    if "username" not in kwargs or "password" not in kwargs:
         raise ValueError("Username and password are required parameters")
 
     # If security_token is provided, use security_token_login
-    if 'security_token' in kwargs:
+    if "security_token" in kwargs:
         return security_token_login(
-            username=kwargs['username'],
-            password=kwargs['password'],
-            security_token=kwargs['security_token'],
-            client_id=kwargs.get('client_id'),
-            domain=kwargs.get('domain', 'login'),
-            api_version=kwargs.get('api_version')
+            username=kwargs["username"],
+            password=kwargs["password"],
+            security_token=kwargs["security_token"],
+            client_id=kwargs.get("client_id"),
+            domain=kwargs.get("domain", "login"),
+            api_version=kwargs.get("api_version"),
         )
 
     # If organizationId is provided, use ip_filtering_org_login
-    elif 'organizationId' in kwargs:
+    elif "organizationId" in kwargs:
         return ip_filtering_org_login(
-            username=kwargs['username'],
-            password=kwargs['password'],
-            organizationId=kwargs['organizationId'],
-            client_id=kwargs.get('client_id'),
-            domain=kwargs.get('domain', 'login'),
-            api_version=kwargs.get('api_version')
+            username=kwargs["username"],
+            password=kwargs["password"],
+            organizationId=kwargs["organizationId"],
+            client_id=kwargs.get("client_id"),
+            domain=kwargs.get("domain", "login"),
+            api_version=kwargs.get("api_version"),
         )
 
     # Otherwise, use ip_filtering_non_service_login
     else:
         return ip_filtering_non_service_login(
-            username=kwargs['username'],
-            password=kwargs['password'],
-            client_id=kwargs.get('client_id'),
-            domain=kwargs.get('domain', 'login'),
-            api_version=kwargs.get('api_version')
+            username=kwargs["username"],
+            password=kwargs["password"],
+            client_id=kwargs.get("client_id"),
+            domain=kwargs.get("domain", "login"),
+            api_version=kwargs.get("api_version"),
         )

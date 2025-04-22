@@ -25,7 +25,6 @@ class TokenRefreshCallbackMixin(BaseClient):
 
 
 class SalesforceApiHelpersMixin(BaseClient):
-    DEFAULT_API_VERSION = 63.0
     api_version: ApiVersion
     _versions: dict[float, ApiVersion]
     _userinfo: UserInfo

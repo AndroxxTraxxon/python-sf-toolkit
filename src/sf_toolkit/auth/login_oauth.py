@@ -14,23 +14,22 @@ from .types import (
     LazyParametersMissing,
     SalesforceLogin,
     SalesforceToken,
-    SalesforceTokenGenerator
+    SalesforceTokenGenerator,
 )
-
 
 
 def token_login(
     domain: str,
     token_data: dict[str, str],
     consumer_key: str,
-    headers: dict[str, str] | None = None
+    headers: dict[str, str] | None = None,
 ) -> SalesforceTokenGenerator:
     """Process OAuth 2.0 JWT Bearer Token Flow."""
     response = yield httpx.Request(
         "POST",
         f"https://{domain}.salesforce.com/services/oauth2/token",
         data=token_data,
-        headers=headers
+        headers=headers,
     )
 
     if not response:
@@ -69,8 +68,12 @@ def token_login(
 
 
 def password_login(
-    username: str, password: str, consumer_key: str, consumer_secret: str,
-    domain: str = "login") -> SalesforceLogin:
+    username: str,
+    password: str,
+    consumer_key: str,
+    consumer_secret: str,
+    domain: str = "login",
+) -> SalesforceLogin:
     """Process OAuth 2.0 Password Flow."""
 
     domain = domain.removesuffix(".salesforce.com")
@@ -81,39 +84,34 @@ def password_login(
             "username": unescape(username),
             "password": unescape(password) if password else "",
             "client_id": consumer_key,
-            "client_secret": consumer_secret
+            "client_secret": consumer_secret,
         },
         consumer_key,
-        None
+        None,
     )
 
-def client_credentials_flow_login(
-    consumer_key: str, consumer_secret: str,
-    domain:str) -> SalesforceLogin:
-    """Process OAuth 2.0 Client Credentials Flow."""
 
+def client_credentials_flow_login(
+    consumer_key: str, consumer_secret: str, domain: str
+) -> SalesforceLogin:
+    """Process OAuth 2.0 Client Credentials Flow."""
 
     domain = domain.removesuffix(".salesforce.com")
     token_data = {"grant_type": "client_credentials"}
     authorization = f"{consumer_key}:{consumer_secret}"
     encoded = base64.b64encode(authorization.encode()).decode()
     return lambda: token_login(
-        domain,
-        token_data,
-        consumer_key,
-        headers = {"Authorization": f"Basic {encoded}"}
-
+        domain, token_data, consumer_key, headers={"Authorization": f"Basic {encoded}"}
     )
 
+
 def public_key_auth_login(
-    username: str,
-    consumer_key: str,
-    private_key: bytes | str,
-    domain: str = "login"
+    username: str, consumer_key: str, private_key: bytes | str, domain: str = "login"
 ) -> SalesforceLogin:
     """Process OAuth 2.0 Public Key JWT Flow."""
 
     domain = domain.removesuffix(".salesforce.com")
+
     def _token_login():
         return token_login(
             domain,
@@ -124,11 +122,11 @@ def public_key_auth_login(
                         "iss": consumer_key,
                         "sub": username,
                         "aud": f"https://{domain}.salesforce.com",
-                        "exp": int(time.time()) + 3600
+                        "exp": int(time.time()) + 3600,
                     },
                     private_key,
-                    algorithm="RS256"
-                )
+                    algorithm="RS256",
+                ),
             },
             consumer_key,
         )
@@ -144,7 +142,7 @@ def lazy_oauth_login(**kwargs):
             username=kwargs["username"],
             consumer_key=kwargs["consumer_key"],
             private_key=kwargs["private_key"],
-            domain=kwargs.get("domain", "login")
+            domain=kwargs.get("domain", "login"),
         )
     elif "consumer_secret" in kwargs and "username" in kwargs and "password" in kwargs:
         # Password Flow
@@ -153,14 +151,14 @@ def lazy_oauth_login(**kwargs):
             password=kwargs["password"],
             consumer_key=kwargs["consumer_key"],
             consumer_secret=kwargs["consumer_secret"],
-            domain=kwargs.get("domain", "login")
+            domain=kwargs.get("domain", "login"),
         )
     elif "consumer_secret" in kwargs and "username" not in kwargs:
         # Client Credentials Flow
         return client_credentials_flow_login(
             consumer_key=kwargs["consumer_key"],
             consumer_secret=kwargs["consumer_secret"],
-            domain=kwargs.get("domain", "login")
+            domain=kwargs.get("domain", "login"),
         )
     else:
         raise LazyParametersMissing(

@@ -37,6 +37,8 @@ For most use cases, you can use the ``lazy_login`` function which automatically 
    client = SalesforceClient(login=lazy_login(sf_cli_alias="my-org"))
 
    # OAuth JWT Bearer Flow
+   with open("private_key.pem", "rb") as f:
+       private_key_data = f.read()
    client = SalesforceClient(
        login=lazy_login(
            username="user@example.com",

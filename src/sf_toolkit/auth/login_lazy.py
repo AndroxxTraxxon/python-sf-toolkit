@@ -8,9 +8,13 @@ from .types import LazyParametersMissing
 
 def lazy_login(**kwargs):
     if "sf_cli_alias" in kwargs:
-        return cli_login(kwargs.pop("sf_cli_alias"), kwargs.pop("sf_cli_exec_path", None))
+        return cli_login(
+            kwargs.pop("sf_cli_alias"), kwargs.pop("sf_cli_exec_path", None)
+        )
 
-    elif any(key in kwargs for key in ["consumer_key", "private_key", "consumer_secret"]):
+    elif any(
+        key in kwargs for key in ["consumer_key", "private_key", "consumer_secret"]
+    ):
         return lazy_oauth_login(**kwargs)
     elif all(key in kwargs for key in ["username", "password"]):
         # All SOAP login methods require at least username and password

@@ -2,10 +2,12 @@ import datetime
 from enum import Flag, auto
 import typing
 
-T = typing.TypeVar('T')
-U = typing.TypeVar('U')
+T = typing.TypeVar("T")
+U = typing.TypeVar("U")
+
 
 class ReadOnlyAssignmentException(TypeError): ...
+
 
 class SObjectFieldDescribe(typing.NamedTuple):
     """Represents metadata about a Salesforce SObject field"""
@@ -46,6 +48,7 @@ class MultiPicklistValue(str):
     def __str__(self):
         return ";".join(self.values)
 
+
 class FieldFlag(Flag):
     nillable = auto()
     unique = auto()
@@ -62,7 +65,9 @@ class FieldFlag(Flag):
     display_location_in_decimal = auto()
     write_requires_master_read = auto()
 
+
 T = typing.TypeVar("T")
+
 
 class FieldConfigurableObject:
     _values: dict[str, typing.Any]
@@ -80,7 +85,6 @@ class FieldConfigurableObject:
             if isinstance(attr, Field):
                 cls._fields[attr_name] = attr
 
-
     def __init__(self):
         self._values = {}
         self._dirty_fields = set()
@@ -88,6 +92,18 @@ class FieldConfigurableObject:
     @classmethod
     def keys(cls) -> frozenset[str]:
         return frozenset(cls._fields.keys())
+
+    @classmethod
+    def query_fields(cls) -> set[str]:
+        fields = set()
+        for field, fieldtype in cls._fields.items():
+            if isinstance(fieldtype, ReferenceField) and fieldtype._py_type:
+                fields.update({field + "." + subfield for subfield in fieldtype._py_type.query_fields()})
+            # elif isinstance(fieldtype, ListField) and fieldtype._py_type:
+            #     fields.update({field + "." + subfield for subfield in fieldtype._py_type.query_fields()})
+            else:
+                fields.add(field)
+        return fields
 
     @property
     def dirty_fields(self):
@@ -97,7 +113,7 @@ class FieldConfigurableObject:
     def dirty_fields(self):
         self._dirty_fields = set()
 
-    def serialize(self, only_changes = False):
+    def serialize(self, only_changes=False):
         if only_changes:
             return {
                 name: field.format(value)
@@ -110,8 +126,7 @@ class FieldConfigurableObject:
         return {
             name: field.format(value)
             for name, value in self._values.items()
-            if (field := self._fields[name])
-            and FieldFlag.readonly not in field.flags
+            if (field := self._fields[name]) and FieldFlag.readonly not in field.flags
         }
 
     def __getitem__(self, name):
@@ -123,6 +138,7 @@ class FieldConfigurableObject:
         if name not in self.keys():
             raise KeyError(f"Undefined field {name} on object {type(self)}")
         setattr(self, name, value)
+
 
 class Field(typing.Generic[T]):
     _py_type: type[T] | None = None
@@ -142,7 +158,9 @@ class Field(typing.Generic[T]):
         value = self.revive(value)
         self.validate(value)
         if FieldFlag.readonly in self.flags and self._name in obj._values:
-            raise ReadOnlyAssignmentException(f"Field {self._name} is readonly on object {self._owner.__name__}")
+            raise ReadOnlyAssignmentException(
+                f"Field {self._name} is readonly on object {self._owner.__name__}"
+            )
         obj._values[self._name] = value
         obj.dirty_fields.add(self._name)
 
@@ -180,16 +198,15 @@ class TextField(Field[str]):
 
 
 class IdField(TextField):
-
     def validate(self, value):
         if value is None:
             return
-        assert isinstance(value, str) and len(value) in (15, 18) and value.isalnum(),\
+        assert isinstance(value, str) and len(value) in (15, 18) and value.isalnum(), (
             f" '{value}' is not a valid Salesforce Id"
+        )
 
 
 class PicklistField(TextField):
-
     _options_: list[str]
 
     def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
@@ -198,11 +215,12 @@ class PicklistField(TextField):
 
     def validate(self, value: str):
         if self._options_ and value not in self._options_:
-            raise ValueError(f"Selection '{value}' is not in configured values for field {self._name}")
+            raise ValueError(
+                f"Selection '{value}' is not in configured values for field {self._name}"
+            )
 
 
 class MultiPicklistField(Field[MultiPicklistValue]):
-
     _options_: list[str]
 
     def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
@@ -215,7 +233,10 @@ class MultiPicklistField(Field[MultiPicklistValue]):
     def validate(self, value: MultiPicklistValue):
         for item in value.values:
             if self._options_ and item not in self._options_:
-                raise ValueError(f"Selection '{item}' is not in configured values for {self._name}")
+                raise ValueError(
+                    f"Selection '{item}' is not in configured values for {self._name}"
+                )
+
 
 class NumberField(Field[float]):
     def __init__(self, *flags: FieldFlag):
@@ -225,6 +246,7 @@ class NumberField(Field[float]):
 class IntField(Field[int]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(int, *flags)
+
 
 class CheckboxField(Field[bool]):
     def __init__(self, *flags: FieldFlag):
@@ -262,17 +284,34 @@ class DateTimeField(Field[datetime.datetime]):
     def format(self, value):
         if value.tzinfo is None:
             value = value.astimezone()
-        return value.isoformat(timespec='milliseconds')
+        return value.isoformat(timespec="milliseconds")
 
 
 class ReferenceField(Field[T]):
-
     def revive(self, value):
         if value is None:
             return value
         assert self._py_type is not None
         if isinstance(value, self._py_type):
             return value
+        if isinstance(value, dict):
+            return self._py_type(**value)
+
+
+class ListField(Field[list[T]]):
+    _py_type = list  # type: ignore
+    _nested_type: type[T]
+
+    def __init__(self, item_type: type[T], *flags: FieldFlag):
+        self._nested_type = item_type
+        super().__init__(list[item_type], *flags)
+
+    def revive(self, value):
+        if value is None:
+            return value
+        assert self._py_type is not None
+        if isinstance(value, list):
+            return [self._py_type(item) for item in value]
         if isinstance(value, dict):
             return self._py_type(**value)
 

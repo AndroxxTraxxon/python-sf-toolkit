@@ -22,7 +22,6 @@ pip install sf-toolkit
 ```python
 from sf_toolkit import SalesforceClient, SObject, cli_login
 from sf_toolkit.data.fields import IdField, TextField
-from sf_toolkit.data.query_builder import SoqlSelect
 
 # Define a Salesforce object model
 class Account(SObject, api_name="Account"):
