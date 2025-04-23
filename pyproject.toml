@@ -1,10 +1,17 @@
 [tool.poetry]
 name = "sf_toolkit"
-version = "0.1.1"
+version = "0.0.0"
 description = "A Salesforce API Adapter for Python"
 authors = ["David Culbreth <david.culbreth.256@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -30,5 +37,16 @@ sphinx-rtd-theme = "^3.0.2"
 sphinx-autobuild = "^2021.3.14"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[project]
+dynamic = ["version"]
+name = "sf_toolkit"
+
+[project.urls]
+Homepage = "https://example.com"
+Documentation = "https://androxxtraxxon.github.io/python-sf-toolkit/"
+Repository = "https://github.com/AndroxxTraxxon/python-sf-toolkit.git"
+Issues = "https://github.com/AndroxxTraxxon/python-sf-toolkit/issues"
+Changelog = "https://github.com/AndroxxTraxxon/python-sf-toolkit/blob/main/CHANGELOG.md"
