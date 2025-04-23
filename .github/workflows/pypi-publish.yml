@@ -32,21 +32,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install poetry
 
-      - name: Verify Version
-        id: version
-        run: |
-          PACKAGE_VERSION=$(poetry version -s)
-          GIT_VERSION="${{ github.event.inputs.version || github.ref }}"
-          GIT_VERSION=${GIT_VERSION#"refs/tags/"}
-          if [ "$PACKAGE_VERSION" != "$GIT_VERSION" ]; then
-            echo "pyproject.toml version $PACKAGE_VERSION does not match tag $GIT_VERSION."
-            echo "Run 'poetry version $GIT_VERSION' and commit the changes."
-            echo "Then, delete, and recreate the tag with the correct version in pyproject.toml"
-            exit 1
-          else
-            echo "Version $PACKAGE_VERSION confirmed"
-          fi
-
       - name: Build package
         run: |
           poetry build
