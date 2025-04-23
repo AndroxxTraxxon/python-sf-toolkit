@@ -35,14 +35,11 @@ jobs:
       - name: Read version
         run: |
           PACKAGE_VERSION=$(poetry version -s)
-          if [
-            "$PACKAGE_VERSION" != "${{ github.event.inputs.version || github.ref }}" && \
-            "v$PACKAGE_VERSION" != "${{ github.event.inputs.version || github.ref }}" && \
-            "refs/tags/${PACKAGE_VERSION}" != "${{ github.event.inputs.version || github.ref }}" && \
-            "refs/tags/v${PACKAGE_VERSION}" != "${{ github.event.inputs.version || github.ref }}"
-          ]; then
-            echo "pyproject.toml version $PACKAGE_VERSION does not match tag ${{ github.event.inputs.version || github.ref }}."
-            echo "Run 'poetry version ${{ github.event.inputs.version || github.ref }}' and commit the changes."
+          GIT_VERSION="${{ github.event.inputs.version || github.ref }}"
+          GIT_VERSION=${GIT_VERSION#"refs/tags/"}
+          if [ "$PACKAGE_VERSION" != "$GIT_VERSION" ]; then
+            echo "pyproject.toml version $PACKAGE_VERSION does not match tag $GIT_VERSION."
+            echo "Run 'poetry version $GIT_VERSION' and commit the changes."
             echo "Then, delete, and recreate the tag with the correct version in pyproject.toml"
             exit 1
           else
