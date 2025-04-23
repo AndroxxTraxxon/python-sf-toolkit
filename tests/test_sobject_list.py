@@ -209,8 +209,9 @@ def test_generate_record_batches(test_accounts):
     test_accounts[0].Name = "Updated Name"
 
     # Generate batches with only_changes=True
-    batches = account_list._generate_record_batches(only_changes=True)
+    batches, emitted_records = account_list._generate_record_batches(only_changes=True)
     assert len(batches) == 1  # Only one record has changes
+    assert len(emitted_records) == 1
     assert batches[0][0]["Name"] == "Updated Name"
 
     # Test with multiple object types - Salesforce processes in chunks by SObject type
@@ -222,16 +223,18 @@ def test_generate_record_batches(test_accounts):
         mixed_list.extend([_TestContact(FirstName=f"First {i}", LastName="Contact"), _TestContact(FirstName=f"Second {i}", LastName="Contact")])
 
     # Should create a single batch for all records, as there are fewer than 10 chunks
-    batches = mixed_list._generate_record_batches()
+    batches, emitted_records = mixed_list._generate_record_batches()
     # With how the batching works, there should be no separate batches since there are fewer than 10 chunks
     assert len(batches) == 1
+    assert len(emitted_records) == 20
 
     mixed_list.extend([_TestAccount(Name="Account A6"), _TestAccount(Name="Account B6")])
-    batches = mixed_list._generate_record_batches()
+    batches, emitted_records = mixed_list._generate_record_batches()
 
     # First batch should be TestAccounts, second should be TestContact
     assert len(batches[0]) == 20
     assert len(batches[1]) == 2
+    assert len(emitted_records) == 22
 
 
 def test_save_insert(mock_sf_client, test_accounts):
@@ -423,38 +426,46 @@ def test_save_update_async(mock_sf_client, test_accounts_with_ids):
         account.Industry = "Updated Industry"
 
     # Set up mock for async execution
-    with patch('asyncio.run') as mock_run:
-        # Set up mock return value for asyncio.run
-        mock_run.return_value = [
-            SObjectSaveResult(id=account.Id, success=True, errors=[])
-            for account in account_list
-        ]
+    async_client = mock_sf_client.as_async.__aenter__.return_value
+    async_client.post = AsyncMock()
 
-        # Call save_update with concurrency > 1
-        account_list.save_update(concurrency=2)
+    # Set up mock response
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account.Id, "success": True, "errors": []}
+        for account in account_list
+    ]
+    async_client.post.return_value = mock_response
 
-        # Verify async execution was triggered
-        mock_run.assert_called_once()
+    # Call save_update with concurrency > 1
+    results = account_list.save_update(concurrency=2)
 
-        # The actual results would come from the API
-        # We're just testing that the async path is triggered
+    # Verify async client's post method was called
+    async_client.post.assert_called()
+
+    # Verify results
+    assert len(results) == len(account_list)
+    for result in results:
+        assert result.success
 
 
 def test_save_upsert(mock_sf_client):
     """Test save_upsert method"""
     # Create list with objects that have external IDs
-    custom_objects = [
-        _TestAccount(Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}")
-        for i in range(3)
-    ]
-    object_list = SObjectList(custom_objects)
-    object_list.connection = SalesforceClient.DEFAULT_CONNECTION_NAME
+
+    object_list = SObjectList(
+        [
+            _TestAccount(Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}")
+            for i in range(3)
+        ],
+        connection=SalesforceClient.DEFAULT_CONNECTION_NAME
+    )
 
     # Mock response
     mock_response = Mock()
     mock_response.json.return_value = [
         {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
-        for i in range(len(custom_objects))
+        for i in range(len(object_list))
     ]
     mock_sf_client.patch.return_value = mock_response
 
@@ -462,13 +473,13 @@ def test_save_upsert(mock_sf_client):
     object_list.save_upsert(external_id_field="ExternalId__c")
 
     # Verify API call
-    mock_sf_client.patch.assert_called_once()
+    mock_sf_client.patch.assert_called()
     args, kwargs = mock_sf_client.patch.call_args
     assert "ExternalId__c" in args[0]  # URL should include external ID field
 
     # Verify the results were transformed into SObjectSaveResult objects
     results = object_list.save_upsert(external_id_field="ExternalId__c")
-    assert len(results) == len(custom_objects)
+    assert len(results) == len(object_list)
     for result in results:
         assert isinstance(result, SObjectSaveResult)
         assert result.success

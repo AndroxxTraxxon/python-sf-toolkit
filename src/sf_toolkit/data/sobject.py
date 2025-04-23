@@ -632,7 +632,10 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         return first_type
 
     def _generate_record_batches(
-        self, max_batch_size: int = 200, only_changes: bool = False
+        self,
+        max_batch_size: int = 200,
+        only_changes: bool = False,
+        include_fields: list[str] | None = None,
     ):
         """
         Generate batches of records for processing such that Salesforce will not
@@ -661,6 +664,9 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             if only_changes and not record.dirty_fields:
                 continue
             s_record = record.serialize(only_changes)
+            if include_fields:
+                for fieldname in include_fields:
+                    s_record[fieldname] = record._fields[fieldname].format(record._values.get(fieldname))
             s_record["attributes"] = {"type": record.attributes.type}
             if len(current_batch) >= max_batch_size:
                 batches.append(current_batch)
@@ -882,8 +888,10 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 )
 
         # Chunk the requests
-        composite_request_chunks = list(
-            chunked((record.serialize(only_changes) for record in self), batch_size)
+        record_batches, emitted_records = self._generate_record_batches(
+            batch_size,
+            only_changes,
+            include_fields=[external_id_field]
         )
 
         headers = {"Content-Type": "application/json"}
@@ -896,13 +904,13 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             + external_id_field
         )
         results: list[SObjectSaveResult]
-        if concurrency > 1 and len(composite_request_chunks) > 1:
+        if concurrency > 1 and len(record_batches) > 1:
             # execute async
             results = asyncio.run(
                 self.save_upsert_async(
                     sf_client,
                     url,
-                    composite_request_chunks,
+                    record_batches,
                     headers,
                     concurrency,
                     all_or_none,
@@ -912,10 +920,10 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         else:
             # execute sync
             results = []
-            for record_chunk in composite_request_chunks:
+            for record_batch in record_batches:
                 response = sf_client.patch(
                     url,
-                    json={"allOrNone": all_or_none, "records": record_chunk},
+                    json={"allOrNone": all_or_none, "records": record_batch},
                     headers=headers,
                 )
 
@@ -924,7 +932,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 )
 
         # Clear dirty fields as operations were successful
-        for record, result in zip(self, results):
+        for record, result in zip(emitted_records, results):
             if result.success:
                 record.dirty_fields.clear()
 
