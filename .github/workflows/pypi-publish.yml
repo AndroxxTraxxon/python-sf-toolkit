@@ -32,6 +32,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install poetry
 
+      - name: Read version
+        run: |
+          poetry version -s >> $PACKAGE_VERSION
+          if [ "$PACKAGE_VERSION" != ${{ github.event.inputs.tag || github.ref }} ]; then
+            echo "Failed to read version"
+            exit 1
+          else
+            echo "Version $PACKAGE_VERSION confirmed"
+          fi
+
+      - name: Verify Version Match
+        if: ${{ steps.read_version.outputs.version != github.event.inputs.tag }}
+        run: |
+          echo "Tag and version mismatch"
+          exit 1
+
       - name: Build package
         run: |
           poetry build
