@@ -454,10 +454,10 @@ def test_save_upsert(mock_sf_client):
     # Create list with objects that have external IDs
 
     object_list = SObjectList(
-        [
+        (
             _TestAccount(Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}")
             for i in range(3)
-        ],
+        ),
         connection=SalesforceClient.DEFAULT_CONNECTION_NAME
     )
 

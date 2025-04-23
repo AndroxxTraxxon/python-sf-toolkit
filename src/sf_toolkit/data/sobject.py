@@ -4,6 +4,7 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Iterable,
     TypeVar,
     Coroutine,
 )
@@ -573,7 +574,7 @@ def _is_sobject_subclass(cls):
 class SObjectList(list[_sObject], Generic[_sObject]):
     """A list that contains SObject instances and provides bulk operations via Salesforce's composite API."""
 
-    def __init__(self, iterable=(), *, connection: str = ""):
+    def __init__(self, iterable: Iterable[_sObject] = (), *, connection: str = ""):
         """
         Initialize an SObjectList.
 
@@ -581,14 +582,14 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             iterable: An optional iterable of SObject instances
             connection: Optional name of the Salesforce connection to use
         """
+        super().__init__(iterable)
         # Validate all items are SObjects
         for item in iterable:
-            if not _is_sobject(item):
+            if not isinstance(item, SObject):
                 raise TypeError(
                     f"All items must be SObject instances, got {type(item)}"
                 )
 
-        super().__init__(iterable)
         self.connection = connection
 
     def append(self, item):
