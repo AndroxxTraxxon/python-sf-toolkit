@@ -6,8 +6,8 @@ on:
   # Allow manual running from the GitHub UI
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Version tag to publish (e.g., v1.0.0)"
+      version:
+        description: "Version tag to publish (e.g., '1.2.3')"
         required: true
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.version || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,20 +35,14 @@ jobs:
       - name: Read version
         run: |
           PACKAGE_VERSION=$(poetry version -s)
-          if [ "$PACKAGE_VERSION" != "${{ github.event.inputs.tag || github.ref }}" ]; then
-            echo "pyproject.toml version $PACKAGE_VERSION does not match tag ${{ github.event.inputs.tag || github.ref }}."
-            echo "Run 'poetry version ${{ github.event.inputs.tag || github.ref }}' and commit the changes."
+          if [ "$PACKAGE_VERSION" != "${{ github.event.inputs.version || github.ref }}" ]; then
+            echo "pyproject.toml version $PACKAGE_VERSION does not match tag ${{ github.event.inputs.version || github.ref }}."
+            echo "Run 'poetry version ${{ github.event.inputs.version || github.ref }}' and commit the changes."
             echo "Then, delete, and recreate the tag with the correct version in pyproject.toml"
             exit 1
           else
             echo "Version $PACKAGE_VERSION confirmed"
           fi
-
-      - name: Verify Version Match
-        if: ${{ steps.read_version.outputs.version != github.event.inputs.tag }}
-        run: |
-          echo "Tag and version mismatch"
-          exit 1
 
       - name: Build package
         run: |
