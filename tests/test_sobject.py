@@ -11,35 +11,9 @@ from sf_toolkit.data.fields import (
     ReadOnlyAssignmentException
 )
 from sf_toolkit.data.query_builder import SoqlSelect
-from sf_toolkit.client import SalesforceClient
-from sf_toolkit.interfaces import I_SalesforceClient
 
 
 from .test_models import Opportunity, Account
-
-
-@pytest.fixture()
-def mock_sf_client():
-    # Create a mock SalesforceClient for testing
-    mock_client = MagicMock(spec=SalesforceClient)
-    mock_client.sobjects_url = "/services/data/v57.0/sobjects"
-    mock_client.data_url = "/services/data/v57.0/query"
-    mock_client.composite_sobjects_url = MagicMock(
-        return_value="/services/data/v57.0/composite/sobjects/Account"
-    )
-
-    # Keep a reference to the original _connections dictionary to restore later
-    original_connections = I_SalesforceClient._connections
-
-    # Add the mock client to the _connections dictionary directly
-    I_SalesforceClient._connections = {
-        SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
-    }
-
-    yield mock_client
-
-    # Restore the original _connections dictionary
-    I_SalesforceClient._connections = original_connections
 
 
 def test_sobject_class_definition():
@@ -64,10 +38,10 @@ def test_sobject_class_definition():
         Industry="Technology",
         AnnualRevenue=1000000.0,
         CreatedDate=(
-            cdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()
+            cdt := datetime.datetime.now().astimezone()
         ),
         LastModifiedDate=(
-            lmdt := datetime.datetime(2023, 1, 1, 12, 0, 0).astimezone()
+            lmdt := datetime.datetime.now().astimezone()
         ),
         Description="This is a test account.",
     )

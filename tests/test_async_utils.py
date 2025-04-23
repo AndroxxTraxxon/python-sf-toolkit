@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from sf_toolkit.concurrency import run_concurrently
+from sf_toolkit.async_utils import run_concurrently
 
 
 @pytest.mark.asyncio

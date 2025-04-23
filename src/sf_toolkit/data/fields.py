@@ -118,7 +118,7 @@ class FieldConfigurableObject:
     def dirty_fields(self):
         self._dirty_fields = set()
 
-    def serialize(self, only_changes=False):
+    def serialize(self, only_changes: bool = False):
         if only_changes:
             return {
                 name: field.format(value)
@@ -206,8 +206,14 @@ class IdField(TextField):
     def validate(self, value):
         if value is None:
             return
-        assert isinstance(value, str) and len(value) in (15, 18) and value.isalnum(), (
-            f" '{value}' is not a valid Salesforce Id"
+        assert isinstance(value, str), (
+            f" '{value}' is not a valid Salesforce Id. Expected a string."
+        )
+        assert len(value) in (15, 18), (
+            f" '{value}' is not a valid Salesforce Id. Expected a string of length 15 or 18, found {len(value)}"
+        )
+        assert value.isalnum(), (
+            f" '{value}' is not a valid Salesforce Id. Expected strictly alphanumeric characters."
         )
 
 
@@ -304,7 +310,6 @@ class ReferenceField(Field[T]):
 
 
 class ListField(Field[list[T]]):
-    _py_type = list  # type: ignore
     _nested_type: type[T]
 
     def __init__(self, item_type: type[T], *flags: FieldFlag):

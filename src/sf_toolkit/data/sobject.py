@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import (
     Any,
     Callable,
+    Generic,
     TypeVar,
     Coroutine,
 )
@@ -16,7 +17,7 @@ from .. import client as sftk_client
 
 from more_itertools import chunked
 
-from ..concurrency import run_concurrently
+from ..async_utils import run_concurrently
 from .._models import SObjectAttributes, SObjectSaveResult
 from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 from .fields import (
@@ -153,8 +154,11 @@ class SObject(FieldConfigurableObject, I_SObject):
             result = query.query()
             ```
         """
+        # delayed import to avoid circular imports
         if "SoqlSelect" not in globals():
+            global SoqlSelect
             from .query_builder import SoqlSelect
+
         return SoqlSelect(cls)  # type: ignore
 
     @classmethod
@@ -434,8 +438,7 @@ class SObject(FieldConfigurableObject, I_SObject):
             sf_client = cls._client_connection()
 
         if len(ids) == 1:
-            return [cls.read(ids[0], sf_client)]
-        # decoder = SObjectDecoder(sf_connection=cls._sf_attrs.connection)
+            return SObjectList(cls.read(ids[0], sf_client), connection=cls.attributes.connection)
 
         # pull in batches with composite API
         if concurrency > 1 and len(ids) > 2000:
@@ -449,7 +452,7 @@ class SObject(FieldConfigurableObject, I_SObject):
                 )
             )
         else:
-            result = []
+            result = SObjectList(connection=cls.attributes.connection)
             for chunk in chunked(ids, 2000):
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(cls.attributes.type),
@@ -470,7 +473,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         sf_client: I_AsyncSalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
-    ):
+    ) -> "SObjectList":
         if sf_client is None:
             sf_client = cls._client_connection().as_async
         async with sf_client:
@@ -481,13 +484,14 @@ class SObject(FieldConfigurableObject, I_SObject):
                 )
                 for chunk in chunked(ids, 2000)
             ]
-            records: list[_sObject] = [  # type: ignore
-                cls(**record)
+            records: list[cls] = SObjectList(  # type: ignore
+                *(cls(**record)
                 for response in (
                     await run_concurrently(concurrency, tasks, on_chunk_received)
                 )
-                for record in response.json()
-            ]
+                for record in response.json()),
+                connection=cls.attributes.connection
+            )
             return records
 
     @classmethod
@@ -566,7 +570,7 @@ def _is_sobject_subclass(cls):
     return issubclass(cls, SObject)
 
 
-class SObjectList(list[SObject]):
+class SObjectList(list[_sObject], Generic[_sObject]):
     """A list that contains SObject instances and provides bulk operations via Salesforce's composite API."""
 
     def __init__(self, iterable=(), *, connection: str = ""):
@@ -648,16 +652,17 @@ class SObjectList(list[SObject]):
                 f"batch size is {max_batch_size}, but Salesforce only allows 200",
             )
             max_batch_size = 200
+        emitted_records: list[_sObject] = []
         batches = []
         previous_record = None
         current_batch = []
         batch_chunk_count = 0
         for record in self:
-            s_record = record.serialize(only_changes)
-            if not s_record:
+            if only_changes and not record.dirty_fields:
                 continue
+            s_record = record.serialize(only_changes)
             s_record["attributes"] = {"type": record.attributes.type}
-            if len(current_batch) > max_batch_size:
+            if len(current_batch) >= max_batch_size:
                 batches.append(current_batch)
                 current_batch = []
                 batch_chunk_count = 0
@@ -673,10 +678,11 @@ class SObjectList(list[SObject]):
                     batch_chunk_count = 0
                     previous_record = None
             current_batch.append(s_record)
+            emitted_records.append(record)
             previous_record = record
         if current_batch:
             batches.append(current_batch)
-        return batches
+        return batches, emitted_records
 
     def save_insert(
         self, concurrency: int = 1, batch_size: int = 200, **callout_options
@@ -701,7 +707,7 @@ class SObjectList(list[SObject]):
                 )
 
         # Prepare records for insert
-        record_chunks = self._generate_record_batches(max_batch_size=batch_size)
+        record_chunks, emitted_records = self._generate_record_batches(batch_size)
 
         headers = {"Content-Type": "application/json"}
         if headers_option := callout_options.pop("headers", None):
@@ -710,7 +716,7 @@ class SObjectList(list[SObject]):
         if concurrency > 1 and len(record_chunks) > 1:
             # execute async
             return asyncio.run(
-                self.save_insert_async(record_chunks, headers, sf_client)
+                self.save_insert_async(sf_client, record_chunks, headers, concurrency, **callout_options)
             )
 
         # execute sync
@@ -724,23 +730,34 @@ class SObjectList(list[SObject]):
             )
             results.extend([SObjectSaveResult(**result) for result in response.json()])
 
+
+        for record, result in zip(emitted_records, results):
+            if result.success:
+                setattr(record, record.attributes.id_field, result.id)
+
         return results
 
-    @classmethod
+    @staticmethod
     async def save_insert_async(
-        cls,
+        sf_client: I_SalesforceClient,
         record_chunks: list[list[dict[str, Any]]],
         headers: dict[str, str],
-        sf_client: I_SalesforceClient,
+        concurrency: int,
+        **callout_options
     ):
+        if header_options := callout_options.pop("headers", None):
+            headers.update(header_options)
         async with sf_client.as_async as a_client:
             tasks = [
                 a_client.post(
-                    sf_client.composite_sobjects_url(), json=chunk, headers=headers
+                    sf_client.composite_sobjects_url(),
+                    json=chunk,
+                    headers=headers,
+                    **callout_options
                 )
                 for chunk in record_chunks
             ]
-            responses = await asyncio.gather(*tasks)
+            responses = await run_concurrently(concurrency, tasks)
             return [
                 SObjectSaveResult(**result)
                 for response in responses
@@ -781,24 +798,7 @@ class SObjectList(list[SObject]):
                 )
 
         # Prepare records for update
-        record_chunks = list(
-            chunked(
-                (
-                    {
-                        "attributes": {"type": obj.attributes.type},
-                        obj.attributes.id_field: getattr(obj, obj.attributes.id_field),
-                        **(
-                            obj.serialize(only_changes)
-                            if only_changes
-                            else obj.serialize()
-                        ),
-                    }
-                    for obj in self
-                ),
-                batch_size,
-            )
-        )
-
+        record_chunks, emitted_records = self._generate_record_batches(batch_size, only_changes)
         headers = {"Content-Type": "application/json"}
         if headers_option := callout_options.pop("headers", None):
             headers.update(headers_option)
@@ -810,15 +810,15 @@ class SObjectList(list[SObject]):
             )
 
         # execute sync
-        results = []
+        results: list[SObjectSaveResult] = []
         for chunk in record_chunks:
             response = sf_client.post(
                 sf_client.composite_sobjects_url(), json=chunk, headers=headers
             )
             results.extend([SObjectSaveResult(**result) for result in response.json()])
 
-            # Clear dirty fields as updates were successful
-            for record in self:
+        for record, result in zip(emitted_records, results):
+            if result.success:
                 record.dirty_fields.clear()
 
         return results
@@ -912,10 +912,10 @@ class SObjectList(list[SObject]):
         else:
             # execute sync
             results = []
-            for chunk in composite_request_chunks:
-                response = sf_client.post(
+            for record_chunk in composite_request_chunks:
+                response = sf_client.patch(
                     url,
-                    json={"compositeRequest": chunk},
+                    json={"allOrNone": all_or_none, "records": record_chunk},
                     headers=headers,
                 )
 
