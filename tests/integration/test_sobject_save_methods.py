@@ -2,7 +2,7 @@ import pytest
 import datetime
 from time import sleep
 
-from ..test_models import Product, Account
+from ..unit_test_models import Product, Account
 
 
 def test_insert_and_delete(sf_client):

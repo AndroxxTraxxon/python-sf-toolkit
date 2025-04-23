@@ -13,7 +13,7 @@ from sf_toolkit.data.fields import (
 from sf_toolkit.data.query_builder import SoqlSelect
 
 
-from .test_models import Opportunity, Account
+from .unit_test_models import Opportunity, Account
 
 
 def test_sobject_class_definition():

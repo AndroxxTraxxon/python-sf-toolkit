@@ -1,6 +1,6 @@
 from more_itertools import chunked
 import pytest
-from unittest.mock import MagicMock, Mock, patch, AsyncMock
+from unittest.mock import MagicMock, Mock, AsyncMock
 
 from sf_toolkit.data.sobject import SObject, SObjectList
 from sf_toolkit.data.fields import IdField, TextField, NumberField
@@ -118,7 +118,7 @@ def test_sobject_list_init():
 
     # Test with non-SObject objects should raise TypeError
     with pytest.raises(TypeError):
-        SObjectList(["not an SObject"])
+        SObjectList(["not an SObject"])  # type: ignore
 
 
 def test_sobject_list_append_extend():

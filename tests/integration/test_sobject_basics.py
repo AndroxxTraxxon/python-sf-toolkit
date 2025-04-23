@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timedelta
 from sf_toolkit.exceptions import SalesforceError
 
-from ..test_models import Opportunity, Account, Product
+from ..unit_test_models import Opportunity, Account, Product
 
 
 def test_opportunity_crud(sf_client):

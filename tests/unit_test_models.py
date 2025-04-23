@@ -1,5 +1,3 @@
-
-
 from sf_toolkit.data.fields import DateField, DateTimeField, FieldFlag, IdField, IntField, NumberField, TextField
 from sf_toolkit.data.sobject import SObject
 

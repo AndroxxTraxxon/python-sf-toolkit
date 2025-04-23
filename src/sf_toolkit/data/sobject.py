@@ -439,7 +439,9 @@ class SObject(FieldConfigurableObject, I_SObject):
             sf_client = cls._client_connection()
 
         if len(ids) == 1:
-            return SObjectList(cls.read(ids[0], sf_client), connection=cls.attributes.connection)
+            return SObjectList(
+                [cls.read(ids[0], sf_client)], connection=cls.attributes.connection
+            )
 
         # pull in batches with composite API
         if concurrency > 1 and len(ids) > 2000:
@@ -486,12 +488,14 @@ class SObject(FieldConfigurableObject, I_SObject):
                 for chunk in chunked(ids, 2000)
             ]
             records: list[cls] = SObjectList(  # type: ignore
-                *(cls(**record)
-                for response in (
-                    await run_concurrently(concurrency, tasks, on_chunk_received)
-                )
-                for record in response.json()),
-                connection=cls.attributes.connection
+                (
+                    cls(**record)
+                    for response in (
+                        await run_concurrently(concurrency, tasks, on_chunk_received)
+                    )
+                    for record in response.json()
+                ),
+                connection=cls.attributes.connection,
             )
             return records
 
@@ -582,9 +586,11 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             iterable: An optional iterable of SObject instances
             connection: Optional name of the Salesforce connection to use
         """
+        # items must be captured first because the iterable may be a generator,
+        # and validating items before they are added to the list
         super().__init__(iterable)
         # Validate all items are SObjects
-        for item in iterable:
+        for item in self:
             if not isinstance(item, SObject):
                 raise TypeError(
                     f"All items must be SObject instances, got {type(item)}"
@@ -594,14 +600,17 @@ class SObjectList(list[_sObject], Generic[_sObject]):
 
     def append(self, item):
         """Add an SObject to the list."""
-        if not _is_sobject(item):
+        if not isinstance(item, SObject):
             raise TypeError(f"Can only append SObject instances, got {type(item)}")
-        super().append(item)
+        super().append(item)  # type: ignore
 
     def extend(self, iterable):
         """Extend the list with an iterable of SObjects."""
+        if not isinstance(iterable, (tuple, list, set)):
+            # ensure that we're not going to be exhausting a generator and losing items.
+            iterable = tuple(iterable)
         for item in iterable:
-            if not _is_sobject(item):
+            if not isinstance(item, SObject):
                 raise TypeError(
                     f"All items must be SObject instances, got {type(item)}"
                 )
@@ -667,7 +676,9 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             s_record = record.serialize(only_changes)
             if include_fields:
                 for fieldname in include_fields:
-                    s_record[fieldname] = record._fields[fieldname].format(record._values.get(fieldname))
+                    s_record[fieldname] = record._fields[fieldname].format(
+                        record._values.get(fieldname)
+                    )
             s_record["attributes"] = {"type": record.attributes.type}
             if len(current_batch) >= max_batch_size:
                 batches.append(current_batch)
@@ -723,7 +734,9 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         if concurrency > 1 and len(record_chunks) > 1:
             # execute async
             return asyncio.run(
-                self.save_insert_async(sf_client, record_chunks, headers, concurrency, **callout_options)
+                self.save_insert_async(
+                    sf_client, record_chunks, headers, concurrency, **callout_options
+                )
             )
 
         # execute sync
@@ -737,7 +750,6 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             )
             results.extend([SObjectSaveResult(**result) for result in response.json()])
 
-
         for record, result in zip(emitted_records, results):
             if result.success:
                 setattr(record, record.attributes.id_field, result.id)
@@ -750,7 +762,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         record_chunks: list[list[dict[str, Any]]],
         headers: dict[str, str],
         concurrency: int,
-        **callout_options
+        **callout_options,
     ):
         if header_options := callout_options.pop("headers", None):
             headers.update(header_options)
@@ -760,7 +772,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                     sf_client.composite_sobjects_url(),
                     json=chunk,
                     headers=headers,
-                    **callout_options
+                    **callout_options,
                 )
                 for chunk in record_chunks
             ]
@@ -805,7 +817,9 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 )
 
         # Prepare records for update
-        record_chunks, emitted_records = self._generate_record_batches(batch_size, only_changes)
+        record_chunks, emitted_records = self._generate_record_batches(
+            batch_size, only_changes
+        )
         headers = {"Content-Type": "application/json"}
         if headers_option := callout_options.pop("headers", None):
             headers.update(headers_option)
@@ -890,9 +904,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
 
         # Chunk the requests
         record_batches, emitted_records = self._generate_record_batches(
-            batch_size,
-            only_changes,
-            include_fields=[external_id_field]
+            batch_size, only_changes, include_fields=[external_id_field]
         )
 
         headers = {"Content-Type": "application/json"}

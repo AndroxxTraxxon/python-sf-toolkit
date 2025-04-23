@@ -28,26 +28,35 @@ class ApiVersion:
         self.url = url
 
     @classmethod
-    def lazy_build(cls: type[_T_ApiVer], value) -> _T_ApiVer:
+    def lazy_build(cls, value) -> "ApiVersion":
         if isinstance(value, cls):
             return value
         elif isinstance(value, str):
-            if value.startswith("/services/data"):
-                version_number = float(value.removeprefix("/services/data"))
-                return cls(version_number, f"v{version_number:.01f}", value)
+            if value.startswith("/services/data/v"):
+                version_number = float(value.removeprefix("/services/data/v"))
+                return cls(version_number, f"{version_number:.01f}", value)
             else:
+                # attempt to isolate version number from any other characters
+                value = "".join(c for c in value if c.isdigit() or c == ".")
                 version_number = float(value)
                 return cls(
                     version_number,
-                    f"v{version_number:.01f}",
-                    f"/services/data/{version_number:.01f}",
+                    f"{version_number:.01f}",
+                    f"/services/data/v{version_number:.01f}",
                 )
 
         elif isinstance(value, float):
-            return cls(value, f"v{value:.01f}", f"/services/data/{value:.01f}")
+            return cls(value, f"{value:.01f}", f"/services/data/v{value:.01f}")
 
-        elif isinstance(dict, value):
+        elif isinstance(value, int):
+            value = float(value)
+            return cls(value, f"{value:.01f}", f"/services/data/v{value:.01f}")
+
+        elif isinstance(value, dict):
             return cls(**value)
+
+        raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
+
 
         raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
 
@@ -62,7 +71,7 @@ class ApiVersion:
 
     def __eq__(self, other) -> bool:
         if isinstance(other, ApiVersion):
-            return self.version == other.version
+            return self.version == other.version and self.url == other.url
         elif isinstance(other, (int, float)):
             return self.version == float(other)
         return False
@@ -123,7 +132,7 @@ class OrgLimit:
         Returns:
             True if usage percentage exceeds the threshold, False otherwise
         """
-        return self.usage_percentage() > threshold
+        return self.usage_percentage() >= threshold
 
 
 class UserInfo:
