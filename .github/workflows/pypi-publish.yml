@@ -34,7 +34,7 @@ jobs:
 
       - name: Read version
         run: |
-          poetry version -s >> $PACKAGE_VERSION
+          PACKAGE_VERSION=$(poetry version -s)
           if [ "$PACKAGE_VERSION" != ${{ github.event.inputs.tag || github.ref }} ]; then
             echo "Failed to read version"
             exit 1
