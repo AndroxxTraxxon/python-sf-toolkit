@@ -13,6 +13,7 @@ poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
 enable = true
 vcs = "git"
 style = "semver"
+latest-tag = true
 
 [tool.poetry.dependencies]
 python = "^3.11"
