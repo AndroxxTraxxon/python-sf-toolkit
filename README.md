@@ -46,7 +46,7 @@ with SalesforceClient(login=cli_login()) as sf:
 
 ## Documentation
 
-For full documentation, visit [docs.example.com](https://docs.example.com).
+View the full documentation on [github.io](https://androxxtraxxon.github.io/python-sf-toolkit/).
 ### Building the documentation
 
 You can build the documentation locally with:
