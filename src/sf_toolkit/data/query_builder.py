@@ -1,12 +1,13 @@
 from typing import Any, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
+from urllib.parse import quote_plus
 
 from ..formatting import quote_soql_value
 from ..interfaces import I_SObject, I_SalesforceClient
 from .._models import QueryResultJSON, SObjectRecordJSON
 
 
-BooleanOperator = Literal["AND", "OR"]
+BooleanOperator = Literal["AND", "OR", "NOT"]
 Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES", "IN"]
 
 
@@ -26,9 +27,54 @@ class Comparison:
         return f"{self.property} {self.operator} {quote_soql_value(self.value)}"
 
 
-class BooleanOperation(NamedTuple):
+class EQ(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "=", value)
+
+class NE(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "!=", value)
+
+class GT(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, ">", value)
+
+class GE(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, ">=", value)
+
+class LT(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "<", value)
+
+class LE(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "<=", value)
+
+class LIKE(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "LIKE", value)
+
+class INCLUDES(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "INCLUDES", value)
+
+class IN(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "IN", value)
+
+class NOT_IN(Comparison):
+    def __init__(self, property: str, value):
+        super().__init__(property, "NOT IN", value)
+
+
+class BooleanOperation:
     operator: BooleanOperator
-    conditions: list["Comparison | BooleanOperation"]
+    conditions: list["Comparison | BooleanOperation | str"]
+
+    def __init__(self, operator: BooleanOperator, conditions: list["Comparison | BooleanOperation | str"]):
+        self.operator = operator
+        self.conditions = conditions
 
     def __str__(self):
         formatted_conditions = [
@@ -39,12 +85,21 @@ class BooleanOperation(NamedTuple):
         ]
         return f" {self.operator} ".join(formatted_conditions)
 
+class OR(BooleanOperation):
+    def __init__(self, *conditions: "Comparison | BooleanOperation | str"):
+        super().__init__("OR", list(conditions))
 
-class Negation(NamedTuple):
-    condition: Comparison | BooleanOperation
+class AND(BooleanOperation):
+    def __init__(self, *conditions: "Comparison | BooleanOperation | str"):
+        super().__init__("AND", list(conditions))
+
+
+class NOT(BooleanOperation):
+    def __init__(self, condition: "Comparison | BooleanOperation | str"):
+        super().__init__("NOT", [condition])
 
     def __str__(self):
-        return f"NOT ({str(self.condition)})"
+        return f"NOT ({str(self.conditions[0])})"
 
 
 class Order(NamedTuple):
@@ -104,7 +159,12 @@ class QueryResult(Generic[_SObject]):
         self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
-        self.records = [sobject_type(**record) for record in records] if records else []
+        if "SObjectList" not in globals():
+            global SObjectList
+            from .sobject import SObjectList
+        self.records = SObjectList([
+            sobject_type(**record) for record in records   # type: ignore
+        ] if records else [])
         self.nextRecordsUrl = nextRecordsUrl
         if self.nextRecordsUrl:
             # nextRecordsUrl looks like this:
@@ -144,26 +204,88 @@ class SoqlQuery(Generic[_SObject]):
     def _sf_connection(self):
         return self.sobject_type._client_connection()
 
-    @staticmethod
-    def build_conditional(kwargs: dict[str, Any]) -> Comparison | BooleanOperation:
-        raise NotImplementedError()
+    @classmethod
+    def build_conditional(cls, arg: str, value)-> Comparison | NOT:
+        if arg.endswith("__ne"):
+            return NE(arg.removesuffix("__ne"), value)
+        elif arg.endswith("__gt"):
+            return GT(arg.removesuffix("__gt"), value)
+        elif arg.endswith("__lt"):
+            return LT(arg.removesuffix("__lt"), value)
+        elif arg.endswith("__ge"):
+            return GE(arg.removesuffix("__ge"), value)
+        elif arg.endswith("__le"):
+            return LE(arg.removesuffix("__le"), value)
+        elif arg.endswith("__in"):
+            return IN(arg.removesuffix("__in"), value)
+        elif arg.endswith("__not_in"):
+            return NOT(IN(arg.removesuffix("__not_in"), value))
+        elif arg.endswith("__like"):
+            return LIKE(arg.removesuffix("__like"), value)
+        elif arg.endswith("__includes"):
+            return INCLUDES(arg.removesuffix("__includes"), value)
 
-    def where(self, _raw: str | None = None, **kwargs):
+        return EQ(arg, value)
+
+    @classmethod
+    def build_conditional_clause(
+        cls,
+        kwargs: dict[str, Any],
+        mode: Literal["any", "all"] = "all",
+    ) -> Comparison | BooleanOperation:
+        assert len(kwargs) > 0
+        if len(kwargs) == 1:
+            arg, value = next(iter(kwargs.items()))
+            return cls.build_conditional(arg, value)
+        conditions = (
+            cls.build_conditional(arg, value)
+            for arg, value in kwargs.items()
+        )
+        if mode == "any":
+            return OR(*conditions)
+        elif mode == "all":
+            return AND(*conditions)
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+
+    def where(
+        self,
+        _raw: Comparison | BooleanOperation | str | None = None,
+        _mode: Literal["any", "all"] = "all", **kwargs
+    ):
         if _raw:
             self._where = _raw
         else:
-            self._where = self.build_conditional(kwargs)
+            self._where = self.build_conditional_clause(kwargs, _mode)
+        return self
+
+    def and_where(
+        self,
+        _raw: Comparison | BooleanOperation | str | None = None,
+        _mode: Literal["any", "all"] = "all",
+        **kwargs: Any
+    ):
+        assert self._where is not None, "where() must be called before and_where()"
+        if _raw:
+            self._where = AND(self._where, _raw)
+        else:
+            self._where = AND(self._where, self.build_conditional_clause(kwargs, _mode))
         return self
 
     def group_by(self, *fields: str):
         self._grouping = list(fields)
         return self
 
-    def having(self, _raw: str | None = None, **kwargs):
+    def having(
+        self,
+        _raw: Comparison | BooleanOperation | str | None = None,
+        _mode: Literal["any", "all"] = "all",
+        **kwargs
+    ):
         if _raw:
             self._having = _raw
         else:
-            self._having = self.build_conditional(kwargs)
+            self._having = self.build_conditional_clause(kwargs, _mode)
         return self
 
     def limit(self, limit: int):
@@ -183,14 +305,23 @@ class SoqlQuery(Generic[_SObject]):
             fields = self.fields
         segments = ["SELECT", ", ".join(fields), f"FROM {self.sobject_name}"]
         if self._where:
-            segments.append(str(self._where))
+            segments.extend(["WHERE", str(self._where)])
         if self._grouping:
             segments.extend(["GROUP BY", ", ".join(self._grouping)])
         if self._having:
             if self._grouping is None:
                 raise TypeError("Cannot use HAVING statement without GROUP BY")
+        if self._order:
+            segments.extend(["ORDER BY", ", ".join(map(str, self._order))])
+        if self._limit:
+            segments.append(f"LIMIT {self._limit}")
+        if self._offset:
+            segments.append(f"OFFSET {self._offset}")
 
-        return " ".join(segments)
+        query = " ".join(segments).replace("\r", " ").replace("\n", " ")
+        while "  " in query:
+            query = query.replace("  ", " ")
+        return query
 
     def __str__(self):
         return self.format()
@@ -222,8 +353,8 @@ class SoqlQuery(Generic[_SObject]):
 
         result: QueryResultJSON
         if self.sobject_type.attributes.tooling:
-            url = url = f"{client.data_url}/tooling/query/"
+            url = f"{client.data_url}/tooling/query/"
         else:
             url = f"{client.data_url}/query/"
-        result = client.get(url, params={"q": self.format(fields)}).json()
+        result = client.get(url, params={"q": quote_plus(self.format(fields))}).json()
         return QueryResult(client, self.sobject_type, **result)  # type: ignore

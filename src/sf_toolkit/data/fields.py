@@ -66,9 +66,6 @@ class FieldFlag(Flag):
     write_requires_master_read = auto()
 
 
-T = typing.TypeVar("T")
-
-
 class FieldConfigurableObject:
     _values: dict[str, typing.Any]
     _dirty_fields: set[str]
