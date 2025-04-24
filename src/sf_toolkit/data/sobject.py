@@ -13,7 +13,7 @@ from urllib.parse import quote_plus
 import warnings
 from httpx import Response
 
-from sf_toolkit.data.query_builder import SoqlSelect
+from sf_toolkit.data.query_builder import SoqlQuery
 from .. import client as sftk_client
 
 from more_itertools import chunked
@@ -140,7 +140,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         cls._register_()
 
     @classmethod
-    def select(cls) -> "SoqlSelect":
+    def select(cls) -> "SoqlQuery":
         """Create a new SoqlSelect query builder for this SObject type.
 
         Returns:
@@ -157,10 +157,10 @@ class SObject(FieldConfigurableObject, I_SObject):
         """
         # delayed import to avoid circular imports
         if "SoqlSelect" not in globals():
-            global SoqlSelect
-            from .query_builder import SoqlSelect
+            global SoqlQuery
+            from .query_builder import SoqlQuery
 
-        return SoqlSelect(cls)  # type: ignore
+        return SoqlQuery(cls)  # type: ignore
 
     @classmethod
     def _register_(cls):

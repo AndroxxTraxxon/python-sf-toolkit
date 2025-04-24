@@ -2,7 +2,7 @@ from typing import Any, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
 from ..formatting import quote_soql_value
-from ..interfaces import I_SObject
+from ..interfaces import I_SObject, I_SalesforceClient
 from .._models import QueryResultJSON, SObjectRecordJSON
 
 
@@ -76,6 +76,7 @@ class QueryResult(Generic[_SObject]):
     "The list of records returned by the query"
     nextRecordsUrl: str | None
     "URL to the next batch of records, if more exist"
+    _connection: I_SalesforceClient
     _sobject_type: type[_SObject]
     "The SObject type this QueryResult contains records for"
     query_locator: str | None = None
@@ -83,6 +84,7 @@ class QueryResult(Generic[_SObject]):
 
     def __init__(
         self,
+        connection: I_SalesforceClient,
         sobject_type: type[_SObject],
         /,
         done: bool = True,
@@ -96,6 +98,7 @@ class QueryResult(Generic[_SObject]):
         Args:
             **kwargs: Key-value pairs from the Salesforce API response.
         """
+        self._connection = connection
         self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
@@ -103,6 +106,7 @@ class QueryResult(Generic[_SObject]):
         self.nextRecordsUrl = nextRecordsUrl
         if self.nextRecordsUrl:
             # nextRecordsUrl looks like this:
+            # /services/data/v63.0/query/01gRO0000016PIAYA2-500
             self.query_locator, batch_size = self.nextRecordsUrl.rsplit(
                 "/", maxsplit=1
             )[1].rsplit("-", maxsplit=1)
@@ -114,10 +118,10 @@ class QueryResult(Generic[_SObject]):
 
         client = self._sobject_type._client_connection()
         result: QueryResultJSON = client.get(self.nextRecordsUrl).json()
-        return QueryResult(self._sobject_type, **result)
+        return QueryResult(self._connection, self._sobject_type, **result)  # type: ignore
 
 
-class SoqlSelect(Generic[_SObject]):
+class SoqlQuery(Generic[_SObject]):
     where: Comparison | BooleanOperator | None = None
     grouping: list[str] | None = None
     having: Comparison | BooleanOperator | None = None

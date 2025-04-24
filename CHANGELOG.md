@@ -1,4 +1,4 @@
-📦 Changelog
+# 📦 Changelog
 
     Versioning is managed via Git tags (e.g., v1.2.3) and associated GitLab Releases. This changelog reflects updates introduced in each tagged release.
 

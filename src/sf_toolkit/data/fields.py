@@ -111,14 +111,21 @@ class FieldConfigurableObject:
         return fields
 
     @property
-    def dirty_fields(self):
+    def dirty_fields(self) -> set[str]:
         return self._dirty_fields
 
     @dirty_fields.deleter
     def dirty_fields(self):
         self._dirty_fields = set()
 
-    def serialize(self, only_changes: bool = False):
+    def serialize(self, only_changes: bool = False, all_fields: bool = False):
+        assert not (only_changes and all_fields), "Cannot serialize both only changes and all fields."
+        if all_fields:
+            return {
+                name: field.format(self._values.get(name, None))
+                for name, field in self._fields.items()
+            }
+
         if only_changes:
             return {
                 name: field.format(value)

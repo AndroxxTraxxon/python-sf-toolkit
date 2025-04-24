@@ -10,7 +10,7 @@ from sf_toolkit.data.fields import (
     TextField,
     ReadOnlyAssignmentException
 )
-from sf_toolkit.data.query_builder import SoqlSelect
+from sf_toolkit.data.query_builder import SoqlQuery
 
 
 from .unit_test_models import Opportunity, Account
@@ -256,7 +256,7 @@ def test_query_builder(mock_sf_client):
         mock_sf_client.get.return_value = mock_response
 
         # Create a query
-        query = SoqlSelect(Case)
+        query = SoqlQuery(Case)
 
         # Execute the query
         results = query.query(["Id", "Subject", "Status", "Priority"])

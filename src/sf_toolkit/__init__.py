@@ -1,7 +1,7 @@
 from .client import SalesforceClient, AsyncSalesforceClient
 from .auth import SalesforceToken, SalesforceAuth, lazy_login, cli_login
 from .data.sobject import SObject
-from .data.query_builder import SoqlSelect
+from .data.query_builder import SoqlQuery
 
 __all__ = [
     "SalesforceClient",
@@ -9,7 +9,7 @@ __all__ = [
     "SalesforceAuth",
     "SalesforceToken",
     "SObject",
-    "SoqlSelect",
+    "SoqlQuery",
     "lazy_login",
     "cli_login",
 ]
