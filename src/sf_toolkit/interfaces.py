@@ -58,6 +58,14 @@ class SalesforceApiHelpersMixin(BaseClient):
             url += "/" + sobject
         return url
 
+    @property
+    def tooling_url(self):
+        return f"{self.data_url}/tooling"
+
+    @property
+    def tooling_sobjects_url(self):
+        return f"{self.data_url}/tooling"
+
 
 class I_AsyncSalesforceClient(
     TokenRefreshCallbackMixin, SalesforceApiHelpersMixin, AsyncClient, ABC

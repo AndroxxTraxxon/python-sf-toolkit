@@ -5,34 +5,35 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../..'))
+
+sys.path.insert(0, os.path.abspath("../.."))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Salesforce Toolkit'
-copyright = '2025'
-author = 'David Culbreth'
-release = '0.1.0'
+project = "Salesforce Toolkit"
+copyright = "2025"
+author = "David Culbreth"
+release = "0.1.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.intersphinx',
+    "sphinx.ext.autodoc",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.intersphinx",
 ]
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 exclude_patterns = []
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
+html_theme = "sphinx_rtd_theme"
+html_static_path = ["_static"]
 html_logo = "sf_toolkit.png"
 # html_theme_options = {
 #     'logo_only': False,
@@ -40,21 +41,21 @@ html_logo = "sf_toolkit.png"
 # }
 
 # -- Options for autodoc -----------------------------------------------------
-autodoc_member_order = 'bysource'
-autoclass_content = 'both'
-autodoc_typehints = 'description'
+autodoc_member_order = "bysource"
+autoclass_content = "both"
+autodoc_typehints = "description"
 autodoc_default_options = {
-    'members': True,
-    'member-order': 'bysource',
-    'special-members': '__init__',
-    'undoc-members': True,
-    'exclude-members': '__weakref__'
+    "members": True,
+    "member-order": "bysource",
+    "special-members": "__init__",
+    "undoc-members": True,
+    "exclude-members": "__weakref__",
 }
 
 # -- Intersphinx configuration ----------------------------------------------
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3', None),
-    'httpx': ('https://www.python-httpx.org', None),
+    "python": ("https://docs.python.org/3", None),
+    "httpx": ("https://www.python-httpx.org", None),
 }
 
 # -- Napoleon settings ------------------------------------------------------

@@ -8,7 +8,7 @@ from sf_toolkit.data.fields import (
     IdField,
     MultiPicklistValue,
     TextField,
-    ReadOnlyAssignmentException
+    ReadOnlyAssignmentException,
 )
 from sf_toolkit.data.query_builder import SoqlQuery
 
@@ -20,16 +20,18 @@ def test_sobject_class_definition():
     # Test basic class properties
 
     assert Account.attributes.type == "Account"
-    assert Account.keys() == frozenset({
-        "Id",
-        "Name",
-        "Industry",
-        "AnnualRevenue",
-        "CreatedDate",
-        "LastModifiedDate",
-        "Description",
-        "NumberOfEmployees"
-    })
+    assert Account.keys() == frozenset(
+        {
+            "Id",
+            "Name",
+            "Industry",
+            "AnnualRevenue",
+            "CreatedDate",
+            "LastModifiedDate",
+            "Description",
+            "NumberOfEmployees",
+        }
+    )
 
     # Test instance creation
     account = Account(
@@ -37,12 +39,8 @@ def test_sobject_class_definition():
         Name="Acme Corp",
         Industry="Technology",
         AnnualRevenue=1000000.0,
-        CreatedDate=(
-            cdt := datetime.datetime.now().astimezone()
-        ),
-        LastModifiedDate=(
-            lmdt := datetime.datetime.now().astimezone()
-        ),
+        CreatedDate=(cdt := datetime.datetime.now().astimezone()),
+        LastModifiedDate=(lmdt := datetime.datetime.now().astimezone()),
         Description="This is a test account.",
     )
 
@@ -103,7 +101,7 @@ def test_sobject_fetch(mock_sf_client):
             "Name": "Big Deal",
             "Amount": 50000.0,
             "CloseDate": "2023-06-30",
-            "StageName": "Closed Won"
+            "StageName": "Closed Won",
         },
         {
             "attributes": {"type": "Opportunity"},
@@ -111,8 +109,8 @@ def test_sobject_fetch(mock_sf_client):
             "Name": "Bigger Deal",
             "Amount": 100000.0,
             "CloseDate": "2023-07-15",
-            "StageName": "Negotiation"
-        }
+            "StageName": "Negotiation",
+        },
     ]
     mock_sf_client.post.return_value = mock_response
 
@@ -141,9 +139,7 @@ def test_sobject_describe(mock_sf_client):
         Company = TextField()
         Status = TextField()
 
-
     try:
-
         # Mock the response
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -179,11 +175,41 @@ def test_from_description(mock_sf_client):
         "label": "Custom Object",
         "labelPlural": "Custom Objects",
         "fields": [
-            {"name": "Id", "type": "id", "label": "Record ID", "updateable": False, "createable": False},
-            {"name": "Name", "type": "string", "label": "Name", "updateable": True, "createable": True},
-            {"name": "CustomDate__c", "type": "date", "label": "Custom Date", "updateable": True, "createable": True},
-            {"name": "IsActive__c", "type": "boolean", "label": "Is Active", "updateable": True, "createable": True},
-            {"name": "Categories__c", "type": "multipicklist", "label": "Categories", "updateable": True, "createable": True},
+            {
+                "name": "Id",
+                "type": "id",
+                "label": "Record ID",
+                "updateable": False,
+                "createable": False,
+            },
+            {
+                "name": "Name",
+                "type": "string",
+                "label": "Name",
+                "updateable": True,
+                "createable": True,
+            },
+            {
+                "name": "CustomDate__c",
+                "type": "date",
+                "label": "Custom Date",
+                "updateable": True,
+                "createable": True,
+            },
+            {
+                "name": "IsActive__c",
+                "type": "boolean",
+                "label": "Is Active",
+                "updateable": True,
+                "createable": True,
+            },
+            {
+                "name": "Categories__c",
+                "type": "multipicklist",
+                "label": "Categories",
+                "updateable": True,
+                "createable": True,
+            },
         ],
     }
     mock_sf_client.get.return_value = mock_response
@@ -193,13 +219,15 @@ def test_from_description(mock_sf_client):
 
     # Verify the class was created correctly
     assert CustomObject.attributes.type == "CustomObject__c"
-    assert CustomObject.keys() == frozenset({
-        "Id",
-        "Name",
-        "CustomDate__c",
-        "IsActive__c",
-        "Categories__c",
-    })
+    assert CustomObject.keys() == frozenset(
+        {
+            "Id",
+            "Name",
+            "CustomDate__c",
+            "IsActive__c",
+            "Categories__c",
+        }
+    )
 
     # Create an instance
     obj = CustomObject(
@@ -221,7 +249,7 @@ def test_from_description(mock_sf_client):
 
 def test_query_builder(mock_sf_client):
     # Define an SObject subclass
-    class Case(SObject, api_name="Case"):
+    class Case(SObject):
         Id = IdField()
         Subject = TextField()
         Description = TextField()
@@ -230,7 +258,6 @@ def test_query_builder(mock_sf_client):
         CreatedDate = DateTimeField()
 
     try:
-
         # Mock the response
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -259,7 +286,7 @@ def test_query_builder(mock_sf_client):
         query = SoqlQuery(Case)
 
         # Execute the query
-        results = query.query(["Id", "Subject", "Status", "Priority"])
+        results = query.execute("Id", "Subject", "Status", "Priority")
 
         # Verify the results
         assert results.totalSize == 2
@@ -274,6 +301,7 @@ def test_query_builder(mock_sf_client):
 
     finally:
         Case._unregister_()
+
 
 def test_save_insert(mock_sf_client):
     """Test the save_insert method for creating a new SObject record"""
@@ -310,6 +338,7 @@ def test_save_insert(mock_sf_client):
     assert kwargs["json"]["Name"] == "New Test Account"
     assert kwargs["json"]["Industry"] == "Technology"
     assert kwargs["json"]["AnnualRevenue"] == 5000000.0
+
 
 def test_save_insert_with_reload(mock_sf_client):
     """Test the save_insert method with reload_after_success=True"""
@@ -353,6 +382,7 @@ def test_save_insert_with_reload(mock_sf_client):
     mock_sf_client.post.assert_called_once()
     mock_sf_client.get.assert_called_once()
 
+
 def test_save_update(mock_sf_client):
     """Test the save_update method for updating an existing SObject record"""
     # Create an account with an existing ID
@@ -395,6 +425,7 @@ def test_save_update(mock_sf_client):
     # Verify dirty fields were cleared
     assert len(account.dirty_fields) == 0
 
+
 def test_save_update_only_changes(mock_sf_client):
     """Test the save_update method with only_changes=False to update all fields"""
     # Create an account with an existing ID
@@ -432,6 +463,7 @@ def test_save_update_only_changes(mock_sf_client):
     assert kwargs["json"]["AnnualRevenue"] == 1500000.0
     assert kwargs["json"]["Description"] == "Updated description"
 
+
 def test_save_upsert(mock_sf_client):
     """Test the save_upsert method using an external ID field"""
 
@@ -443,7 +475,6 @@ def test_save_upsert(mock_sf_client):
         Custom_Field__c = TextField()
 
     try:
-
         # Create an instance with an external ID but no Salesforce ID
         custom_obj = CustomObject(
             Name="Test Upsert",
@@ -460,9 +491,7 @@ def test_save_upsert(mock_sf_client):
         # Mock the response for the PATCH request (successful update)
         mock_response = Mock()
         mock_response.status_code = 204  # No Content (record was updated)
-        mock_response.json.return_value = {
-            "id": "ABC000000123456XYZ"
-        }
+        mock_response.json.return_value = {"id": "ABC000000123456XYZ"}
         mock_sf_client.patch.return_value = mock_response
 
         # Perform the upsert
@@ -541,6 +570,7 @@ def test_save_upsert_insert(mock_sf_client):
     assert custom_obj.Id == "a01XX000003GabcNEW"
     CustomObject._unregister_()
 
+
 def test_save_method_with_id(mock_sf_client):
     """Test the general save method with an existing ID (should use save_update)"""
     # Create an account with an ID
@@ -572,6 +602,7 @@ def test_save_method_with_id(mock_sf_client):
     # Check payload only contains changed fields
     assert kwargs["json"] == {"Name": "Save Method Updated"}
 
+
 def test_save_method_without_id(mock_sf_client):
     """Test the general save method without an ID (should use save_insert)"""
     # Create an account without an ID
@@ -595,6 +626,7 @@ def test_save_method_without_id(mock_sf_client):
     # Check the ID was set
     assert account.Id == "001XX000003DGTNEW2"
 
+
 def test_save_method_with_external_id(mock_sf_client):
     """Test the general save method with an external ID (should use save_upsert)"""
 
@@ -616,10 +648,10 @@ def test_save_method_with_external_id(mock_sf_client):
         mock_response = Mock()
         mock_response.status_code = 201  # No Content (updated existing record)
         mock_response.json.return_value = {
-            "id" : "ABC90000001pPvHAAU",
-            "errors" : [ ],
-            "success" : True,
-            "created": True
+            "id": "ABC90000001pPvHAAU",
+            "errors": [],
+            "success": True,
+            "created": True,
         }
         mock_sf_client.patch.return_value = mock_response
 
@@ -637,6 +669,7 @@ def test_save_method_with_external_id(mock_sf_client):
 
     finally:
         CustomObject._unregister_()
+
 
 def test_readonly_assignment_exception():
     """Test that assignment to readonly fields raises an exception"""

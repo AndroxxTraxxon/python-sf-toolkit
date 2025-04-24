@@ -9,7 +9,7 @@ from sf_toolkit.auth.login_soap import (
     ip_filtering_non_service_login,
     soap_login,
     get_xml_element_value,
-    DEFAULT_CLIENT_ID_PREFIX
+    DEFAULT_CLIENT_ID_PREFIX,
 )
 from sf_toolkit.auth.types import SalesforceToken
 from sf_toolkit.exceptions import SalesforceAuthenticationFailed
@@ -35,13 +35,17 @@ def test_get_element_value_invalid_xml():
         get_xml_element_value("not valid xml", "element")
 
 
-@patch('sf_toolkit.auth.login_soap.soap_login')
+@patch("sf_toolkit.auth.login_soap.soap_login")
 def test_security_token_login(mock_soap_login):
     """Test security token login method"""
     # Setup mock
-    expected_token = SalesforceToken(httpx.URL("https://test.salesforce.com"), "test_token")
+    expected_token = SalesforceToken(
+        httpx.URL("https://test.salesforce.com"), "test_token"
+    )
+
     def mock_soap_login_generator():
         yield expected_token
+
     mock_soap_login.return_value = mock_soap_login_generator()
 
     # Call the function
@@ -51,7 +55,7 @@ def test_security_token_login(mock_soap_login):
         security_token="SECURITY_TOKEN",
         client_id="test_client",
         domain="test",
-        api_version=57.0
+        api_version=57.0,
     )()
 
     # Verify the generator returns the expected token
@@ -70,20 +74,24 @@ def test_security_token_login(mock_soap_login):
     assert f"{DEFAULT_CLIENT_ID_PREFIX}/test_client" in request_body
 
 
-@patch('sf_toolkit.auth.login_soap.soap_login')
+@patch("sf_toolkit.auth.login_soap.soap_login")
 def test_security_token_login_default_client_id(mock_soap_login):
     """Test security token login with default client ID"""
     # Setup mock
-    expected_token = SalesforceToken(httpx.URL("https://test.salesforce.com"), "test_token")
+    expected_token = SalesforceToken(
+        httpx.URL("https://test.salesforce.com"), "test_token"
+    )
+
     def mock_soap_login_generator():
         yield expected_token
+
     mock_soap_login.return_value = mock_soap_login_generator()
 
     # Call the function with no client_id
     login_gen = security_token_login(
         username="test@example.com",
         password="password123",
-        security_token="SECURITY_TOKEN"
+        security_token="SECURITY_TOKEN",
     )()
 
     # Verify the generator returns the expected token
@@ -95,13 +103,17 @@ def test_security_token_login_default_client_id(mock_soap_login):
     assert "/" not in request_body.split(DEFAULT_CLIENT_ID_PREFIX)[1].split("<")[0]
 
 
-@patch('sf_toolkit.auth.login_soap.soap_login')
+@patch("sf_toolkit.auth.login_soap.soap_login")
 def test_ip_filtering_org_login(mock_soap_login):
     """Test IP filtering login with org ID"""
     # Setup mock
-    expected_token = SalesforceToken(httpx.URL("https://test.salesforce.com"), "test_token")
+    expected_token = SalesforceToken(
+        httpx.URL("https://test.salesforce.com"), "test_token"
+    )
+
     def mock_soap_login_generator():
         yield expected_token
+
     mock_soap_login.return_value = mock_soap_login_generator()
 
     # Call the function
@@ -111,7 +123,7 @@ def test_ip_filtering_org_login(mock_soap_login):
         organizationId="00D000000000001",
         client_id="test_client",
         domain="test",
-        api_version=57.0
+        api_version=57.0,
     )()
 
     # Verify the generator returns the expected token
@@ -129,13 +141,17 @@ def test_ip_filtering_org_login(mock_soap_login):
     assert f"{DEFAULT_CLIENT_ID_PREFIX}/test_client" in request_body
 
 
-@patch('sf_toolkit.auth.login_soap.soap_login')
+@patch("sf_toolkit.auth.login_soap.soap_login")
 def test_ip_filtering_non_service_login(mock_soap_login):
     """Test IP filtering login without org ID"""
     # Setup mock
-    expected_token = SalesforceToken(httpx.URL("https://test.salesforce.com"), "test_token")
+    expected_token = SalesforceToken(
+        httpx.URL("https://test.salesforce.com"), "test_token"
+    )
+
     def mock_soap_login_generator():
         yield expected_token
+
     mock_soap_login.return_value = mock_soap_login_generator()
 
     # Call the function
@@ -144,7 +160,7 @@ def test_ip_filtering_non_service_login(mock_soap_login):
         password="password123",
         client_id="test_client",
         domain="test",
-        api_version=57.0
+        api_version=57.0,
     )()
 
     # Verify the generator returns the expected token

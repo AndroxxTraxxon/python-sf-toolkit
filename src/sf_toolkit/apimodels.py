@@ -57,7 +57,6 @@ class ApiVersion:
 
         raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
 
-
         raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
 
     def __repr__(self) -> str:

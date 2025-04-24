@@ -1,8 +1,5 @@
 import pytest
-from sf_toolkit._models import (
-    SObjectSaveError,
-    SObjectSaveResult
-)
+from sf_toolkit._models import SObjectSaveError, SObjectSaveResult
 
 
 @pytest.mark.parametrize(
@@ -10,7 +7,7 @@ from sf_toolkit._models import (
     [
         ("TEST_CODE", "test error", ["field1", "field2"]),
         ("ANOTHER_CODE", "another error", ["field3", "field4"]),
-    ]
+    ],
 )
 def test_sobject_save_error(error_code, message, fields):
     error = SObjectSaveError(error_code, message, fields)
@@ -25,11 +22,13 @@ def test_sobject_save_result():
     result = SObjectSaveResult(
         "TEST_ID",
         False,
-        [{
-            "statusCode": "TEST_CODE",
-            "message": "test error",
-            "fields": ["field1", "field2"]
-        }]
+        [
+            {
+                "statusCode": "TEST_CODE",
+                "message": "test error",
+                "fields": ["field1", "field2"],
+            }
+        ],
     )
     str_result = str(result)
     assert "TEST_ID" in str_result

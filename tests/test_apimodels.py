@@ -56,7 +56,7 @@ class TestApiVersion:
         """Test string representation."""
         version = ApiVersion(56.0, "Winter '23", "/services/data/v56.0")
         assert str(version) == "Salesforce API Version Winter '23 (56.0)"
-        assert repr(version) == "ApiVersion(version=56.0, label='Winter \'23')"
+        assert repr(version) == "ApiVersion(version=56.0, label='Winter '23')"
 
     def test_float_conversion(self):
         """Test conversion to float."""
@@ -113,7 +113,10 @@ class TestOrgLimit:
     def test_repr(self):
         """Test string representation."""
         limit = OrgLimit("DailyApiRequests", 1000000, 500000)
-        assert repr(limit) == "OrgLimit(name='DailyApiRequests', current_value=500000, max_value=1000000)"
+        assert (
+            repr(limit)
+            == "OrgLimit(name='DailyApiRequests', current_value=500000, max_value=1000000)"
+        )
 
     def test_remaining(self):
         """Test remaining method."""
@@ -174,17 +177,14 @@ class TestUserInfo:
             "zoneinfo": "America/Los_Angeles",
             "photos": {
                 "picture": "https://example.com/picture.jpg",
-                "thumbnail": "https://example.com/thumbnail.jpg"
+                "thumbnail": "https://example.com/thumbnail.jpg",
             },
             "profile": "https://example.com/profile",
             "picture": "https://example.com/picture.jpg",
-            "address": {
-                "country": "US",
-                "street": "123 Main St"
-            },
+            "address": {"country": "US", "street": "123 Main St"},
             "urls": {
                 "enterprise": "https://example.my.salesforce.com",
-                "metadata": "https://example.my.salesforce.com/services/Soap/m/"
+                "metadata": "https://example.my.salesforce.com/services/Soap/m/",
             },
             "active": True,
             "user_type": "STANDARD",
@@ -193,7 +193,7 @@ class TestUserInfo:
             "utcOffset": -28800000,  # in milliseconds (-8 hours)
             "updated_at": "2023-01-01T00:00:00Z",
             "preferred_username": "test@example.com",
-            "custom_field": "custom value"  # Additional field
+            "custom_field": "custom value",  # Additional field
         }
 
     def test_init(self, user_info_data):
@@ -241,7 +241,7 @@ class TestUserInfo:
             "preferred_username": "test@example.com",
             "photos": {},
             "address": {},
-            "urls": {}
+            "urls": {},
         }
 
         user_info = UserInfo(**minimal_data)

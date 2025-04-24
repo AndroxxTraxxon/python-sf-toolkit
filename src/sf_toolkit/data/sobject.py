@@ -198,22 +198,6 @@ class SObject(FieldConfigurableObject, I_SObject):
                 raise
         self.dirty_fields.clear()
 
-    # @classmethod
-    # def typeof(
-    #     cls, record: dict, connection: str = "", id_field: str = "Id"
-    # ) -> type["SObject"] | None:
-    #     if "attributes" not in record or "type" not in record["attributes"]:
-    #         return None
-    #     fields = set(record.keys())
-    #     fields.remove("attributes")
-    #     return cls._registry[
-    #         SObjectAttributes(
-    #             record["attributes"]["type"],
-    #             connection or sftk_client.SalesforceClient.DEFAULT_CONNECTION_NAME,
-    #             id_field,
-    #         )
-    #     ].get(frozenset(fields))
-
     @classmethod
     def _client_connection(cls) -> I_SalesforceClient:
         return sftk_client.SalesforceClient.get_connection(cls.attributes.connection)
@@ -226,12 +210,16 @@ class SObject(FieldConfigurableObject, I_SObject):
     ) -> _sObject:
         if sf_client is None:
             sf_client = cls._client_connection()
+
+        if cls.attributes.tooling:
+            url = f"{sf_client.tooling_sobjects_url}/{cls.attributes.type}/{record_id}"
+        else:
+            url = f"{sf_client.sobjects_url}/{cls.attributes.type}/{record_id}"
+
         response_data = sf_client.get(
-            f"{sf_client.sobjects_url}/{cls.attributes.type}/{record_id}",
-            params={"fields": ",".join(cls.keys())},
+            url, params={"fields": ",".join(cls.keys())}
         ).json()
 
-        # fetch single record
         return cls(**response_data)
 
     def save_insert(
@@ -250,10 +238,14 @@ class SObject(FieldConfigurableObject, I_SObject):
 
         # Prepare the payload with all fields
         payload = self.serialize()
+        if self.attributes.tooling:
+            url = f"{sf_client.tooling_sobjects_url}/{self.attributes.type}"
+        else:
+            url = f"{sf_client.sobjects_url}/{self.attributes.type}"
 
         # Create a new record
         response_data = sf_client.post(
-            f"{sf_client.sobjects_url}/{self.attributes.type}",
+            url,
             json=payload,
             headers={"Content-Type": "application/json"},
         ).json()
@@ -292,10 +284,14 @@ class SObject(FieldConfigurableObject, I_SObject):
         payload = self.serialize(only_changes)
         payload.pop(self.attributes.id_field, None)
 
-        # Update the record if there's anything to update
+        if self.attributes.tooling:
+            url = f"{sf_client.tooling_sobjects_url}/{self.attributes.type}/{_id_val}"
+        else:
+            url = f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}"
+
         if payload:
             sf_client.patch(
-                f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}",
+                url,
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
@@ -317,6 +313,9 @@ class SObject(FieldConfigurableObject, I_SObject):
         update_only: bool = False,
         only_changes: bool = False,
     ):
+        if self.attributes.tooling:
+            raise TypeError("Upsert is not available for Tooling SObjects.")
+
         if sf_client is None:
             sf_client = self._client_connection()
 
@@ -344,6 +343,7 @@ class SObject(FieldConfigurableObject, I_SObject):
             params={"updateOnly": update_only} if update_only else None,
             headers={"Content-Type": "application/json"},
         )
+
         # For an insert via upsert, the response contains the new ID
         if response.is_success:
             response_data = response.json()
@@ -409,9 +409,11 @@ class SObject(FieldConfigurableObject, I_SObject):
         if not _id_val:
             raise ValueError("Cannot delete unsaved record (missing ID to delete)")
 
-        sf_client.delete(
-            f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}",
-        )
+        if self.attributes.tooling:
+            url = f"{sf_client.tooling_sobjects_url}/{self.attributes.type}/{_id_val}"
+        else:
+            url = f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}"
+        sf_client.delete(url)
         if clear_id_field:
             delattr(self, self.attributes.id_field)
 

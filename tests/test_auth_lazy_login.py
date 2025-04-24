@@ -5,7 +5,7 @@ from sf_toolkit.auth.login_lazy import lazy_login
 from sf_toolkit.auth.types import LazyParametersMissing
 
 
-@patch('sf_toolkit.auth.login_lazy.cli_login')
+@patch("sf_toolkit.auth.login_lazy.cli_login")
 def test_lazy_login_cli(mock_cli_login):
     """Test lazy_login with CLI parameters."""
     # Setup mock
@@ -19,7 +19,7 @@ def test_lazy_login_cli(mock_cli_login):
     assert result == "mock_cli_login_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.cli_login')
+@patch("sf_toolkit.auth.login_lazy.cli_login")
 def test_lazy_login_cli_with_exec_path(mock_cli_login):
     """Test lazy_login with CLI parameters including exec path."""
     # Setup mock
@@ -33,7 +33,7 @@ def test_lazy_login_cli_with_exec_path(mock_cli_login):
     assert result == "mock_cli_login_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.lazy_oauth_login')
+@patch("sf_toolkit.auth.login_lazy.lazy_oauth_login")
 def test_lazy_login_oauth_jwt(mock_oauth_login):
     """Test lazy_login with OAuth JWT parameters."""
     # Setup mock
@@ -43,7 +43,7 @@ def test_lazy_login_oauth_jwt(mock_oauth_login):
     result = lazy_login(
         username="test@example.com",
         consumer_key="test_consumer_key",
-        private_key="test_private_key"
+        private_key="test_private_key",
     )
 
     # Verify the correct login method was called
@@ -55,7 +55,7 @@ def test_lazy_login_oauth_jwt(mock_oauth_login):
     assert result == "mock_oauth_jwt_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.lazy_oauth_login')
+@patch("sf_toolkit.auth.login_lazy.lazy_oauth_login")
 def test_lazy_login_oauth_password(mock_oauth_login):
     """Test lazy_login with OAuth username-password parameters."""
     # Setup mock
@@ -66,7 +66,7 @@ def test_lazy_login_oauth_password(mock_oauth_login):
         username="test@example.com",
         password="test_password",
         consumer_key="test_consumer_key",
-        consumer_secret="test_consumer_secret"
+        consumer_secret="test_consumer_secret",
     )
 
     # Verify the correct login method was called
@@ -79,7 +79,7 @@ def test_lazy_login_oauth_password(mock_oauth_login):
     assert result == "mock_oauth_password_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.lazy_oauth_login')
+@patch("sf_toolkit.auth.login_lazy.lazy_oauth_login")
 def test_lazy_login_oauth_client_credentials(mock_oauth_login):
     """Test lazy_login with OAuth client credentials parameters."""
     # Setup mock
@@ -87,8 +87,7 @@ def test_lazy_login_oauth_client_credentials(mock_oauth_login):
 
     # Call with parameters for client credentials flow
     result = lazy_login(
-        consumer_key="test_consumer_key",
-        consumer_secret="test_consumer_secret"
+        consumer_key="test_consumer_key", consumer_secret="test_consumer_secret"
     )
 
     # Verify the correct login method was called
@@ -101,7 +100,7 @@ def test_lazy_login_oauth_client_credentials(mock_oauth_login):
     assert result == "mock_oauth_client_credentials_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.lazy_soap_login')
+@patch("sf_toolkit.auth.login_lazy.lazy_soap_login")
 def test_lazy_login_soap_security_token(mock_soap_login):
     """Test lazy_login with SOAP security token parameters."""
     # Setup mock
@@ -111,7 +110,7 @@ def test_lazy_login_soap_security_token(mock_soap_login):
     result = lazy_login(
         username="test@example.com",
         password="test_password",
-        security_token="test_security_token"
+        security_token="test_security_token",
     )
 
     # Verify the correct login method was called
@@ -123,7 +122,7 @@ def test_lazy_login_soap_security_token(mock_soap_login):
     assert result == "mock_soap_security_token_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.lazy_soap_login')
+@patch("sf_toolkit.auth.login_lazy.lazy_soap_login")
 def test_lazy_login_soap_ip_filtering(mock_soap_login):
     """Test lazy_login with SOAP IP filtering parameters."""
     # Setup mock
@@ -131,9 +130,7 @@ def test_lazy_login_soap_ip_filtering(mock_soap_login):
 
     # Call with parameters for IP filtering login
     result = lazy_login(
-        username="test@example.com",
-        password="test_password",
-        domain="test"
+        username="test@example.com", password="test_password", domain="test"
     )
 
     # Verify the correct login method was called
@@ -145,7 +142,7 @@ def test_lazy_login_soap_ip_filtering(mock_soap_login):
     assert result == "mock_soap_ip_filtering_function"
 
 
-@patch('sf_toolkit.auth.login_lazy.lazy_soap_login')
+@patch("sf_toolkit.auth.login_lazy.lazy_soap_login")
 def test_lazy_login_soap_organization_id(mock_soap_login):
     """Test lazy_login with SOAP organization ID parameters."""
     # Setup mock
@@ -155,7 +152,7 @@ def test_lazy_login_soap_organization_id(mock_soap_login):
     result = lazy_login(
         username="test@example.com",
         password="test_password",
-        organizationId="00D000000000001"
+        organizationId="00D000000000001",
     )
 
     # Verify the correct login method was called
@@ -170,17 +167,21 @@ def test_lazy_login_soap_organization_id(mock_soap_login):
 def test_lazy_login_invalid_parameters():
     """Test lazy_login with invalid parameters."""
     # Call with invalid parameters (missing all required params)
-    with pytest.raises(LazyParametersMissing, match="Could not determine authentication method"):
+    with pytest.raises(
+        LazyParametersMissing, match="Could not determine authentication method"
+    ):
         lazy_login(domain="test")
 
     # Call with incomplete OAuth parameters (missing consumer_secret or private_key)
-    with pytest.raises(LazyParametersMissing, match="Unable to determine authentication method"):
+    with pytest.raises(
+        LazyParametersMissing, match="Unable to determine authentication method"
+    ):
         lazy_login(username="test@example.com", consumer_key="test_key")
 
 
-@patch('sf_toolkit.auth.login_lazy.cli_login')
-@patch('sf_toolkit.auth.login_lazy.lazy_oauth_login')
-@patch('sf_toolkit.auth.login_lazy.lazy_soap_login')
+@patch("sf_toolkit.auth.login_lazy.cli_login")
+@patch("sf_toolkit.auth.login_lazy.lazy_oauth_login")
+@patch("sf_toolkit.auth.login_lazy.lazy_soap_login")
 def test_lazy_login_priority(mock_soap_login, mock_oauth_login, mock_cli_login):
     """Test that lazy_login prioritizes methods correctly."""
     # Setup mocks
@@ -193,7 +194,7 @@ def test_lazy_login_priority(mock_soap_login, mock_oauth_login, mock_cli_login):
         sf_cli_alias="my-dev-org",
         username="test@example.com",
         password="test_password",
-        consumer_key="test_key"
+        consumer_key="test_key",
     )
 
     # Verify CLI login was used
@@ -212,7 +213,7 @@ def test_lazy_login_priority(mock_soap_login, mock_oauth_login, mock_cli_login):
         username="test@example.com",
         password="test_password",
         consumer_key="test_key",
-        consumer_secret="test_secret"
+        consumer_secret="test_secret",
     )
 
     # Verify OAuth login was used

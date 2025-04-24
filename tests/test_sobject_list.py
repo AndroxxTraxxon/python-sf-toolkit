@@ -1,5 +1,9 @@
 from unittest.mock import MagicMock, Mock, AsyncMock
 
+import pytest
+
+from more_itertools import chunked
+
 from sf_toolkit.data.sobject import SObject, SObjectList
 from sf_toolkit.data.fields import IdField, TextField, NumberField
 from sf_toolkit.client import SalesforceClient
@@ -62,9 +66,7 @@ def test_accounts():
     """Create test account objects for testing"""
     accounts = [
         _TestAccount(
-            Name=f"Test Account {i}",
-            Industry="Technology",
-            Revenue=1000000.0 * i
+            Name=f"Test Account {i}", Industry="Technology", Revenue=1000000.0 * i
         )
         for i in range(1, 6)  # Create 5 accounts
     ]
@@ -79,7 +81,7 @@ def test_contacts():
             FirstName=f"First{i}",
             LastName=f"Last{i}",
             Email=f"contact{i}@example.com",
-            AccountId=f"001XX0000{i}YYZZZAAA"  # Valid 18-character ID
+            AccountId=f"001XX0000{i}YYZZZAAA",  # Valid 18-character ID
         )
         for i in range(1, 4)  # Create 3 contacts
     ]
@@ -103,10 +105,7 @@ def test_sobject_list_init():
     assert len(empty_list) == 0
 
     # Test with a list of SObjects
-    accounts = [
-        _TestAccount(Name="Test 1"),
-        _TestAccount(Name="Test 2")
-    ]
+    accounts = [_TestAccount(Name="Test 1"), _TestAccount(Name="Test 2")]
     account_list = SObjectList(accounts)
     assert len(account_list) == 2
 
@@ -134,10 +133,7 @@ def test_sobject_list_append_extend():
         sobject_list.append("not an SObject")
 
     # Test extend
-    more_accounts = [
-        _TestAccount(Name="Test 2"),
-        _TestAccount(Name="Test 3")
-    ]
+    more_accounts = [_TestAccount(Name="Test 2"), _TestAccount(Name="Test 3")]
     sobject_list.extend(more_accounts)
     assert len(sobject_list) == 3
 
@@ -216,9 +212,16 @@ def test_generate_record_batches(test_accounts):
     mixed_list = SObjectList([])
 
     # Create a list with alternating chunks of record types (accounts, contacts, accounts...)
-    for i in range(5): # Create fewer than 10 chunks to verify batch count
-        mixed_list.extend([_TestAccount(Name=f"Account A{i}"), _TestAccount(Name=f"Account B{i}")])
-        mixed_list.extend([_TestContact(FirstName=f"First {i}", LastName="Contact"), _TestContact(FirstName=f"Second {i}", LastName="Contact")])
+    for i in range(5):  # Create fewer than 10 chunks to verify batch count
+        mixed_list.extend(
+            [_TestAccount(Name=f"Account A{i}"), _TestAccount(Name=f"Account B{i}")]
+        )
+        mixed_list.extend(
+            [
+                _TestContact(FirstName=f"First {i}", LastName="Contact"),
+                _TestContact(FirstName=f"Second {i}", LastName="Contact"),
+            ]
+        )
 
     # Should create a single batch for all records, as there are fewer than 10 chunks
     batches, emitted_records = mixed_list._generate_record_batches()
@@ -226,7 +229,9 @@ def test_generate_record_batches(test_accounts):
     assert len(batches) == 1
     assert len(emitted_records) == 20
 
-    mixed_list.extend([_TestAccount(Name="Account A6"), _TestAccount(Name="Account B6")])
+    mixed_list.extend(
+        [_TestAccount(Name="Account A6"), _TestAccount(Name="Account B6")]
+    )
     batches, emitted_records = mixed_list._generate_record_batches()
 
     # First batch should be TestAccounts, second should be TestContact
@@ -270,10 +275,18 @@ def test_save_insert_with_errors(mock_sf_client, test_accounts):
     # Mock error response
     mock_response = Mock()
     mock_response.json.return_value = [
-        {"id": None, "success": False, "errors": [
-            {"statusCode": "REQUIRED_FIELD_MISSING", "message": "Required field missing", "fields": ["Industry"]}
-        ]},
-        {"id": "001XX0000ABCDEFGHI", "success": True, "errors": []}
+        {
+            "id": None,
+            "success": False,
+            "errors": [
+                {
+                    "statusCode": "REQUIRED_FIELD_MISSING",
+                    "message": "Required field missing",
+                    "fields": ["Industry"],
+                }
+            ],
+        },
+        {"id": "001XX0000ABCDEFGHI", "success": True, "errors": []},
     ]
     mock_sf_client.post.return_value = mock_response
 
@@ -293,7 +306,9 @@ def test_save_insert_with_id_error(test_accounts_with_ids, mock_sf_client):
     account_list = SObjectList(test_accounts_with_ids)
 
     # Should raise ValueError
-    with pytest.raises(ValueError, match="Cannot insert record that already has an Id set"):
+    with pytest.raises(
+        ValueError, match="Cannot insert record that already has an Id set"
+    ):
         account_list.save_insert()
 
 
@@ -307,13 +322,15 @@ def test_save_insert_async(mock_sf_client, test_accounts):
     async_client = mock_sf_client.as_async.__aenter__.return_value
     mock_response = AsyncMock()
     mock_response.return_value = Mock()
-    mock_response.return_value.json.side_effect = list(chunked(
-        (
-            {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
-            for i in range(len(many_accounts))
-        ),
-        5
-    ))
+    mock_response.return_value.json.side_effect = list(
+        chunked(
+            (
+                {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
+                for i in range(len(many_accounts))
+            ),
+            5,
+        )
+    )
     async_client.post = mock_response
 
     # Call save_insert with concurrency > 1
@@ -341,8 +358,7 @@ def test_save_update(mock_sf_client, test_accounts_with_ids):
     # Mock response
     mock_response = Mock()
     mock_response.json.return_value = [
-        {"id": account.Id, "success": True, "errors": []}
-        for account in account_list
+        {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
     mock_sf_client.post.return_value = mock_response
 
@@ -390,7 +406,7 @@ def test_save_update_only_changes(mock_sf_client, test_accounts_with_ids):
 
     # Check the payload
     args, kwargs = mock_sf_client.post.call_args
-    request_data = kwargs.get('json', [])
+    request_data = kwargs.get("json", [])
 
     # Should include only the two modified records
     assert len(request_data) == 2
@@ -430,8 +446,7 @@ def test_save_update_async(mock_sf_client, test_accounts_with_ids):
     # Set up mock response
     mock_response = Mock()
     mock_response.json.return_value = [
-        {"id": account.Id, "success": True, "errors": []}
-        for account in account_list
+        {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
     async_client.post.return_value = mock_response
 
@@ -453,10 +468,12 @@ def test_save_upsert(mock_sf_client):
 
     object_list = SObjectList(
         [
-            _TestAccount(Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}")
+            _TestAccount(
+                Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}"
+            )
             for i in range(3)
         ],
-        connection=SalesforceClient.DEFAULT_CONNECTION_NAME
+        connection=SalesforceClient.DEFAULT_CONNECTION_NAME,
     )
 
     # Mock response
@@ -490,13 +507,15 @@ def test_save_upsert_missing_external_id(mock_sf_client):
     # Create list with objects, one missing external ID
     custom_objects = [
         _TestAccount(Name="Account 1", ExternalId__c="EXT-1"),
-        _TestAccount(Name="Account 2")  # Missing external ID
+        _TestAccount(Name="Account 2"),  # Missing external ID
     ]
     object_list = SObjectList(custom_objects)
     object_list.connection = SalesforceClient.DEFAULT_CONNECTION_NAME
 
     # Should raise AssertionError
-    with pytest.raises(AssertionError, match="Record at index 1 has no value for external ID field"):
+    with pytest.raises(
+        AssertionError, match="Record at index 1 has no value for external ID field"
+    ):
         object_list.save_upsert(external_id_field="ExternalId__c")
 
 
@@ -504,8 +523,7 @@ def test_save_upsert_async(mock_sf_client):
     """Test save_upsert with async execution"""
     # Create objects with external IDs
     custom_objects = [
-        _TestAccount(Name=f"Account {i}", ExternalId__c=f"EXT-{i}")
-        for i in range(10)
+        _TestAccount(Name=f"Account {i}", ExternalId__c=f"EXT-{i}") for i in range(10)
     ]
     object_list = SObjectList(custom_objects)
     object_list.connection = SalesforceClient.DEFAULT_CONNECTION_NAME
@@ -514,16 +532,19 @@ def test_save_upsert_async(mock_sf_client):
     async_client = mock_sf_client.as_async.__aenter__.return_value
     async_client.patch = AsyncMock()
     async_client.patch.return_value = Mock()
-    async_client.patch.return_value.json.side_effect = list(chunked([
-        {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
-        for i in range(len(custom_objects))
-    ], 2))
+    async_client.patch.return_value.json.side_effect = list(
+        chunked(
+            [
+                {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
+                for i in range(len(custom_objects))
+            ],
+            2,
+        )
+    )
 
     # Call save_upsert with concurrency > 1
     results = object_list.save_upsert(
-        external_id_field="ExternalId__c",
-        concurrency=3,
-        batch_size=2
+        external_id_field="ExternalId__c", concurrency=3, batch_size=2
     )
 
     # Verify async client was used
@@ -541,7 +562,9 @@ def test_save_upsert_only_changes(mock_sf_client):
     """Test save_upsert with only_changes=True"""
     # Create objects with external IDs and set them as not dirty
     custom_objects = [
-        _TestAccount(Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}")
+        _TestAccount(
+            Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}"
+        )
         for i in range(3)
     ]
     for obj in custom_objects:
@@ -570,7 +593,7 @@ def test_save_upsert_only_changes(mock_sf_client):
 
     # Check the payload in the request
     args, kwargs = mock_sf_client.patch.call_args
-    composite_request = kwargs.get('json', {}).get('records', [])
+    composite_request = kwargs.get("json", {}).get("records", [])
 
     # Should only send the changed fields
     assert len(composite_request) == 2
@@ -581,10 +604,12 @@ def test_save_upsert_only_changes(mock_sf_client):
 def test_consistent_sobject_type_for_upsert(mock_sf_client):
     """Test that save_upsert validates consistent SObject types"""
     # Create mixed list
-    mixed_list = SObjectList([
-        _TestAccount(Name="Account", ExternalId__c="EXT-1"),
-        _TestContact(FirstName="First", LastName="Last", ExternalId__c="EXT-2")
-    ])
+    mixed_list = SObjectList(
+        [
+            _TestAccount(Name="Account", ExternalId__c="EXT-1"),
+            _TestContact(FirstName="First", LastName="Last", ExternalId__c="EXT-2"),
+        ]
+    )
 
     # Should raise TypeError
     with pytest.raises(TypeError, match="All objects must be of the same type"):
@@ -598,8 +623,7 @@ def test_delete(mock_sf_client, test_accounts_with_ids):
     # Mock response
     mock_response = Mock()
     mock_response.json.return_value = [
-        {"id": account.Id, "success": True, "errors": []}
-        for account in account_list
+        {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
     mock_sf_client.delete.return_value = mock_response
 
@@ -612,7 +636,7 @@ def test_delete(mock_sf_client, test_accounts_with_ids):
     assert args[0] == "/services/data/v57.0/composite/sobjects"
 
     # Check IDs are included in params
-    ids_param = kwargs.get('params', {}).get('ids', '')
+    ids_param = kwargs.get("params", {}).get("ids", "")
     assert all(account.Id in ids_param for account in account_list)
 
 
@@ -623,8 +647,7 @@ def test_delete_with_clear_id(mock_sf_client, test_accounts_with_ids):
     # Mock response
     mock_response = Mock()
     mock_response.json.return_value = [
-        {"id": account.Id, "success": True, "errors": []}
-        for account in account_list
+        {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
     mock_sf_client.delete.return_value = mock_response
 
@@ -635,6 +658,7 @@ def test_delete_with_clear_id(mock_sf_client, test_accounts_with_ids):
     for account in account_list:
         assert account.Id is None
 
+
 def test_delete_async(mock_sf_client, test_accounts_with_ids):
     """Test delete with async execution"""
     account_list = SObjectList(test_accounts_with_ids)
@@ -644,13 +668,12 @@ def test_delete_async(mock_sf_client, test_accounts_with_ids):
     mock_response = AsyncMock()
     mock_response.return_value = Mock()
     mock_response.return_value.json.return_value = [
-        {"id": account.Id, "success": True, "errors": []}
-        for account in account_list
+        {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
     async_client.delete = mock_response
 
     # Call delete with concurrency > 1
-    account_list.delete(concurrency=2, batch_size=(len(account_list)//2))
+    account_list.delete(concurrency=2, batch_size=(len(account_list) // 2))
 
     # Verify async client's delete method was called
     async_client.delete.assert_called()

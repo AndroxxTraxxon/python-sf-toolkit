@@ -7,13 +7,13 @@ from .._models import QueryResultJSON, SObjectRecordJSON
 
 
 BooleanOperator = Literal["AND", "OR"]
-Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES"]
+Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES", "IN"]
 
 
 class Comparison:
     property: str
     comparator: Comparator
-    value: str | bool | datetime | date | None
+    value: "SoqlQuery | str | bool | datetime | date | None"
 
     def __init__(self, property: str, op, value):
         self.property = property
@@ -21,6 +21,8 @@ class Comparison:
         self.value = value
 
     def __str__(self):
+        if isinstance(self.value, SoqlQuery):
+            return f"{self.property} {self.operator} ({str(self.value)})"
         return f"{self.property} {self.operator} {quote_soql_value(self.value)}"
 
 
@@ -116,18 +118,17 @@ class QueryResult(Generic[_SObject]):
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
-        client = self._sobject_type._client_connection()
-        result: QueryResultJSON = client.get(self.nextRecordsUrl).json()
+        result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
         return QueryResult(self._connection, self._sobject_type, **result)  # type: ignore
 
 
 class SoqlQuery(Generic[_SObject]):
-    where: Comparison | BooleanOperator | None = None
-    grouping: list[str] | None = None
-    having: Comparison | BooleanOperator | None = None
-    limit: int | None = None
-    offset: int | None = None
-    order: list[Order] | None = None
+    _where: Comparison | BooleanOperation | str | None = None
+    _grouping: list[str] | None = None
+    _having: Comparison | BooleanOperation | str | None = None
+    _limit: int | None = None
+    _offset: int | None = None
+    _order: list[Order | str] | None = None
 
     def __init__(self, sobject_type: type[_SObject]):
         self.sobject_type = sobject_type
@@ -143,17 +144,56 @@ class SoqlQuery(Generic[_SObject]):
     def _sf_connection(self):
         return self.sobject_type._client_connection()
 
-    def format(self, fields: list[str]):
+    @staticmethod
+    def build_conditional(kwargs: dict[str, Any]) -> Comparison | BooleanOperation:
+        raise NotImplementedError()
+
+    def where(self, _raw: str | None = None, **kwargs):
+        if _raw:
+            self._where = _raw
+        else:
+            self._where = self.build_conditional(kwargs)
+        return self
+
+    def group_by(self, *fields: str):
+        self._grouping = list(fields)
+        return self
+
+    def having(self, _raw: str | None = None, **kwargs):
+        if _raw:
+            self._having = _raw
+        else:
+            self._having = self.build_conditional(kwargs)
+        return self
+
+    def limit(self, limit: int):
+        self._limit = limit
+        return self
+
+    def offset(self, offset: int):
+        self._offset = offset
+        return self
+
+    def order_by(self, *orders: Order | str):
+        self._order = list(orders)
+        return self
+
+    def format(self, fields: list[str] | None = None):
+        if not fields:
+            fields = self.fields
         segments = ["SELECT", ", ".join(fields), f"FROM {self.sobject_name}"]
-        if self.where:
-            segments.append(str(self.where))
-        if self.grouping:
-            segments.extend(["GROUP BY", ", ".join(self.grouping)])
-        if self.having:
-            if self.grouping is None:
+        if self._where:
+            segments.append(str(self._where))
+        if self._grouping:
+            segments.extend(["GROUP BY", ", ".join(self._grouping)])
+        if self._having:
+            if self._grouping is None:
                 raise TypeError("Cannot use HAVING statement without GROUP BY")
 
         return " ".join(segments)
+
+    def __str__(self):
+        return self.format()
 
     def count(self) -> int:
         """
@@ -165,20 +205,25 @@ class SoqlQuery(Generic[_SObject]):
         """
 
         # Execute the query
-        count_result = self.query(["COUNT()"])
+        count_result = self.execute("COUNT()")
 
         # Count query returns a list with a single record containing the count
         return count_result.totalSize
 
-    def query(self, fields: list[str] | None = None) -> QueryResult[_SObject]:
+    def execute(self, *_fields: str) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).
         """
-        if not fields:
+        if _fields:
+            fields = list(_fields)
+        else:
             fields = self.fields
         client = self._sf_connection()
 
-        result: QueryResultJSON = client.get(
-            f"{client.data_url}/query", params={"q": self.format(fields)}
-        ).json()
-        return QueryResult(self.sobject_type, **result)
+        result: QueryResultJSON
+        if self.sobject_type.attributes.tooling:
+            url = url = f"{client.data_url}/tooling/query/"
+        else:
+            url = f"{client.data_url}/query/"
+        result = client.get(url, params={"q": self.format(fields)}).json()
+        return QueryResult(client, self.sobject_type, **result)  # type: ignore

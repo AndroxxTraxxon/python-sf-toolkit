@@ -10,9 +10,13 @@ from sf_toolkit.auth.login_oauth import (
     password_login,
     client_credentials_flow_login,
     public_key_auth_login,
-    lazy_oauth_login
+    lazy_oauth_login,
 )
-from sf_toolkit.auth.types import AuthMissingResponse, LazyParametersMissing, SalesforceToken
+from sf_toolkit.auth.types import (
+    AuthMissingResponse,
+    LazyParametersMissing,
+    SalesforceToken,
+)
 from sf_toolkit.exceptions import SalesforceAuthenticationFailed
 
 
@@ -27,14 +31,14 @@ def test_token_login_success():
         "id": "https://login.salesforce.com/id/00D000000000001AAA/005000000000001AAA",
         "token_type": "Bearer",
         "issued_at": "1613412345123",
-        "signature": "SIGNATURE"
+        "signature": "SIGNATURE",
     }
 
     # Create and start the generator
     token_gen = token_login(
         "test",
         {"grant_type": "password", "username": "user@example.com"},
-        "test_consumer_key"
+        "test_consumer_key",
     )
 
     # First yield should be a request
@@ -63,14 +67,14 @@ def test_token_login_error():
     mock_response.status_code = 400
     mock_response.json.return_value = {
         "error": "invalid_grant",
-        "error_description": "authentication failure"
+        "error_description": "authentication failure",
     }
 
     # Create and start the generator
     token_gen = token_login(
         "test",
         {"grant_type": "password", "username": "user@example.com"},
-        "test_consumer_key"
+        "test_consumer_key",
     )
 
     # First yield should be a request
@@ -98,7 +102,7 @@ def test_token_login_json_decode_error():
     token_gen = token_login(
         "test",
         {"grant_type": "password", "username": "user@example.com"},
-        "test_consumer_key"
+        "test_consumer_key",
     )
 
     # First yield should be a request
@@ -115,7 +119,7 @@ def test_token_login_no_response():
     token_gen = token_login(
         "test",
         {"grant_type": "password", "username": "user@example.com"},
-        "test_consumer_key"
+        "test_consumer_key",
     )
 
     # First yield should be a request
@@ -128,12 +132,16 @@ def test_token_login_no_response():
 
 def test_password_login():
     """Test password login method."""
-    with patch('sf_toolkit.auth.login_oauth.token_login') as mock_token_login:
+    with patch("sf_toolkit.auth.login_oauth.token_login") as mock_token_login:
         # Setup mock token generator
-        expected_token = SalesforceToken(httpx.URL("https://test.my.salesforce.com"), "test_token")
+        expected_token = SalesforceToken(
+            httpx.URL("https://test.my.salesforce.com"), "test_token"
+        )
 
         def mock_token_generator():
-            yield httpx.Request("POST", "https://test.salesforce.com/services/oauth2/token")
+            yield httpx.Request(
+                "POST", "https://test.salesforce.com/services/oauth2/token"
+            )
             return expected_token
 
         mock_token_login.return_value = mock_token_generator()
@@ -144,7 +152,7 @@ def test_password_login():
             password="password123",
             consumer_key="test_consumer_key",
             consumer_secret="test_consumer_secret",
-            domain="test"
+            domain="test",
         )
 
         # Get the generator
@@ -173,12 +181,16 @@ def test_password_login():
 
 def test_password_login_with_empty_password():
     """Test password login with empty password."""
-    with patch('sf_toolkit.auth.login_oauth.token_login') as mock_token_login:
+    with patch("sf_toolkit.auth.login_oauth.token_login") as mock_token_login:
         # Setup mock token generator
-        expected_token = SalesforceToken(httpx.URL("https://test.my.salesforce.com"), "test_token")
+        expected_token = SalesforceToken(
+            httpx.URL("https://test.my.salesforce.com"), "test_token"
+        )
 
         def mock_token_generator():
-            yield httpx.Request("POST", "https://test.salesforce.com/services/oauth2/token")
+            yield httpx.Request(
+                "POST", "https://test.salesforce.com/services/oauth2/token"
+            )
             return expected_token
 
         mock_token_login.return_value = mock_token_generator()
@@ -188,7 +200,7 @@ def test_password_login_with_empty_password():
             username="test@example.com",
             password="",  # Empty password
             consumer_key="test_consumer_key",
-            consumer_secret="test_consumer_secret"
+            consumer_secret="test_consumer_secret",
         )
 
         # Get the generator
@@ -209,12 +221,16 @@ def test_password_login_with_empty_password():
 
 def test_client_credentials_flow_login():
     """Test client credentials flow login method."""
-    with patch('sf_toolkit.auth.login_oauth.token_login') as mock_token_login:
+    with patch("sf_toolkit.auth.login_oauth.token_login") as mock_token_login:
         # Setup mock token generator
-        expected_token = SalesforceToken(httpx.URL("https://test.my.salesforce.com"), "test_token")
+        expected_token = SalesforceToken(
+            httpx.URL("https://test.my.salesforce.com"), "test_token"
+        )
 
         def mock_token_generator():
-            yield httpx.Request("POST", "https://test.salesforce.com/services/oauth2/token")
+            yield httpx.Request(
+                "POST", "https://test.salesforce.com/services/oauth2/token"
+            )
             return expected_token
 
         mock_token_login.return_value = mock_token_generator()
@@ -223,7 +239,7 @@ def test_client_credentials_flow_login():
         login_func = client_credentials_flow_login(
             consumer_key="test_consumer_key",
             consumer_secret="test_consumer_secret",
-            domain="test"
+            domain="test",
         )
 
         # Get the generator
@@ -261,17 +277,22 @@ def test_client_credentials_flow_login():
 
 def test_public_key_auth_login():
     """Test public key JWT bearer flow login method."""
-    with patch('sf_toolkit.auth.login_oauth.token_login') as mock_token_login, \
-         patch('sf_toolkit.auth.login_oauth.jwt.encode') as mock_jwt_encode:
-
+    with (
+        patch("sf_toolkit.auth.login_oauth.token_login") as mock_token_login,
+        patch("sf_toolkit.auth.login_oauth.jwt.encode") as mock_jwt_encode,
+    ):
         # Setup mock JWT encoded output
         mock_jwt_encode.return_value = "mock.jwt.token"
 
         # Setup mock token generator
-        expected_token = SalesforceToken(httpx.URL("https://test.my.salesforce.com"), "test_token")
+        expected_token = SalesforceToken(
+            httpx.URL("https://test.my.salesforce.com"), "test_token"
+        )
 
         def mock_token_generator():
-            yield httpx.Request("POST", "https://test.salesforce.com/services/oauth2/token")
+            yield httpx.Request(
+                "POST", "https://test.salesforce.com/services/oauth2/token"
+            )
             return expected_token
 
         mock_token_login.return_value = mock_token_generator()
@@ -283,13 +304,13 @@ def test_public_key_auth_login():
         current_time = int(time.time())
 
         # Mock time.time() to return a fixed value
-        with patch('sf_toolkit.auth.login_oauth.time.time', return_value=current_time):
+        with patch("sf_toolkit.auth.login_oauth.time.time", return_value=current_time):
             # Call the function
             login_func = public_key_auth_login(
                 username="test@example.com",
                 consumer_key="test_consumer_key",
                 private_key=private_key,
-                domain="test"
+                domain="test",
             )
 
             # Get the generator
@@ -308,7 +329,10 @@ def test_public_key_auth_login():
 
             # Check token data
             token_data = args[1]
-            assert token_data["grant_type"] == "urn:ietf:params:oauth:grant-type:jwt-bearer"
+            assert (
+                token_data["grant_type"]
+                == "urn:ietf:params:oauth:grant-type:jwt-bearer"
+            )
             assert token_data["assertion"] == "mock.jwt.token"
 
             # Verify JWT encode was called with correct claims
@@ -329,7 +353,7 @@ def test_public_key_auth_login():
 
 def test_lazy_oauth_login_public_key():
     """Test lazy_oauth_login with public key parameters."""
-    with patch('sf_toolkit.auth.login_oauth.public_key_auth_login') as mock_login:
+    with patch("sf_toolkit.auth.login_oauth.public_key_auth_login") as mock_login:
         mock_login.return_value = "mock_login_function"
 
         # Call with public key parameters
@@ -337,7 +361,7 @@ def test_lazy_oauth_login_public_key():
             username="test@example.com",
             consumer_key="test_consumer_key",
             private_key="test_private_key",
-            domain="test"
+            domain="test",
         )
 
         # Verify the correct login method was called
@@ -345,7 +369,7 @@ def test_lazy_oauth_login_public_key():
             username="test@example.com",
             consumer_key="test_consumer_key",
             private_key="test_private_key",
-            domain="test"
+            domain="test",
         )
 
         assert result == "mock_login_function"
@@ -353,7 +377,7 @@ def test_lazy_oauth_login_public_key():
 
 def test_lazy_oauth_login_password():
     """Test lazy_oauth_login with password parameters."""
-    with patch('sf_toolkit.auth.login_oauth.password_login') as mock_login:
+    with patch("sf_toolkit.auth.login_oauth.password_login") as mock_login:
         mock_login.return_value = "mock_login_function"
 
         # Call with password parameters
@@ -362,7 +386,7 @@ def test_lazy_oauth_login_password():
             password="test_password",
             consumer_key="test_consumer_key",
             consumer_secret="test_consumer_secret",
-            domain="test"
+            domain="test",
         )
 
         # Verify the correct login method was called
@@ -371,7 +395,7 @@ def test_lazy_oauth_login_password():
             password="test_password",
             consumer_key="test_consumer_key",
             consumer_secret="test_consumer_secret",
-            domain="test"
+            domain="test",
         )
 
         assert result == "mock_login_function"
@@ -379,21 +403,23 @@ def test_lazy_oauth_login_password():
 
 def test_lazy_oauth_login_client_credentials():
     """Test lazy_oauth_login with client credentials parameters."""
-    with patch('sf_toolkit.auth.login_oauth.client_credentials_flow_login') as mock_login:
+    with patch(
+        "sf_toolkit.auth.login_oauth.client_credentials_flow_login"
+    ) as mock_login:
         mock_login.return_value = "mock_login_function"
 
         # Call with client credentials parameters (no username)
         result = lazy_oauth_login(
             consumer_key="test_consumer_key",
             consumer_secret="test_consumer_secret",
-            domain="test"
+            domain="test",
         )
 
         # Verify the correct login method was called
         mock_login.assert_called_once_with(
             consumer_key="test_consumer_key",
             consumer_secret="test_consumer_secret",
-            domain="test"
+            domain="test",
         )
 
         assert result == "mock_login_function"
@@ -402,10 +428,12 @@ def test_lazy_oauth_login_client_credentials():
 def test_lazy_oauth_login_invalid_params():
     """Test lazy_oauth_login with invalid parameters."""
     # Call with invalid parameters
-    with pytest.raises(LazyParametersMissing, match="Unable to determine authentication method"):
+    with pytest.raises(
+        LazyParametersMissing, match="Unable to determine authentication method"
+    ):
         lazy_oauth_login(
             username="test@example.com",  # Username but no password or private key
-            consumer_key="test_consumer_key"
+            consumer_key="test_consumer_key",
         )
 
 
@@ -416,20 +444,22 @@ def test_user_hasnt_approved_consumer_warning():
     mock_response.status_code = 400
     mock_response.json.return_value = {
         "error": "invalid_grant",
-        "error_description": "user hasn't approved this consumer"
+        "error_description": "user hasn't approved this consumer",
     }
 
     # Create and start the generator
     token_gen = token_login(
         "test",
         {"grant_type": "password", "username": "user@example.com"},
-        "test_consumer_key"
+        "test_consumer_key",
     )
 
     # First yield should be a request
     next(token_gen)  # We don't need the request object here
 
     # Send the mock error response and expect a warning followed by exception
-    with pytest.warns(UserWarning, match="authorize"), \
-         pytest.raises(SalesforceAuthenticationFailed):
+    with (
+        pytest.warns(UserWarning, match="authorize"),
+        pytest.raises(SalesforceAuthenticationFailed),
+    ):
         token_gen.send(mock_response)

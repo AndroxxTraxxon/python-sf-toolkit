@@ -119,7 +119,9 @@ class FieldConfigurableObject:
         self._dirty_fields = set()
 
     def serialize(self, only_changes: bool = False, all_fields: bool = False):
-        assert not (only_changes and all_fields), "Cannot serialize both only changes and all fields."
+        assert not (only_changes and all_fields), (
+            "Cannot serialize both only changes and all fields."
+        )
         if all_fields:
             return {
                 name: field.format(self._values.get(name, None))

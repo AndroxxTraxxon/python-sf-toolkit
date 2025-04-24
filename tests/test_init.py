@@ -8,6 +8,6 @@ def test_import():
     assert hasattr(sf_toolkit, "SalesforceAuth")
     assert hasattr(sf_toolkit, "SalesforceToken")
     assert hasattr(sf_toolkit, "SObject")
-    assert hasattr(sf_toolkit, "SoqlSelect")
+    assert hasattr(sf_toolkit, "SoqlQuery")
     assert hasattr(sf_toolkit, "lazy_login")
     assert hasattr(sf_toolkit, "cli_login")
