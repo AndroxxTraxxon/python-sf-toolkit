@@ -1,12 +1,10 @@
 from urllib.parse import quote_plus
 import pytest
 from datetime import datetime, date
-import httpx
 
 from sf_toolkit.data.fields import IdField, TextField
-from sf_toolkit.data.query_builder import AND, EQ, GT, OR, SoqlQuery, QueryResult, Comparison, BooleanOperation, Order
+from sf_toolkit.data.query_builder import AND, EQ, GT, OR, SoqlQuery, QueryResult, Order
 from sf_toolkit.data.sobject import SObject, SObjectList
-from sf_toolkit.exceptions import SalesforceError
 from .unit_test_models import Opportunity, Account
 
 @pytest.fixture
@@ -147,11 +145,10 @@ def test_query_with_group_by(mock_sf_client):
 def test_query_with_order_by():
     """Test query construction with ORDER BY clause"""
     query = SoqlQuery(Account)
-    order = Order("Name", "DESC")
-    query.order_by(order)
+    query.order_by(Order("Name", "DESC"), Id="ASC")
 
     query_str = str(query)
-    assert f"ORDER BY {str(order)}" in query_str
+    assert "ORDER BY Name DESC, Id ASC" in query_str
 
 def test_query_with_limit():
     """Test query construction with LIMIT clause"""
@@ -291,12 +288,53 @@ def test_query_with_raw_where():
 def test_query_with_having(mock_sf_client):
     """Test query with HAVING clause"""
     query = Account.select().group_by("Industry").having(AnnualRevenue__gt=1000000)
-
+    assert "GROUP BY Industry" in str(query)
     # Should raise error if HAVING is used without GROUP BY
-    query_without_group = SoqlQuery(Account)
     with pytest.raises(TypeError, match="Cannot use HAVING statement without GROUP BY"):
-        query_without_group.having(AnnualRevenue__gt=1000000)
-        str(query_without_group)  # Force query string generation
+        str(Account.select().having(AnnualRevenue__gt=1000000))
+
+
+def test_query_with_and_having():
+    """Test query with multiple HAVING conditions using and_having"""
+    query = Account.select().group_by("Industry").having(
+        COUNT__Id__gt=5
+    ).and_having(
+        SUM__AnnualRevenue__gt=1000000
+    )
+
+    query_str = str(query)
+    assert "GROUP BY Industry" in query_str
+    assert "HAVING COUNT(Id) > 5" in query_str
+    assert "AND SUM(AnnualRevenue) > 1000000" in query_str
+
+def test_query_with_or_having():
+    """Test query with OR condition in HAVING clause"""
+    query = Account.select().group_by("Industry").having(
+        COUNT__Id__gt=10
+    ).or_having(
+        SUM__AnnualRevenue__gt=5000000
+    )
+
+    query_str = str(query)
+    assert "GROUP BY Industry" in query_str
+    assert "HAVING COUNT(Id) > 10" in query_str
+    assert "OR SUM(AnnualRevenue) > 5000000" in query_str
+
+def test_query_with_chained_having_conditions():
+    """Test query with chained HAVING conditions (AND and OR)"""
+    query = Account.select().group_by("Industry").having(
+        COUNT__Id__gt=5
+    ).and_having(
+        AVG__AnnualRevenue__gt=100000
+    ).or_having(
+        SUM__AnnualRevenue__gt=10000000
+    )
+
+    query_str = str(query)
+    assert "GROUP BY Industry" in query_str
+    assert "HAVING" in query_str
+    assert "COUNT(Id) > 5 AND AVG(AnnualRevenue) > 100000" in query_str
+    assert "OR SUM(AnnualRevenue) > 10000000" in query_str
 
 def test_query_tooling_api(mock_sf_client):
     """Test query execution against tooling API"""

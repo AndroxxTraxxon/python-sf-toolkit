@@ -46,8 +46,8 @@ Querying Records
 
    # ... later, within the context of a Salesforce client ...
    # Query contacts
-   query = SoqlSelect(Contact)
-   results = query.query()
+   query = Contact.select()
+   results = query.execute()
 
    # Process results
    for contact in results.records:
