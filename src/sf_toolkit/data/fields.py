@@ -2,6 +2,7 @@ import datetime
 from enum import Flag, auto
 import typing
 
+
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
@@ -71,40 +72,29 @@ class FieldConfigurableObject:
     _dirty_fields: set[str]
     _fields: typing.ClassVar[dict[str, "Field"]]
 
-    def __init_subclass__(cls, **_) -> None:
-        cls._fields = {}
-        for attr_name in dir(cls):
-            if attr_name.startswith("__"):
-                continue
-            if attr_name == "attributes":
-                continue
-            attr = getattr(cls, attr_name)
-            if isinstance(attr, Field):
-                cls._fields[attr_name] = attr
-
     def __init__(self):
         self._values = {}
         self._dirty_fields = set()
 
     @classmethod
-    def keys(cls) -> frozenset[str]:
-        return frozenset(cls._fields.keys())
+    def keys(cls) -> typing.Iterable[str]:
+        assert hasattr(cls, "_fields"), f"No Field definitions found for class {cls.__name__}"
+        return cls._fields.keys()
 
     @classmethod
-    def query_fields(cls) -> set[str]:
-        fields = set()
+    def query_fields(cls) -> list[str]:
+        assert hasattr(cls, "_fields"), f"No Field definitions found for class {cls.__name__}"
+        fields = list()
         for field, fieldtype in cls._fields.items():
             if isinstance(fieldtype, ReferenceField) and fieldtype._py_type:
-                fields.update(
-                    {
+                fields.extend(
+                    [
                         field + "." + subfield
                         for subfield in fieldtype._py_type.query_fields()
-                    }
+                    ]
                 )
-            # elif isinstance(fieldtype, ListField) and fieldtype._py_type:
-            #     fields.update({field + "." + subfield for subfield in fieldtype._py_type.query_fields()})
             else:
-                fields.add(field)
+                fields.append(field)
         return fields
 
     @property
@@ -162,7 +152,7 @@ class Field(typing.Generic[T]):
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> T:
         if obj is None:
-            return self  # type: ignore
+            return self
         return obj._values.get(self._name)  # type: ignore
 
     def __set__(self, obj: FieldConfigurableObject, value: typing.Any):
@@ -181,9 +171,12 @@ class Field(typing.Generic[T]):
     def format(self, value: T) -> typing.Any:
         return value
 
-    def __set_name__(self, owner, name):
-        self._owner = owner
+    def __set_name__(self, cls: type[FieldConfigurableObject], name):
+        self._owner = cls
         self._name = name
+        if not hasattr(cls, "_fields"):
+            cls._fields = {}
+        cls._fields[name] = self
 
     def __delete__(self, obj: FieldConfigurableObject):
         del obj._values[self._name]
@@ -198,9 +191,6 @@ class Field(typing.Generic[T]):
                 f"Expected {self._py_type.__qualname__} for field {self._name} "
                 f"on {self._owner.__name__}, got {type(value).__name__}"
             )
-
-    def __str__(self):
-        return str(self)
 
 
 class TextField(Field[str]):
@@ -320,17 +310,27 @@ class ListField(Field[list[T]]):
 
     def __init__(self, item_type: type[T], *flags: FieldFlag):
         self._nested_type = item_type
-        super().__init__(list[item_type], *flags)
+        super().__init__(list, *flags)
 
-    def revive(self, value):
+        try:
+            global SObjectList
+            # ensure SObjectList is imported at the time of SObject type/class definition
+            SObjectList  # type: ignore
+        except NameError:
+            from .sobject import SObjectList
+
+    def revive(self, value: list[dict | FieldConfigurableObject]):
+
         if value is None:
             return value
-        assert self._py_type is not None
+        if isinstance(value, SObjectList):
+            return value
         if isinstance(value, list):
-            return [self._py_type(item) for item in value]
+            return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
         if isinstance(value, dict):
-            return self._py_type(**value)
-
+            # assume the dict is a QueryResult-formatted dictionary
+            return SObjectList([self._nested_type(**item) for item in value["records"]])  # type: ignore
+        raise TypeError(f"Unexpected type {type(value)} for {type(self).__name__}[{self._nested_type.__name__}]")
 
 FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
     "boolean": CheckboxField,

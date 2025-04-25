@@ -5,7 +5,12 @@ from sf_toolkit.data.fields import IdField, TextField
 class User(SObject):
     Id = IdField()
     Name = TextField()
+    Username = TextField()
 
-with SalesforceClient(login=cli_login()):
-    for user in User.select().execute().records:
-        print(user.Name, user.Id)
+with SalesforceClient(login=cli_login()) as client:
+    print(client.base_url)
+    query = User.query().where(Name='Integration User').limit(10)
+    for user in (result:=query.execute()).records:
+        print(user.Name, user.Id, user.Username, sep=' | ')
+
+    print(result.totalSize)

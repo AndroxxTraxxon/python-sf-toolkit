@@ -23,7 +23,7 @@ LOGGER = getLogger("client")
 
 
 class AsyncSalesforceClient(I_AsyncSalesforceClient):
-    auth: SalesforceAuth  # type: ignore
+    _auth: SalesforceAuth
 
     def __init__(
         self,
@@ -53,7 +53,7 @@ class AsyncSalesforceClient(I_AsyncSalesforceClient):
             await super().__aenter__()
             self._userinfo = (await self.send(self._userinfo_request())).json(
                 object_hook=ApiVersion
-            )  # type: ignore
+            )
             self._versions = (await self.send(self._versions_request())).json(
                 object_hook=ApiVersion
             )
@@ -114,7 +114,7 @@ class AsyncSalesforceClient(I_AsyncSalesforceClient):
 
 class SalesforceClient(I_SalesforceClient):
     token_refresh_callback: TokenRefreshCallback | None
-    auth: SalesforceAuth  # type: ignore
+    _auth: SalesforceAuth
 
     def __init__(
         self,
@@ -137,7 +137,7 @@ class SalesforceClient(I_SalesforceClient):
         self._connection_name = connection_name
 
     def handle_async_clone_token_refresh(self, token: SalesforceToken):
-        self.auth.token = token
+        self._auth.token = token
 
     # caching this so that multiple calls don't generate new sessions.
     @property
@@ -145,8 +145,8 @@ class SalesforceClient(I_SalesforceClient):
         a_client = getattr(self, "_async_session", None)
         if a_client is None:
             a_client = self._async_session = AsyncSalesforceClient(
-                login=self.auth.login,
-                token=self.auth.token,
+                login=self._auth.login,
+                token=self._auth.token,
                 token_refresh_callback=self.handle_async_clone_token_refresh,
                 sync_parent=self,
             )

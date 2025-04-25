@@ -139,3 +139,7 @@ class I_SObject(ABC):
     @classmethod
     @abstractmethod
     def keys(cls) -> Iterable[str]: ...
+
+    @classmethod
+    @abstractmethod
+    def query_fields(cls) -> Iterable[str]: ...

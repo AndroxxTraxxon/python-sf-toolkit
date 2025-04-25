@@ -13,7 +13,6 @@ from urllib.parse import quote_plus
 import warnings
 from httpx import Response
 
-from sf_toolkit.data.query_builder import SoqlQuery
 from .. import client as sftk_client
 
 from more_itertools import chunked
@@ -140,8 +139,11 @@ class SObject(FieldConfigurableObject, I_SObject):
         cls._register_()
 
     @classmethod
-    def select(cls) -> "SoqlQuery":
+    def query(cls: type[_sObject], include_deleted: bool = False) -> "SoqlQuery[_sObject]":
         """Create a new SoqlSelect query builder for this SObject type.
+
+        Args:
+            include_deleted (bool, optional): Whether to include deleted records in the query. Defaults to False.
 
         Returns:
             SoqlSelect: A new query builder instance for this SObject type.
@@ -156,11 +158,11 @@ class SObject(FieldConfigurableObject, I_SObject):
             ```
         """
         # delayed import to avoid circular imports
-        if "SoqlSelect" not in globals():
+        if "SoqlQuery" not in globals():
             global SoqlQuery
             from .query_builder import SoqlQuery
 
-        return SoqlQuery(cls)  # type: ignore
+        return SoqlQuery(cls, include_deleted)  # type: ignore
 
     @classmethod
     def _register_(cls):
@@ -173,10 +175,10 @@ class SObject(FieldConfigurableObject, I_SObject):
 
     @classmethod
     def _unregister_(cls):
-        fields = frozenset(cls.keys())
+        fieldset = frozenset(cls.keys())
         sobject_registry = cls._registry[cls.attributes]
-        if fields in sobject_registry and sobject_registry[fields] is cls:
-            del sobject_registry[fields]
+        if fieldset in sobject_registry and sobject_registry[fieldset] is cls:
+            del sobject_registry[fieldset]
             # Remove the entire entry if there are no more classes for this SObject type
             if not sobject_registry:
                 del cls._registry[cls.attributes]

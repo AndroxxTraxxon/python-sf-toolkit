@@ -1,8 +1,11 @@
 from typing import Any, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
+from ..client import SalesforceClient
+from .fields import ListField
+from .sobject import SObject, SObjectList
+
 from ..formatting import quote_soql_value
-from ..interfaces import I_SObject, I_SalesforceClient
 from .._models import QueryResultJSON, SObjectRecordJSON
 
 
@@ -12,57 +15,72 @@ AGGREGATE_FUNCTIONS = ["AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "SUM"]
 
 
 class Comparison:
-    property: str
+    prop: str
     comparator: Comparator
     value: "SoqlQuery | str | bool | datetime | date | None"
 
-    def __init__(self, property: str, op, value):
-        self.property = property
+    def __init__(self, prop: str, op, value):
+        self.prop = prop
         self.operator = op
         self.value = value
 
     def __str__(self):
         if isinstance(self.value, SoqlQuery):
-            return f"{self.property} {self.operator} ({str(self.value)})"
-        return f"{self.property} {self.operator} {quote_soql_value(self.value)}"
+            return f"{self.prop} {self.operator} ({str(self.value)})"
+        elif self.operator == "IN" and isinstance(self.value, str):
+            return f"{self.prop} {self.operator} ({self.value})"
+        return f"{self.prop} {self.operator} {quote_soql_value(self.value)}"
 
 
-def EQ(property: str, value):
-    return Comparison(property, "=", value)
+def EQ(prop: str, value):
+    return Comparison(prop, "=", value)
 
-def NE(property: str, value):
-    return Comparison(property, "!=", value)
 
-def GT(property: str, value):
-    return Comparison(property, ">", value)
+def NE(prop: str, value):
+    return Comparison(prop, "!=", value)
 
-def GE(property: str, value):
-    return Comparison(property, ">=", value)
 
-def LT(property: str, value):
-    return Comparison(property, "<", value)
+def GT(prop: str, value):
+    return Comparison(prop, ">", value)
 
-def LE(property: str, value):
-    return Comparison(property, "<=", value)
 
-def LIKE(property: str, value):
-    return Comparison(property, "LIKE", value)
+def GE(prop: str, value):
+    return Comparison(prop, ">=", value)
 
-def INCLUDES(property: str, value):
-    return Comparison(property, "INCLUDES", value)
 
-def IN(property: str, value):
-    return Comparison(property, "IN", value)
+def LT(prop: str, value):
+    return Comparison(prop, "<", value)
 
-def NOT_IN(property: str, value):
-    return Comparison(property, "NOT IN", value)
+
+def LE(prop: str, value):
+    return Comparison(prop, "<=", value)
+
+
+def LIKE(prop: str, value):
+    return Comparison(prop, "LIKE", value)
+
+
+def INCLUDES(prop: str, value):
+    return Comparison(prop, "INCLUDES", value)
+
+
+def IN(prop: str, value):
+    return Comparison(prop, "IN", value)
+
+
+def NOT_IN(prop: str, value):
+    return Comparison(prop, "NOT IN", value)
 
 
 class BooleanOperation:
     operator: BooleanOperator
     conditions: list["Comparison | BooleanOperation | str"]
 
-    def __init__(self, operator: BooleanOperator, conditions: list["Comparison | BooleanOperation | str"]):
+    def __init__(
+        self,
+        operator: BooleanOperator,
+        conditions: list["Comparison | BooleanOperation | str"],
+    ):
         self.operator = operator
         self.conditions = conditions
 
@@ -75,8 +93,10 @@ class BooleanOperation:
         ]
         return f" {self.operator} ".join(formatted_conditions)
 
+
 def OR(*conditions: "Comparison | BooleanOperation | str"):
     return BooleanOperation("OR", list(conditions))
+
 
 def AND(*conditions: "Comparison | BooleanOperation | str"):
     return BooleanOperation("AND", list(conditions))
@@ -98,7 +118,7 @@ class Order(NamedTuple):
         return f"{self.field} {self.direction}"
 
 
-_SObject = TypeVar("_SObject", bound=I_SObject)
+_SObject = TypeVar("_SObject", bound=SObject)
 _SObjectJSON = TypeVar("_SObjectJSON", bound=dict[str, Any])
 
 
@@ -121,7 +141,7 @@ class QueryResult(Generic[_SObject]):
     "The list of records returned by the query"
     nextRecordsUrl: str | None
     "URL to the next batch of records, if more exist"
-    _connection: I_SalesforceClient
+    _connection: SalesforceClient
     _sobject_type: type[_SObject]
     "The SObject type this QueryResult contains records for"
     query_locator: str | None = None
@@ -129,13 +149,13 @@ class QueryResult(Generic[_SObject]):
 
     def __init__(
         self,
-        connection: I_SalesforceClient,
         sobject_type: type[_SObject],
         /,
         done: bool = True,
         totalSize: int = 0,
         records: list[SObjectRecordJSON] | None = None,
         nextRecordsUrl: str | None = None,
+        connection: SalesforceClient | None = None,
     ):
         """
         Initialize a QueryResult object from Salesforce API response data.
@@ -143,16 +163,18 @@ class QueryResult(Generic[_SObject]):
         Args:
             **kwargs: Key-value pairs from the Salesforce API response.
         """
-        self._connection = connection
+        self._connection = connection or SalesforceClient.get_connection(sobject_type.attributes.connection) # type: ignore
         self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
-        if "SObjectList" not in globals():
-            global SObjectList
-            from .sobject import SObjectList
-        self.records = SObjectList([
-            sobject_type(**record) for record in records   # type: ignore
-        ] if records else [])
+        self.records = SObjectList(
+            [
+                sobject_type(**record)
+                for record in records  # type: ignore
+            ]
+            if records
+            else []
+        )
         self.nextRecordsUrl = nextRecordsUrl
         if self.nextRecordsUrl:
             # nextRecordsUrl looks like this:
@@ -167,23 +189,65 @@ class QueryResult(Generic[_SObject]):
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
         result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
-        return QueryResult(self._connection, self._sobject_type, **result)  # type: ignore
+        return QueryResult(self._sobject_type, connection=self._connection, **result)  # type: ignore
 
 
 class SoqlQuery(Generic[_SObject]):
+    sobject_type: type[_SObject]
+    _object_relationship_name: str | None = None
     _where: Comparison | BooleanOperation | str | None = None
     _grouping: list[str] | None = None
     _having: Comparison | BooleanOperation | str | None = None
     _limit: int | None = None
     _offset: int | None = None
     _order: list[Order | str] | None = None
+    _subqueries: dict[str, "SoqlQuery"]
+    _include_deleted: bool
 
-    def __init__(self, sobject_type: type[_SObject]):
+    def __init__(
+        self,
+        sobject_type: type[_SObject],
+        include_deleted: bool = False
+    ):
         self.sobject_type = sobject_type
+        self._subqueries = {}
+        self._include_deleted = include_deleted
 
     @property
     def fields(self):
-        return list(self.sobject_type.keys())
+        fields = []
+        for field in self.sobject_type.query_fields():
+            if isinstance(field_def := self.sobject_type._fields.get(field), ListField):
+                subquery = self._subqueries.get(field)
+                if not subquery:
+                    subquery = field_def._nested_type.query()
+                    subquery._object_relationship_name = field
+                fields.append(f"({str(subquery)})")
+            else:
+                fields.append(field)
+        return fields
+
+    def filter_subqueries(self, **subqueries: "SoqlQuery"):
+        """
+        Configure Parent-To-Child Relationship queries
+
+        By default, all records are returned in the subquery (no filtering).
+
+        https://developer.salesforce.com/docs/atlas.en-us.soql_sosl.meta/soql_sosl/sforce_api_calls_soql_relationships_query_using.htm
+
+        Args:
+            **subqueries: A dictionary of field names and SoqlQuery objects.
+
+        Returns:
+            self: The current SoqlQuery object.
+        """
+        for field, subquery in subqueries.items():
+            assert isinstance(self.sobject_type._fields.get(field), ListField), (
+                f"Field '{field}' is not a ListField"
+            )
+            subquery._object_relationship_name = field
+            self._subqueries[field] = subquery
+        return self
 
     @property
     def sobject_name(self) -> str:
@@ -193,7 +257,7 @@ class SoqlQuery(Generic[_SObject]):
         return self.sobject_type._client_connection()
 
     @classmethod
-    def build_conditional(cls, arg: str, value)-> Comparison | NOT:
+    def build_conditional(cls, arg: str, value) -> Comparison | NOT:
         op = "="
         negated = arg.startswith("NOT__")
         if negated:
@@ -243,8 +307,7 @@ class SoqlQuery(Generic[_SObject]):
             arg, value = next(iter(kwargs.items()))
             return cls.build_conditional(arg, value)
         conditions = (
-            cls.build_conditional(arg, value)
-            for arg, value in kwargs.items()
+            cls.build_conditional(arg, value) for arg, value in kwargs.items()
         )
         if mode == "any":
             return OR(*conditions)
@@ -256,7 +319,8 @@ class SoqlQuery(Generic[_SObject]):
     def where(
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
-        _mode: Literal["any", "all"] = "all", **kwargs
+        _mode: Literal["any", "all"] = "all",
+        **kwargs,
     ):
         if _raw:
             self._where = _raw
@@ -268,7 +332,7 @@ class SoqlQuery(Generic[_SObject]):
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs: Any
+        **kwargs: Any,
     ):
         assert self._where is not None, "where() must be called before and_where()"
         if _raw:
@@ -281,7 +345,7 @@ class SoqlQuery(Generic[_SObject]):
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs: Any
+        **kwargs: Any,
     ):
         assert self._where is not None, "where() must be called before or_where()"
         if _raw:
@@ -298,7 +362,7 @@ class SoqlQuery(Generic[_SObject]):
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs
+        **kwargs,
     ):
         if _raw:
             self._having = _raw
@@ -310,26 +374,30 @@ class SoqlQuery(Generic[_SObject]):
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs: Any
+        **kwargs: Any,
     ):
         assert self._having is not None, "having() must be called before and_having()"
         if _raw:
             self._having = AND(self._having, _raw)
         else:
-            self._having = AND(self._having, self.build_conditional_clause(kwargs, _mode))
+            self._having = AND(
+                self._having, self.build_conditional_clause(kwargs, _mode)
+            )
         return self
 
     def or_having(
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs: Any
+        **kwargs: Any,
     ):
         assert self._having is not None, "having() must be called before or_having()"
         if _raw:
             self._having = OR(self._having, _raw)
         else:
-            self._having = OR(self._having, self.build_conditional_clause(kwargs, _mode))
+            self._having = OR(
+                self._having, self.build_conditional_clause(kwargs, _mode)
+            )
         return self
 
     def limit(self, limit: int):
@@ -350,7 +418,11 @@ class SoqlQuery(Generic[_SObject]):
     def format(self, fields: list[str] | None = None):
         if not fields:
             fields = self.fields
-        segments = ["SELECT", ", ".join(fields), f"FROM {self.sobject_name}"]
+        segments = [
+            "SELECT",
+            ", ".join(fields),
+            f"FROM {self._object_relationship_name or self.sobject_name}",
+        ]
         if self._where:
             segments.extend(["WHERE", str(self._where)])
         if self._grouping:
@@ -400,9 +472,13 @@ class SoqlQuery(Generic[_SObject]):
         client = self._sf_connection()
 
         result: QueryResultJSON
+        assert not (self.sobject_type.attributes.tooling and self._include_deleted), \
+            "Tooling API does not support query deleted records (QueryAll)"
         if self.sobject_type.attributes.tooling:
             url = f"{client.data_url}/tooling/query/"
+        elif self._include_deleted:
+            url = f"{client.data_url}/queryAll/"
         else:
             url = f"{client.data_url}/query/"
         result = client.get(url, params={"q": self.format(fields)}).json()
-        return QueryResult(client, self.sobject_type, **result)  # type: ignore
+        return QueryResult(self.sobject_type, connection=client, **result)  # type: ignore

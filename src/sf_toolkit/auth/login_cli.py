@@ -27,7 +27,7 @@ def cli_login(
         """Fetches the authentication credentials from sf or sfdx command line tools."""
         LOGGER.info("Logging in via SF CLI at %s", sf_exec_path)
         command: list[str] = [sf_exec_path, "org", "display", "--json"]
-        if alias_or_username:
+        if alias_or_username and isinstance(alias_or_username, str):
             command.extend(["-o", alias_or_username])
 
         # the color shell configs can mess with JSON parsing, so just get rid of them.
