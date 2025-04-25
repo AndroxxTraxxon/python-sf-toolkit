@@ -1,4 +1,4 @@
-from typing import Any, Literal, NamedTuple, TypeVar, Generic
+from typing import Any, AsyncIterator, Iterator, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
 from ..client import SalesforceClient
@@ -191,6 +191,56 @@ class QueryResult(Generic[_SObject]):
         result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
         return QueryResult(self._sobject_type, connection=self._connection, **result)  # type: ignore
 
+    async def query_more_async(self):
+        if not self.nextRecordsUrl:
+            raise ValueError("Cannot get more records without nextRecordsUrl")
+
+        result: QueryResultJSON = (await self._connection.as_async.get(self.nextRecordsUrl)).json()
+        return QueryResult(self._sobject_type, connection=self._connection, **result)  # type: ignore
+
+    def __aiter__(self) -> AsyncIterator[_SObject]:
+        return QueryResultIterator(self)
+
+    def __iter__(self) -> Iterator[_SObject]:
+        return QueryResultIterator(self)
+
+
+class QueryResultIterator(Generic[_SObject]):
+    query_result: QueryResult[_SObject]
+    index: int = 0
+
+    def __init__(self, query_result: QueryResult[_SObject]):
+        self.query_result = query_result
+
+    def __iter__(self) -> Iterator[_SObject]:
+        return self
+
+    def __aiter__(self) -> AsyncIterator[_SObject]:
+        return self
+
+    def __next__(self) -> _SObject:
+        try:
+            return self.query_result.records[self.index]
+        except IndexError:
+            if self.query_result.done:
+                raise StopIteration
+            self.query_result = self.query_result.query_more()
+            self.index = 0
+            return self.query_result.records[self.index]
+        finally:
+            self.index += 1
+
+    async def __anext__(self) -> _SObject:
+        try:
+            return self.query_result.records[self.index]
+        except IndexError:
+            if self.query_result.done:
+                raise StopAsyncIteration
+            self.query_result = await self.query_result.query_more_async()
+            self.index = 0
+            return self.query_result.records[self.index]
+        finally:
+            self.index += 1
 
 class SoqlQuery(Generic[_SObject]):
     sobject_type: type[_SObject]

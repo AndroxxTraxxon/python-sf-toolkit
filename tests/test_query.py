@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 from datetime import datetime, date
 
@@ -577,3 +578,124 @@ def test_execution_with_field_subquery(mock_sf_client):
     assert len(account.Opportunities) == 2
     assert account.Opportunities[0].Name == "Opp 1"
     assert account.Opportunities[1].Amount == 125000
+
+
+def test_query_result_iterator(mock_sf_client, mock_query_response_with_next):
+    """Test QueryResult iterator functionality"""
+    # Setup mock responses - first batch and second batch
+    mock_sf_client.get.return_value.json.side_effect = [
+        mock_query_response_with_next,
+        {
+            "done": True,
+            "totalSize": 4,
+            "records": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTYAA5",
+                    "Name": "Test Account 3",
+                    "Industry": "Retail",
+                },
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTZBZ6",
+                    "Name": "Test Account 4",
+                    "Industry": "Manufacturing",
+                },
+            ],
+        },
+    ]
+
+    # Execute initial query
+    query = SoqlQuery(Account)
+    results = query.execute()
+
+    # Use the iterator to get all records
+    record_list = []
+    for record in results:
+        record_list.append(record)
+
+    # Verify all 4 records were retrieved through iteration
+    assert len(record_list) == 4
+    assert record_list[0].Name == "Test Account 1"
+    assert record_list[2].Name == "Test Account 3"
+    assert record_list[3].Industry == "Manufacturing"
+
+
+def test_query_result_list_conversion(mock_sf_client, mock_query_response_with_next):
+    """Test converting QueryResult to a list"""
+    # Setup mock responses
+    mock_sf_client.get.return_value.json.side_effect = [
+        mock_query_response_with_next,
+        {
+            "done": True,
+            "totalSize": 4,
+            "records": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTYAA5",
+                    "Name": "Test Account 3",
+                    "Industry": "Retail",
+                },
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTZBZ6",
+                    "Name": "Test Account 4",
+                    "Industry": "Manufacturing",
+                },
+            ],
+        },
+    ]
+
+    # Execute query and convert result to list
+    query = SoqlQuery(Account)
+    results = query.execute()
+
+    # Convert to list (should handle pagination automatically)
+    all_records = list(results)
+
+    # Verify all records were included
+    assert len(all_records) == 4
+    assert all_records[0].Id == "001XX000003DGTYAA4"
+    assert all_records[3].Id == "001XX000003DGTZBZ6"
+
+
+@pytest.mark.asyncio
+async def test_query_result_async_iterator(mock_sf_client, mock_query_response_with_next):
+    """Test QueryResult async iterator functionality"""
+    # Setup mock responses
+    mock_sf_client.get.return_value.json.return_value = mock_query_response_with_next
+    mock_sf_client.as_async.get = (async_get := AsyncMock())
+    async_get.return_value = Mock()
+    async_get.return_value.json.return_value = {
+        "done": True,
+        "totalSize": 4,
+        "records": [
+            {
+                "attributes": {"type": "Account"},
+                "Id": "001XX000003DGTYAA5",
+                "Name": "Test Account 3",
+                "Industry": "Retail",
+            },
+            {
+                "attributes": {"type": "Account"},
+                "Id": "001XX000003DGTZBZ6",
+                "Name": "Test Account 4",
+                "Industry": "Manufacturing",
+            },
+        ],
+    }
+    # Execute query
+    query = SoqlQuery(Account)
+    results = query.execute()
+
+    # Use async iterator
+    records = []
+    async for record in results:
+        records.append(record)
+
+    # Verify all records were retrieved
+    assert len(records) == 4
+    assert records[0].Name == "Test Account 1"
+    assert records[1].Name == "Test Account 2"
+    assert records[2].Name == "Test Account 3"
+    assert records[3].Name == "Test Account 4"

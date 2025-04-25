@@ -1,10 +1,8 @@
 name: Build Documentation
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  release:
+    types: [published]
   # Allow manual running from the GitHub UI
   workflow_dispatch:
 

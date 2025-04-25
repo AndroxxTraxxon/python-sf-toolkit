@@ -20,7 +20,7 @@ pip install sf-toolkit
 ## Quick Start
 
 ```python
-from sf_toolkit import SalesforceClient, SObject, cli_login
+from sf_toolkit import SalesforceClient, SObject, cli_login, query
 from sf_toolkit.data.fields import IdField, TextField
 
 # Define a Salesforce object model
@@ -37,31 +37,8 @@ with SalesforceClient(login=cli_login()) as sf:
     account.save()
 
     # Query accounts
-    query = SoqlSelect(Account)
-    results = query.query()
+    result = query(Account).select().execute()
 
-    for acc in results.records:
+    for acc in result.records:
         print(f"{acc.Name} ({acc.Industry})")
 ```
-
-## Documentation
-
-View the full documentation on [github.io](https://androxxtraxxon.github.io/python-sf-toolkit/).
-### Building the documentation
-
-You can build the documentation locally with:
-
-```bash
-# One-time build
-python -m sphinx -b html docs/source docs/build/html
-
-# Or with auto-reload during development
-sphinx-autobuild docs/source docs/build/html
-```
-
-The documentation is automatically built from docstrings in the code, so make sure to write
-comprehensive docstrings for all public classes and methods.
-
-## License
-
-MIT
