@@ -691,3 +691,185 @@ def test_empty_list_operations(mock_sf_client):
     # Verify no API calls were made
     mock_sf_client.post.assert_not_called()
     mock_sf_client.delete.assert_not_called()
+
+
+def test_save_basic_functionality(mock_sf_client, test_accounts):
+    """Test save method with new records (insert case)"""
+    account_list = SObjectList(test_accounts)
+
+    # Mock response for insert
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
+        for i, _ in enumerate(test_accounts)
+    ]
+    mock_sf_client.post.return_value = mock_response
+
+    # Call save
+    account_list.save()
+
+    # Verify API call for insert
+    mock_sf_client.post.assert_called_once()
+    args, kwargs = mock_sf_client.post.call_args
+    assert args[0] == "/services/data/v57.0/composite/sobjects"
+
+    # Verify IDs were set on the records
+    for i, account in enumerate(account_list):
+        assert account.Id == f"001XX000{i}ABCDEFGHI"
+
+
+def test_save_update_existing_records(mock_sf_client, test_accounts_with_ids):
+    """Test save method with existing records (update case)"""
+    account_list = SObjectList(test_accounts_with_ids)
+
+    # Make changes to the accounts
+    for i, account in enumerate(account_list):
+        account.Name = f"Updated Account {i}"
+
+    # Mock response for update
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account.Id, "success": True, "errors": []} for account in account_list
+    ]
+    mock_sf_client.post.return_value = mock_response
+
+    # Call save
+    account_list.save()
+
+    # Verify API call for update
+    mock_sf_client.post.assert_called_once()
+    args, kwargs = mock_sf_client.post.call_args
+    assert args[0] == "/services/data/v57.0/composite/sobjects"
+
+    # Check that dirty fields were cleared
+    for account in account_list:
+        assert not account.dirty_fields
+
+
+def test_save_upsert_with_external_id(mock_sf_client):
+    """Test save method with external ID field (upsert case)"""
+    # Create objects with external IDs
+    custom_objects = [
+        _TestAccount(Name=f"Account {i}", ExternalId__c=f"EXT-{i}") for i in range(3)
+    ]
+    object_list = SObjectList(custom_objects, connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
+
+    # Mock response
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
+        for i in range(len(custom_objects))
+    ]
+    mock_sf_client.patch.return_value = mock_response
+
+    # Call save with external_id_field
+    object_list.save(external_id_field="ExternalId__c")
+
+    # Verify API call for upsert
+    mock_sf_client.patch.assert_called_once()
+    args, kwargs = mock_sf_client.patch.call_args
+    assert "ExternalId__c" in args[0]  # URL should include external ID field
+
+
+def test_save_with_only_changes_option(mock_sf_client, test_accounts_with_ids):
+    """Test save method with only_changes=True option"""
+    account_list = SObjectList(test_accounts_with_ids)
+
+    # Clear dirty fields from initialization
+    for account in account_list:
+        account.dirty_fields.clear()
+
+    # Make changes to only some fields
+    account_list[0].Name = "Updated Name 1"
+    account_list[1].Industry = "Healthcare"
+
+    # Mock response
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account.Id, "success": True, "errors": []}
+        for account in account_list[:2]  # Only first two have changes
+    ]
+    mock_sf_client.post.return_value = mock_response
+
+    # Call save with only_changes=True
+    account_list.save(only_changes=True)
+
+    # Verify API call
+    mock_sf_client.post.assert_called_once()
+
+    # Check the payload contains only changed fields
+    args, kwargs = mock_sf_client.post.call_args
+    request_data = kwargs.get("json", [])
+
+    # First record should have only Name field
+    assert "Name" in request_data[0]
+    assert "Industry" not in request_data[0]
+
+    # Second record should have only Industry field
+    assert "Industry" in request_data[1]
+    assert "Name" not in request_data[1]
+
+
+def test_save_with_update_only_option(mock_sf_client):
+    """Test save method with update_only=True option"""
+    # Create objects with external IDs
+    custom_objects = [
+        _TestAccount(Name=f"Account {i}", ExternalId__c=f"EXT-{i}") for i in range(2)
+    ]
+    object_list = SObjectList(custom_objects, connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
+
+    # Mock response
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
+        for i in range(len(custom_objects))
+    ]
+    mock_sf_client.patch.return_value = mock_response
+
+    # Call save with update_only=True
+    object_list.save(external_id_field="ExternalId__c", update_only=True)
+
+    # Verify API call for upsert with update_only
+    mock_sf_client.patch.assert_called_once()
+    args, kwargs = mock_sf_client.patch.call_args
+    assert kwargs.get("json", {}).get("allOrNone") is False  # default is False
+
+
+def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
+    """Test save method with multiple options combined"""
+    account_list = SObjectList(test_accounts_with_ids[:2])
+
+    # Clear dirty fields
+    for account in account_list:
+        account.dirty_fields.clear()
+
+    # Make changes to simulate dirty fields
+    account_list[0].Name = "Updated with Multiple Options"
+
+    # Mock response
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account_list[0].Id, "success": True, "errors": []}
+    ]
+    mock_sf_client.post.return_value = mock_response
+
+    # Call save with multiple options
+    account_list.save(only_changes=True, reload_after_success=False)
+
+    # Verify API call
+    mock_sf_client.post.assert_called_once()
+
+    # Check that only one record was sent (the one with changes)
+    args, kwargs = mock_sf_client.post.call_args
+    request_data = kwargs.get("json", [])
+    assert len(request_data) == 1
+    assert request_data[0]["Name"] == "Updated with Multiple Options"
+
+
+def test_save_error_on_update_only_without_id_or_external_id(mock_sf_client, test_accounts):
+    """Test save with update_only=True but no ID or external ID field"""
+    account_list = SObjectList(test_accounts)
+
+    # Call save with update_only=True but no ID or external ID
+    with pytest.raises(ValueError, match="Cannot perform update_only operation when no records have IDs"):
+        account_list.save(update_only=True)

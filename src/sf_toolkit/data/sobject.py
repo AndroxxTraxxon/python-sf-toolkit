@@ -706,6 +706,118 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             batches.append(current_batch)
         return batches, emitted_records
 
+    def save(
+        self,
+        external_id_field: str | None = None,
+        only_changes: bool = False,
+        concurrency: int = 1,
+        batch_size: int = 200,
+        all_or_none: bool = False,
+        update_only: bool = False,
+        **callout_options,
+    ) -> list[SObjectSaveResult]:
+        """
+        Save all SObjects in the list, determining whether to insert, update, or upsert based on the records and parameters.
+
+        Args:
+            external_id_field: Name of the external ID field to use for upserting (if provided)
+            only_changes: If True, only send changed fields for updates
+            concurrency: Number of concurrent requests to make
+            batch_size: Number of records to include in each batch
+            all_or_none: If True, all records must succeed or all will fail
+            update_only: If True with external_id_field, only update existing records
+            **callout_options: Additional options to pass to the API calls
+
+        Returns:
+            list[SObjectSaveResult]: List of save results
+        """
+        if not self:
+            return []
+
+        # If external_id_field is provided, use upsert
+        if external_id_field:
+            # Create a new list to ensure all objects have the external ID field
+            upsert_objects = SObjectList(
+                [obj for obj in self if hasattr(obj, external_id_field)],
+                connection=self.connection
+            )
+
+            # Check if any objects are missing the external ID field
+            if len(upsert_objects) != len(self):
+                missing_ext_ids = sum(
+                    1 for obj in self if not hasattr(obj, external_id_field)
+                )
+                raise ValueError(
+                    f"Cannot upsert: {missing_ext_ids} records missing external ID field '{external_id_field}'"
+                )
+
+            return upsert_objects.save_upsert(
+                external_id_field=external_id_field,
+                concurrency=concurrency,
+                batch_size=batch_size,
+                only_changes=only_changes,
+                all_or_none=all_or_none,
+                **callout_options
+            )
+
+        # Check if we're dealing with mixed operations (some records have IDs, some don't)
+        has_ids = [obj for obj in self if getattr(obj, obj.attributes.id_field, None)]
+        missing_ids = [obj for obj in self if not getattr(obj, obj.attributes.id_field, None)]
+
+        # If all records have IDs, use update
+        if len(has_ids) == len(self):
+            return self.save_update(
+                only_changes=only_changes,
+                concurrency=concurrency,
+                batch_size=batch_size,
+                **callout_options
+            )
+
+        # If all records are missing IDs, use insert
+        elif len(missing_ids) == len(self):
+            if update_only:
+                raise ValueError("Cannot perform update_only operation when no records have IDs")
+            return self.save_insert(
+                concurrency=concurrency,
+                batch_size=batch_size,
+                **callout_options
+            )
+
+        # Mixed case - some records have IDs, some don't
+        else:
+            if update_only:
+                # If update_only, we should only process records with IDs
+                return SObjectList(has_ids, connection=self.connection).save_update(
+                    only_changes=only_changes,
+                    concurrency=concurrency,
+                    batch_size=batch_size,
+                    **callout_options
+                )
+
+            # Otherwise, split and process separately
+            results = []
+
+            # Process updates first
+            if has_ids:
+                update_results = SObjectList(has_ids, connection=self.connection).save_update(
+                    only_changes=only_changes,
+                    concurrency=concurrency,
+                    batch_size=batch_size,
+                    **callout_options
+                )
+                results.extend(update_results)
+
+            # Then process inserts
+            if missing_ids and not update_only:
+                insert_results = SObjectList(missing_ids, connection=self.connection).save_insert(
+                    concurrency=concurrency,
+                    batch_size=batch_size,
+                    **callout_options
+                )
+                results.extend(insert_results)
+
+            return results
+
     def save_insert(
         self, concurrency: int = 1, batch_size: int = 200, **callout_options
     ) -> list[SObjectSaveResult]:
@@ -799,7 +911,6 @@ class SObjectList(list[_sObject], Generic[_sObject]):
 
         Args:
             only_changes: If True, only send changed fields
-            reload_after_success: If True, reload records after successful operation
             concurrency: Number of concurrent requests to make
             batch_size: Number of records to include in each batch
             **callout_options: Additional options to pass to the API call
