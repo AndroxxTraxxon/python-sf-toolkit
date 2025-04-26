@@ -46,5 +46,5 @@ with SalesforceClient(login=lazy_login(sf_cli_alias=True)):
     print(query)
 
     results = query.execute()
-    for record in results.records:
+    for record in results:
         print(record.Name, [contact.LastName for contact in record.Contacts], sep=' | ')

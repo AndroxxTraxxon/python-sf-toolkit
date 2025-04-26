@@ -289,12 +289,13 @@ def test_query_builder(mock_sf_client):
         results = query.execute("Id", "Subject", "Status", "Priority")
 
         # Verify the results
-        assert results.totalSize == 2
-        assert len(results.records) == 2
-        assert results.records[0].Id == "500XX000001MxWtIAK"
-        assert results.records[0].Subject == "Case 1"
-        assert results.records[0].Status == "New"
-        assert results.records[1].Priority == "Medium"
+        assert len(results) == 2
+        assert len(results.batches[0].records) == 2
+        first_record = next(results)
+        assert first_record.Id == "500XX000001MxWtIAK"
+        assert first_record.Subject == "Case 1"
+        assert first_record.Status == "New"
+        assert first_record.Priority == "High"
 
         # Verify the API call
         mock_sf_client.get.assert_called_once()

@@ -1,9 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 import pytest
 from datetime import datetime, date
 
 from sf_toolkit.data.fields import DateField, IdField, IntField, ListField, NumberField, TextField
-from sf_toolkit.data.query_builder import AND, EQ, GT, OR, SoqlQuery, QueryResult, Order
+from sf_toolkit.data.query_builder import AND, EQ, GT, OR, QueryResult, SoqlQuery, Order
 from sf_toolkit.data.sobject import SObject, SObjectList
 from .unit_test_models import Opportunity, Account
 
@@ -129,11 +129,11 @@ def test_query_execution(mock_sf_client, mock_query_response):
     # Verify response handling
     assert isinstance(results, QueryResult)
     assert results.done is True
-    assert results.totalSize == 2
-    assert len(results.records) == 2
+    assert len(results) == 2
+    assert len(results.batches[0].records) == 2
 
     # Verify record content
-    record = results.records[0]
+    record = next(results)
     assert isinstance(record, Account)
     assert record.Name == "Test Account 1"
     assert record.Industry == "Technology"
@@ -203,16 +203,16 @@ def test_query_more_results(mock_sf_client, mock_query_response_with_next):
 
     # Execute initial query
     query = SoqlQuery(Account)
-    results = query.execute()
+    result = query.execute()
 
     # Verify initial results
-    assert not results.done
-    assert results.totalSize == 4
-    assert len(results.records) == 2
-    assert results.nextRecordsUrl is not None
+    assert not result.done
+    assert len(result) == 4
+    assert len(result.batches[-1].records) == 2
+    assert result.batches[-1].nextRecordsUrl is not None
 
     # Get more results
-    more_results = results.query_more()
+    more_results = result.batches[-1].query_more()
 
     # Verify additional results
     assert more_results.done
@@ -226,13 +226,13 @@ def test_query_more_without_next_url(mock_sf_client, mock_query_response):
     mock_sf_client.get.return_value.json.return_value = mock_query_response
 
     query = SoqlQuery(Account)
-    results = query.execute()
+    result = query.execute()
 
     # Should raise ValueError when trying to get more results
     with pytest.raises(
         ValueError, match="Cannot get more records without nextRecordsUrl"
     ):
-        results.query_more()
+        result.batches[-1].query_more()
 
 
 def test_count_query(mock_sf_client):
@@ -391,10 +391,10 @@ def test_query_tooling_api(mock_sf_client):
 
         # Verify results
         assert isinstance(results, QueryResult)
-        assert isinstance(results.records, SObjectList)
-        assert len(results.records) == 1
-        assert results.records[0].Id == "001XX000003DGTYAA4"
-        assert results.records[0].Name == "Test Tooling Object"
+        assert isinstance(results.batches[0].records, SObjectList)
+        assert len(results.batches[0].records) == 1
+        assert results.batches[0].records[0].Id == "001XX000003DGTYAA4"
+        assert results.batches[0].records[0].Name == "Test Tooling Object"
 
     finally:
         ToolingObject._unregister_()
@@ -571,8 +571,8 @@ def test_execution_with_field_subquery(mock_sf_client):
     results = query.execute()
 
     # Verify the results
-    assert len(results.records) == 1
-    account = results.records[0]
+    assert len(results) == 1
+    account = next(results)
     assert account.Name == "Test Account"
     assert hasattr(account, "Opportunities")
     assert len(account.Opportunities) == 2

@@ -122,7 +122,7 @@ _SObject = TypeVar("_SObject", bound=SObject)
 _SObjectJSON = TypeVar("_SObjectJSON", bound=dict[str, Any])
 
 
-class QueryResult(Generic[_SObject]):
+class QueryResultBatch(Generic[_SObject]):
     """
     A generic class to represent results returned by the Salesforce SOQL Query API.
 
@@ -189,58 +189,71 @@ class QueryResult(Generic[_SObject]):
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
         result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
-        return QueryResult(self._sobject_type, connection=self._connection, **result)  # type: ignore
+        return QueryResultBatch(self._sobject_type, connection=self._connection, **result)  # type: ignore
 
     async def query_more_async(self):
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
         result: QueryResultJSON = (await self._connection.as_async.get(self.nextRecordsUrl)).json()
-        return QueryResult(self._sobject_type, connection=self._connection, **result)  # type: ignore
+        return QueryResultBatch(self._sobject_type, connection=self._connection, **result)  # type: ignore
 
-    def __aiter__(self) -> AsyncIterator[_SObject]:
-        return QueryResultIterator(self)
+
+class QueryResult(Generic[_SObject]):
+    batches: list[QueryResultBatch[_SObject]]
+    total_size: int
+    batch_index: int = 0
+    record_index: int = 0
+
+    def __init__(self, query_result: QueryResultBatch[_SObject]):
+        self.batches = [query_result]
+        self.total_size = query_result.totalSize
+
+    def __len__(self):
+        return self.total_size
+
+    @property
+    def done(self):
+        return self.batches[-1].done
+
+    def as_list(self) -> SObjectList[_SObject]:
+        return SObjectList(self, connection=self.batches[0]._sobject_type.attributes.connection)
 
     def __iter__(self) -> Iterator[_SObject]:
-        return QueryResultIterator(self)
-
-
-class QueryResultIterator(Generic[_SObject]):
-    query_result: QueryResult[_SObject]
-    index: int = 0
-
-    def __init__(self, query_result: QueryResult[_SObject]):
-        self.query_result = query_result
-
-    def __iter__(self) -> Iterator[_SObject]:
+        self.batch_index = 0
+        self.record_index = 0
         return self
 
     def __aiter__(self) -> AsyncIterator[_SObject]:
+        self.batch_index = 0
+        self.record_index = 0
         return self
 
     def __next__(self) -> _SObject:
         try:
-            return self.query_result.records[self.index]
+            record = self.batches[self.batch_index].records[self.record_index]
         except IndexError:
-            if self.query_result.done:
+            if self.batches[-1].done:
                 raise StopIteration
-            self.query_result = self.query_result.query_more()
-            self.index = 0
-            return self.query_result.records[self.index]
-        finally:
-            self.index += 1
+            self.batches.append(self.batches[self.batch_index].query_more())
+            self.batch_index += 1
+            self.record_index = 0
+            record = self.batches[self.batch_index].records[self.record_index]
+
+        self.record_index += 1
+        return record
 
     async def __anext__(self) -> _SObject:
         try:
-            return self.query_result.records[self.index]
+            return self.batches[-1].records[self.batch_index]
         except IndexError:
-            if self.query_result.done:
+            if self.batches[-1].done:
                 raise StopAsyncIteration
-            self.query_result = await self.query_result.query_more_async()
-            self.index = 0
-            return self.query_result.records[self.index]
+            self.batches.append(await self.batches[-1].query_more_async())
+            self.batch_index = 0
+            return self.batches[-1].records[self.batch_index]
         finally:
-            self.index += 1
+            self.batch_index += 1
 
 class SoqlQuery(Generic[_SObject]):
     sobject_type: type[_SObject]
@@ -509,7 +522,7 @@ class SoqlQuery(Generic[_SObject]):
         count_result = self.execute("COUNT()")
 
         # Count query returns a list with a single record containing the count
-        return count_result.totalSize
+        return len(count_result)
 
     def execute(self, *_fields: str) -> QueryResult[_SObject]:
         """
@@ -531,4 +544,6 @@ class SoqlQuery(Generic[_SObject]):
         else:
             url = f"{client.data_url}/query/"
         result = client.get(url, params={"q": self.format(fields)}).json()
-        return QueryResult(self.sobject_type, connection=client, **result)  # type: ignore
+        batch = QueryResultBatch(self.sobject_type, connection=client, **result)  # type: ignore
+
+        return QueryResult(batch)

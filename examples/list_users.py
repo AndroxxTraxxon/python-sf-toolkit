@@ -9,8 +9,9 @@ class User(SObject):
 
 with SalesforceClient(login=cli_login()) as client:
     print(client.base_url)
-    query = User.query().where(Name='Integration User').limit(10)
-    for user in (result:=query.execute()).records:
+    query = User.query().where(Name__like='%Integration%').limit(10)
+    for user in (result:=query.execute()):
         print(user.Name, user.Id, user.Username, sep=' | ')
 
-    print(result.totalSize)
+    print(result.as_list())
+    print(len(result), "Total Users")
