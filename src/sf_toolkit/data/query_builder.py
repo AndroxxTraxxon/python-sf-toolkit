@@ -205,9 +205,9 @@ class QueryResult(Generic[_SObject]):
     batch_index: int = 0
     record_index: int = 0
 
-    def __init__(self, query_result: QueryResultBatch[_SObject]):
-        self.batches = [query_result]
-        self.total_size = query_result.totalSize
+    def __init__(self, *batches: QueryResultBatch[_SObject]):
+        self.batches = [*batches]
+        self.total_size = batches[0].totalSize
 
     def __len__(self):
         return self.total_size
@@ -219,15 +219,16 @@ class QueryResult(Generic[_SObject]):
     def as_list(self) -> SObjectList[_SObject]:
         return SObjectList(self, connection=self.batches[0]._sobject_type.attributes.connection)
 
+
+    def copy(self) -> "QueryResult[_SObject]":
+        """Perform a shallow copy of the QueryResult object."""
+        return QueryResult(*self.batches)
+
     def __iter__(self) -> Iterator[_SObject]:
-        self.batch_index = 0
-        self.record_index = 0
-        return self
+        return self.copy()
 
     def __aiter__(self) -> AsyncIterator[_SObject]:
-        self.batch_index = 0
-        self.record_index = 0
-        return self
+        return self.copy()
 
     def __next__(self) -> _SObject:
         try:
