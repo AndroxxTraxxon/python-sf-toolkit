@@ -6,7 +6,7 @@ Salesforce Toolkit provides a powerful query builder for creating and executing 
 Basic Queries
 -----------
 
-The simplest way to create a query is using the ``select()`` method on your SObject class:
+The simplest way to create a query is using the ``query()`` method on your SObject class:
 
 .. code-block:: python
 
@@ -19,13 +19,13 @@ The simplest way to create a query is using the ``select()`` method on your SObj
        Industry = TextField()
 
    # Create a query for all fields
-   query = Account.select()
+   query = Account.query()
 
    # Execute the query
    results = query.execute()
 
    # Process results
-   for account in results.records:
+   for account in results:
        print(account.Name)
 
 Filtering Records
@@ -36,16 +36,55 @@ You can filter records using the ``where()`` method with field conditions:
 .. code-block:: python
 
    # Simple equality condition
-   query = Account.select().where(Industry="Technology")
+   query = Account.query().where(Industry="Technology")
 
    # Comparison operators using field__operator syntax
-   query = Account.select().where(
+   query = Account.query().where(
        AnnualRevenue__gt=1000000,    # Greater than
        Name__like="Test%"            # LIKE operator
    )
 
    # IN operator
-   query = Account.select().where(Industry__in=["Technology", "Healthcare"])
+   query = Account.query().where(Industry__in=["Technology", "Healthcare"])
+
+
+Combining Conditions
+--------------
+
+Use ``and_where()`` and ``or_where()`` to build complex conditions incrementally:
+
+.. code-block:: python
+
+   # Combine conditions with AND logic
+   query = Account.query().where(Industry="Technology")
+   query = query.and_where(AnnualRevenue__gt=1000000)
+
+   # Add multiple conditions at once
+   query = query.and_where(
+       NumberOfEmployees__gt=50,
+       BillingCountry="USA"
+   )
+
+   # Combine conditions with OR logic
+   query = Account.query().where(Industry="Technology")
+   query = query.or_where(Industry="Healthcare")
+
+   # Mixing AND and OR logic
+   query = Account.query().where(AnnualRevenue__gt=500000)
+   query = query.and_where(Industry="Technology")
+   query = query.or_where(
+       Industry="Healthcare",
+       AnnualRevenue__gt=1000000
+   )
+
+   # Building a query step by step
+   query = Account.query()
+   if filter_by_industry:
+       query = query.where(Industry__in=["Technology", "Healthcare"])
+   if filter_by_revenue:
+       query = query.and_where(AnnualRevenue__gt=min_revenue)
+   if search_term:
+       query = query.and_where(Name__like=f"%{search_term}%")
 
 Complex Conditions
 ---------------
@@ -57,7 +96,7 @@ For more complex conditions, use the logical operators ``AND`` and ``OR``:
    from sf_toolkit.data.query_builder import AND, OR, EQ, GT
 
    # Complex boolean logic
-   query = Account.select().where(
+   query = Account.query().where(
        OR(
            EQ("Industry", "Technology"),
            AND(
@@ -74,7 +113,7 @@ You can also use raw SOQL WHERE clauses for advanced filtering:
 
 .. code-block:: python
 
-   query = Account.select().where(
+   query = Account.query().where(
        "Name LIKE 'Test%' AND CreatedDate = LAST_N_DAYS:30"
    )
 
@@ -86,15 +125,15 @@ Support for GROUP BY and HAVING clauses:
 .. code-block:: python
 
    # Basic GROUP BY
-   query = Account.select().group_by("Industry")
+   query = Account.query().group_by("Industry")
 
    # GROUP BY with HAVING clause
-   query = Account.select().group_by("Industry").having(
+   query = Account.query().group_by("Industry").having(
        COUNT__Id__gt=5
    )
 
    # Multiple HAVING conditions
-   query = Account.select().group_by("Industry").having(
+   query = Account.query().group_by("Industry").having(
        COUNT__Id__gt=5
    ).and_having(
        SUM__AnnualRevenue__gt=1000000
@@ -112,10 +151,10 @@ Order results using the ``order_by()`` method:
    from sf_toolkit.data.query_builder import Order
 
    # Using Order objects
-   query = Account.select().order_by(Order("Name", "DESC"))
+   query = Account.query().order_by(Order("Name", "DESC"))
 
    # Using field=direction syntax
-   query = Account.select().order_by(Name="DESC", CreatedDate="ASC")
+   query = Account.query().order_by(Name="DESC", CreatedDate="ASC")
 
 Pagination
 --------
@@ -124,12 +163,12 @@ Control result pagination using ``limit()`` and ``offset()``:
 
 .. code-block:: python
 
-   query = Account.select().limit(10).offset(20)
+   query = Account.query().limit(10).offset(20)
 
 Handling Results
 -------------
 
-Query results are returned as a ``QueryResult`` object:
+Query results are returned as a ``QueryResult`` object which is an iterator over SObject records:
 
 .. code-block:: python
 
@@ -137,14 +176,20 @@ Query results are returned as a ``QueryResult`` object:
 
    # Check if all records were retrieved
    if not results.done:
-       # Get next batch of records
-       more_results = results.query_more()
+       print("More records are available")
 
    # Get total record count
-   total = results.totalSize
+   total = len(results)
 
-   # Access records (returns SObjectList)
-   records = results.records
+   # Access all records as a list
+   all_records = results.as_list()
+
+   # Iterate through records automatically handling pagination
+   for account in results:
+       print(account.Name)
+
+   # Convert to a list to get all records at once
+   account_list = list(results)
 
 Counting Records
 -------------
@@ -153,7 +198,7 @@ Execute a COUNT() query to get the total number of matching records:
 
 .. code-block:: python
 
-   query = Account.select().where(Industry="Technology")
+   query = Account.query().where(Industry="Technology")
    count = query.count()
    print(f"Found {count} Technology accounts")
 
@@ -169,7 +214,7 @@ Query Tooling API objects by setting the ``tooling=True`` flag on your SObject c
        Name = TextField()
 
    # Query will automatically use the Tooling API endpoint
-   results = CustomObject.select().execute()
+   results = CustomObject.query().execute()
 
 Date and DateTime Values
 --------------------
@@ -182,8 +227,8 @@ Handle date and datetime values in queries:
 
    # Query with datetime
    now = datetime.now().astimezone()
-   query = Account.select().where(CreatedDate__gt=now)
+   query = Account.query().where(CreatedDate__gt=now)
 
    # Query with date
    today = date.today()
-   query = Opportunity.select().where(CloseDate=today)
+   query = Opportunity.query().where(CloseDate=today)

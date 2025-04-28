@@ -128,6 +128,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         api_name: str | None = None,
         connection: str = "",
         id_field: str = "Id",
+        blob_field: str | None = None,
         tooling: bool = False,
         **kwargs,
     ) -> None:
@@ -135,7 +136,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         if not api_name:
             api_name = cls.__name__
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
-        cls.attributes = SObjectAttributes(api_name, connection, id_field, tooling)
+        cls.attributes = SObjectAttributes(api_name, connection, id_field, blob_field, tooling)
         cls._register_()
 
     @classmethod

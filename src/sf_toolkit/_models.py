@@ -5,6 +5,7 @@ class SObjectAttributes(NamedTuple):
     type: str
     connection: str
     id_field: str
+    blob_field: str | None
     tooling: bool
 
 

@@ -6,7 +6,6 @@ from .sobject import SObject
 class User(SObject):
     Id = IdField()
 
-
     def password_expired(self, connection: str | SalesforceClient | None = None) -> bool:
         assert self.Id is not None, "User Id must be set to check password expiration"
         if isinstance(connection, str):
