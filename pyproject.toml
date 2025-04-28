@@ -47,7 +47,7 @@ dynamic = ["version"]
 name = "sf_toolkit"
 
 [project.urls]
-Homepage = "https://example.com"
+Homepage = "https://github.com/AndroxxTraxxon/python-sf-toolkit"
 Documentation = "https://androxxtraxxon.github.io/python-sf-toolkit/"
 Repository = "https://github.com/AndroxxTraxxon/python-sf-toolkit.git"
 Issues = "https://github.com/AndroxxTraxxon/python-sf-toolkit/issues"
