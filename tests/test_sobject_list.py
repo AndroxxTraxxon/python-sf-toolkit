@@ -56,10 +56,6 @@ def mock_sf_client():
     # Restore the original _connections dictionary
     I_SalesforceClient._connections = original_connections
 
-    # Clean up by unregistering test classes
-    _TestAccount._unregister_()
-    _TestContact._unregister_()
-
 
 @pytest.fixture
 def test_accounts():

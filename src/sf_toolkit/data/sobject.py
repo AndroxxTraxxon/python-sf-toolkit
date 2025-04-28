@@ -119,9 +119,6 @@ class SObjectDescribe:
 
 
 class SObject(FieldConfigurableObject, I_SObject):
-    _registry: dict[SObjectAttributes, dict[frozenset[str], type["SObject"]]] = (
-        defaultdict(dict)
-    )
 
     def __init_subclass__(
         cls,
@@ -137,7 +134,6 @@ class SObject(FieldConfigurableObject, I_SObject):
             api_name = cls.__name__
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
         cls.attributes = SObjectAttributes(api_name, connection, id_field, blob_field, tooling)
-        cls._register_()
 
     @classmethod
     def query(cls: type[_sObject], include_deleted: bool = False) -> "SoqlQuery[_sObject]":
@@ -165,24 +161,8 @@ class SObject(FieldConfigurableObject, I_SObject):
 
         return SoqlQuery(cls, include_deleted)  # type: ignore
 
-    @classmethod
-    def _register_(cls):
-        fields = frozenset(cls.keys())
-        if fields in cls._registry[cls.attributes]:
-            raise TypeError(
-                f"SObject Type {cls} already defined as {cls._registry[cls.attributes][fields]}"
-            )
-        cls._registry[cls.attributes][fields] = cls
 
-    @classmethod
-    def _unregister_(cls):
-        fieldset = frozenset(cls.keys())
-        sobject_registry = cls._registry[cls.attributes]
-        if fieldset in sobject_registry and sobject_registry[fieldset] is cls:
-            del sobject_registry[fieldset]
-            # Remove the entire entry if there are no more classes for this SObject type
-            if not sobject_registry:
-                del cls._registry[cls.attributes]
+
 
     def __init__(self, /, __strict_fields: bool = True, **fields):
         super().__init__()

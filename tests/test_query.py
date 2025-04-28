@@ -367,37 +367,33 @@ def test_query_tooling_api(mock_sf_client):
         Id = IdField()
         Name = TextField()
 
-    try:
-        # Setup mock response
-        mock_sf_client.get.return_value.json.return_value = {
-            "done": True,
-            "totalSize": 1,
-            "records": [
-                {
-                    "attributes": {"type": "ToolingObject"},
-                    "Id": "001XX000003DGTYAA4",
-                    "Name": "Test Tooling Object",
-                }
-            ],
-        }
+    # Setup mock response
+    mock_sf_client.get.return_value.json.return_value = {
+        "done": True,
+        "totalSize": 1,
+        "records": [
+            {
+                "attributes": {"type": "ToolingObject"},
+                "Id": "001XX000003DGTYAA4",
+                "Name": "Test Tooling Object",
+            }
+        ],
+    }
 
-        # Execute query
-        results = ToolingObject.query().execute()
+    # Execute query
+    results = ToolingObject.query().execute()
 
-        # Verify tooling API endpoint was used
-        mock_sf_client.get.assert_called_once()
-        call_args = mock_sf_client.get.call_args
-        assert "tooling/query" in call_args[0][0]
+    # Verify tooling API endpoint was used
+    mock_sf_client.get.assert_called_once()
+    call_args = mock_sf_client.get.call_args
+    assert "tooling/query" in call_args[0][0]
 
-        # Verify results
-        assert isinstance(results, QueryResult)
-        assert isinstance(results.batches[0].records, SObjectList)
-        assert len(results.batches[0].records) == 1
-        assert results.batches[0].records[0].Id == "001XX000003DGTYAA4"
-        assert results.batches[0].records[0].Name == "Test Tooling Object"
-
-    finally:
-        ToolingObject._unregister_()
+    # Verify results
+    assert isinstance(results, QueryResult)
+    assert isinstance(results.batches[0].records, SObjectList)
+    assert len(results.batches[0].records) == 1
+    assert results.batches[0].records[0].Id == "001XX000003DGTYAA4"
+    assert results.batches[0].records[0].Name == "Test Tooling Object"
 
 
 def test_query_with_field_subquery():
@@ -426,8 +422,6 @@ def test_query_with_field_subquery():
     assert "FROM Account" in query_str
     assert "FROM Opportunities WHERE StageName = 'Closed Won')" in query_str
 
-    Account._unregister_()
-    Opportunity._unregister_()
 
 def test_query_with_nested_field_subquery():
     """Test query construction with nested field subqueries"""
@@ -448,20 +442,16 @@ def test_query_with_nested_field_subquery():
         Contacts = ListField(Contact)
 
     opportunities_subquery = Opportunity.query().where(Amount__gt=10000)
-    try:
-        query = Account.query().filter_subqueries(
-            Opportunities=opportunities_subquery,
-            Contacts=Contact.query().where(Email__like="%@example.com")
-        )
+    query = Account.query().filter_subqueries(
+        Opportunities=opportunities_subquery,
+        Contacts=Contact.query().where(Email__like="%@example.com")
+    )
 
-        query_str = str(query)
-        assert "SELECT Id, Name" in query_str
-        assert "(SELECT Id, Name FROM Opportunities WHERE Amount > 10000)" in query_str
-        assert "(SELECT Id, Email FROM Contacts WHERE Email LIKE '%@example.com')" in query_str
-    finally:
-        Account._unregister_()
-        Opportunity._unregister_()
-        Contact._unregister_()
+    query_str = str(query)
+    assert "SELECT Id, Name" in query_str
+    assert "(SELECT Id, Name FROM Opportunities WHERE Amount > 10000)" in query_str
+    assert "(SELECT Id, Email FROM Contacts WHERE Email LIKE '%@example.com')" in query_str
+
 
 
 def test_query_with_where_subquery():
@@ -475,16 +465,13 @@ def test_query_with_where_subquery():
         Id = IdField()
         Name = TextField()
 
-    try:
-        query = Account.query().where(
-            Id__in=Opportunity.query().where(Amount__gt=50000)
-        )
-        query_str = str(query)
-        assert "FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Amount > 50000)" in query_str
 
-    finally:
-        Account._unregister_()
-        Opportunity._unregister_()
+    query = Account.query().where(
+        Id__in=Opportunity.query().where(Amount__gt=50000)
+    )
+    query_str = str(query)
+    assert "FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Amount > 50000)" in query_str
+
 
 def test_query_with_complex_where_subquery():
     """Test query construction with complex WHERE clause subquery"""
