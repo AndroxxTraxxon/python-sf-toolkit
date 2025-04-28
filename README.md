@@ -24,7 +24,7 @@ from sf_toolkit import SalesforceClient, SObject, cli_login, query
 from sf_toolkit.data.fields import IdField, TextField
 
 # Define a Salesforce object model
-class Account(SObject, api_name="Account"):
+class Account(SObject):
     Id = IdField()
     Name = TextField()
     Industry = TextField()
