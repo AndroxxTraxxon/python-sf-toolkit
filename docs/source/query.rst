@@ -55,36 +55,37 @@ Use ``and_where()`` and ``or_where()`` to build complex conditions incrementally
 
 .. code-block:: python
 
-   # Combine conditions with AND logic
-   query = Account.query().where(Industry="Technology")
-   query = query.and_where(AnnualRevenue__gt=1000000)
+    # Combine conditions with AND logic
+    query = Account.query()
+        .where(Industry="Technology")
+        .and_where(AnnualRevenue__gt=1000000)
 
-   # Add multiple conditions at once
-   query = query.and_where(
-       NumberOfEmployees__gt=50,
-       BillingCountry="USA"
-   )
+    # Add multiple conditions at once
+        .and_where(
+        NumberOfEmployees__gt=50,
+        BillingCountry="USA"
+    )
 
-   # Combine conditions with OR logic
-   query = Account.query().where(Industry="Technology")
-   query = query.or_where(Industry="Healthcare")
+    # Combine conditions with OR logic
+    query = Account.query().where(Industry="Technology")
+    query = query.or_where(Industry="Healthcare")
 
-   # Mixing AND and OR logic
-   query = Account.query().where(AnnualRevenue__gt=500000)
-   query = query.and_where(Industry="Technology")
-   query = query.or_where(
-       Industry="Healthcare",
-       AnnualRevenue__gt=1000000
-   )
+    # Mixing AND and OR logic
+    query = Account.query().where(AnnualRevenue__gt=500000)
+    query = query.and_where(Industry="Technology")
+    query = query.or_where(
+        Industry="Healthcare",
+        AnnualRevenue__gt=1000000
+    )
 
-   # Building a query step by step
-   query = Account.query()
-   if filter_by_industry:
-       query = query.where(Industry__in=["Technology", "Healthcare"])
-   if filter_by_revenue:
-       query = query.and_where(AnnualRevenue__gt=min_revenue)
-   if search_term:
-       query = query.and_where(Name__like=f"%{search_term}%")
+    # Building a query step by step
+    query = Account.query()
+    if filter_by_industry:
+        query = query.where(Industry__in=["Technology", "Healthcare"])
+    if filter_by_revenue:
+        query = query.and_where(AnnualRevenue__gt=min_revenue)
+    if search_term:
+        query = query.and_where(Name__like=f"%{search_term}%")
 
 Complex Conditions
 ---------------

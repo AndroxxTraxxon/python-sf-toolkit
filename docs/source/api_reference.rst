@@ -4,7 +4,7 @@ API Reference
 This section contains detailed API documentation for all modules and classes in Salesforce Toolkit.
 
 Client Module
------------
+-------------
 
 .. automodule:: sf_toolkit.client
    :members:
@@ -12,7 +12,7 @@ Client Module
    :show-inheritance:
 
 Authentication
-------------
+--------------
 
 .. automodule:: sf_toolkit.auth
    :members:
@@ -35,7 +35,7 @@ Authentication
    :show-inheritance:
 
 SObject Classes
--------------
+---------------
 
 .. automodule:: sf_toolkit.data.sobject
    :members:
@@ -43,7 +43,7 @@ SObject Classes
    :show-inheritance:
 
 Fields
------
+------
 
 .. automodule:: sf_toolkit.data.fields
    :members:
@@ -51,7 +51,7 @@ Fields
    :show-inheritance:
 
 Query Builder
------------
+-------------
 
 .. automodule:: sf_toolkit.data.query_builder
    :members:
@@ -59,7 +59,7 @@ Query Builder
    :show-inheritance:
 
 API Models
----------
+----------
 
 .. automodule:: sf_toolkit.apimodels
    :members:
@@ -67,7 +67,7 @@ API Models
    :show-inheritance:
 
 Exceptions
----------
+----------
 
 .. automodule:: sf_toolkit.exceptions
    :members:
@@ -75,7 +75,7 @@ Exceptions
    :show-inheritance:
 
 Utilities
---------
+---------
 
 .. automodule:: sf_toolkit.formatting
    :members:

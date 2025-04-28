@@ -1,5 +1,4 @@
 import asyncio
-from collections import defaultdict
 from typing import (
     Any,
     Callable,
@@ -358,7 +357,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         update_only: bool = False,
     ):
         # If we have an ID value, use save_update
-        if (_id_value := getattr(self, self.attributes.id_field, None)) is not None:
+        if getattr(self, self.attributes.id_field, None) is not None:
             return self.save_update(
                 sf_client=sf_client,
                 only_changes=only_changes,
