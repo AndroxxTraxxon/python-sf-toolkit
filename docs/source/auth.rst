@@ -17,7 +17,7 @@ Here's a quick reference table of available authentication methods:
 +---------------------------+--------------------------------------------------+---------------------+
 | OAuth JWT Bearer          | Server-to-server integration                     | High                |
 +---------------------------+--------------------------------------------------+---------------------+
-| OAuth Client Credentials  | Service integration with client credentials      | High                |
+| OAuth Client Credentials  | Service integration with client credentials      | Low                 |
 +---------------------------+--------------------------------------------------+---------------------+
 | SOAP Security Token       | Legacy applications needing security token auth  | Medium              |
 +---------------------------+--------------------------------------------------+---------------------+

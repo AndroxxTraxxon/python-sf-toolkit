@@ -679,3 +679,20 @@ def test_readonly_assignment_exception():
     # Regular fields should still be modifiable
     account.Name = "Modified Name"  # This should work fine
     assert account.Name == "Modified Name"
+
+
+def test_sobject_field_inheritance():
+    """Test that fields are inherited correctly"""
+    # Create a custom object with fields
+    class SObject_A(SObject):
+        field_a = TextField()
+
+    assert SObject_A._fields.keys() == {"field_a"}
+
+    class SObject_B(SObject_A):
+        field_b = TextField()
+
+    assert SObject_B._fields.keys() == {"field_a", "field_b"}
+
+    # subclassing an object should not update its parents' fields.
+    assert SObject_A._fields.keys() == {"field_a"}

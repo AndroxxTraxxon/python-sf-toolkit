@@ -1,3 +1,4 @@
+from collections import defaultdict
 import datetime
 from enum import Flag, auto
 import typing
@@ -71,10 +72,20 @@ class FieldConfigurableObject:
     _values: dict[str, typing.Any]
     _dirty_fields: set[str]
     _fields: typing.ClassVar[dict[str, "Field"]]
+    _type_field_registry: typing.ClassVar[dict[type, dict[str, "Field"]]] = defaultdict(dict)
 
     def __init__(self):
         self._values = {}
         self._dirty_fields = set()
+
+    def __init_subclass__(cls) -> None:
+        cls._fields = cls._type_field_registry[cls]
+        for parent in cls.__mro__:
+            if parent_fields := getattr(parent, "_fields", None):
+                for field, fieldtype in parent_fields.items():
+                    if field not in cls._fields:
+                        cls._fields[field] = fieldtype
+
 
     @classmethod
     def keys(cls) -> typing.Iterable[str]:
@@ -174,9 +185,7 @@ class Field(typing.Generic[T]):
     def __set_name__(self, cls: type[FieldConfigurableObject], name):
         self._owner = cls
         self._name = name
-        if not hasattr(cls, "_fields"):
-            cls._fields = {}
-        cls._fields[name] = self
+        cls._type_field_registry[cls][name] = self
 
     def __delete__(self, obj: FieldConfigurableObject):
         del obj._values[self._name]
