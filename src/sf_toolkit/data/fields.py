@@ -72,7 +72,9 @@ class FieldConfigurableObject:
     _values: dict[str, typing.Any]
     _dirty_fields: set[str]
     _fields: typing.ClassVar[dict[str, "Field"]]
-    _type_field_registry: typing.ClassVar[dict[type, dict[str, "Field"]]] = defaultdict(dict)
+    _type_field_registry: typing.ClassVar[dict[type, dict[str, "Field"]]] = defaultdict(
+        dict
+    )
 
     def __init__(self):
         self._values = {}
@@ -86,15 +88,18 @@ class FieldConfigurableObject:
                     if field not in cls._fields:
                         cls._fields[field] = fieldtype
 
-
     @classmethod
     def keys(cls) -> typing.Iterable[str]:
-        assert hasattr(cls, "_fields"), f"No Field definitions found for class {cls.__name__}"
+        assert hasattr(cls, "_fields"), (
+            f"No Field definitions found for class {cls.__name__}"
+        )
         return cls._fields.keys()
 
     @classmethod
     def query_fields(cls) -> list[str]:
-        assert hasattr(cls, "_fields"), f"No Field definitions found for class {cls.__name__}"
+        assert hasattr(cls, "_fields"), (
+            f"No Field definitions found for class {cls.__name__}"
+        )
         fields = list()
         for field, fieldtype in cls._fields.items():
             if isinstance(fieldtype, ReferenceField) and fieldtype._py_type:
@@ -329,17 +334,19 @@ class ListField(Field[list[T]]):
             from .sobject import SObjectList
 
     def revive(self, value: list[dict | FieldConfigurableObject]):
-
         if value is None:
             return value
-        if isinstance(value, SObjectList):
+        if isinstance(value, SObjectList):  # type: ignore
             return value
         if isinstance(value, list):
             return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
         if isinstance(value, dict):
             # assume the dict is a QueryResult-formatted dictionary
             return SObjectList([self._nested_type(**item) for item in value["records"]])  # type: ignore
-        raise TypeError(f"Unexpected type {type(value)} for {type(self).__name__}[{self._nested_type.__name__}]")
+        raise TypeError(
+            f"Unexpected type {type(value)} for {type(self).__name__}[{self._nested_type.__name__}]"
+        )
+
 
 FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
     "boolean": CheckboxField,

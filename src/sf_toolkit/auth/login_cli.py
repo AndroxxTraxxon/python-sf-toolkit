@@ -9,6 +9,7 @@ from httpx import URL
 from ..logger import getLogger
 
 from .types import SalesforceLogin, SalesforceToken
+from sf_toolkit.auth.types import SalesforceTokenGenerator
 
 LOGGER = getLogger("auth.cli")
 
@@ -23,7 +24,7 @@ def cli_login(
     elif isinstance(sf_exec_path, Path):
         sf_exec_path = str(sf_exec_path.resolve())
 
-    def _cli_login():
+    def _cli_login() -> SalesforceTokenGenerator:
         """Fetches the authentication credentials from sf or sfdx command line tools."""
         LOGGER.info("Logging in via SF CLI at %s", sf_exec_path)
         command: list[str] = [sf_exec_path, "org", "display", "--json"]

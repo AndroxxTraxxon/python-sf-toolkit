@@ -20,6 +20,7 @@ from ..async_utils import run_concurrently
 from .._models import SObjectAttributes, SObjectSaveResult
 from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 from .fields import (
+    Field,
     FIELD_TYPE_LOOKUP,
     FieldConfigurableObject,
     FieldFlag,
@@ -118,7 +119,6 @@ class SObjectDescribe:
 
 
 class SObject(FieldConfigurableObject, I_SObject):
-
     def __init_subclass__(
         cls,
         api_name: str | None = None,
@@ -132,10 +132,14 @@ class SObject(FieldConfigurableObject, I_SObject):
         if not api_name:
             api_name = cls.__name__
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
-        cls.attributes = SObjectAttributes(api_name, connection, id_field, blob_field, tooling)
+        cls.attributes = SObjectAttributes(
+            api_name, connection, id_field, blob_field, tooling
+        )
 
     @classmethod
-    def query(cls: type[_sObject], include_deleted: bool = False) -> "SoqlQuery[_sObject]":
+    def query(
+        cls: type[_sObject], include_deleted: bool = False
+    ) -> "SoqlQuery[_sObject]":  # type: ignore
         """Create a new SoqlSelect query builder for this SObject type.
 
         Args:
@@ -159,9 +163,6 @@ class SObject(FieldConfigurableObject, I_SObject):
             from .query_builder import SoqlQuery
 
         return SoqlQuery(cls, include_deleted)  # type: ignore
-
-
-
 
     def __init__(self, /, __strict_fields: bool = True, **fields):
         super().__init__()
@@ -418,7 +419,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         sf_client: I_SalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], None] | None = None,
-    ) -> "SObjectList":
+    ) -> "SObjectList[_sObject]":
         if sf_client is None:
             sf_client = cls._client_connection()
 
@@ -439,7 +440,9 @@ class SObject(FieldConfigurableObject, I_SObject):
                 )
             )
         else:
-            result = SObjectList(connection=cls.attributes.connection)
+            result: SObjectList[_sObject] = SObjectList(
+                connection=cls.attributes.connection
+            )
             for chunk in chunked(ids, 2000):
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(cls.attributes.type),
@@ -460,7 +463,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         sf_client: I_AsyncSalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
-    ) -> "SObjectList":
+    ) -> "SObjectList[_sObject]":
         if sf_client is None:
             sf_client = cls._client_connection().as_async
         async with sf_client:
@@ -471,8 +474,8 @@ class SObject(FieldConfigurableObject, I_SObject):
                 )
                 for chunk in chunked(ids, 2000)
             ]
-            records: list[cls] = SObjectList(  # type: ignore
-                (
+            records: SObjectList[_sObject] = SObjectList(
+                (  # type: ignore
                     cls(**record)
                     for response in (
                         await run_concurrently(concurrency, tasks, on_chunk_received)
@@ -527,17 +530,17 @@ class SObject(FieldConfigurableObject, I_SObject):
             field_name = field.name
             field_type = field.type
 
-            field_cls = FIELD_TYPE_LOOKUP[field_type]
-            kwargs = {}
-            flags = []
+            field_cls: type[Field] = FIELD_TYPE_LOOKUP[field_type]
+            kwargs: dict[str, Any] = {}
+            flags: list[FieldFlag] = []
 
             if not field.updateable:
                 flags.append(FieldFlag.readonly)
 
-            fields[field_name] = field_cls(*flags, **kwargs)
+            fields[field_name] = field_cls(*flags, **kwargs)  # type: ignore
 
         # Create a new SObject subclass
-        sobject_class: type[_sObject] = type(  # type: ignore
+        sobject_class = type(
             f"SObject__{sobject}",
             (SObject,),
             {
@@ -652,7 +655,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         emitted_records: list[_sObject] = []
         batches = []
         previous_record = None
-        current_batch = []
+        current_batch: list[dict[str, Any]] = []
         batch_chunk_count = 0
         for record in self:
             if only_changes and not record.dirty_fields:
@@ -719,7 +722,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             # Create a new list to ensure all objects have the external ID field
             upsert_objects = SObjectList(
                 [obj for obj in self if hasattr(obj, external_id_field)],
-                connection=self.connection
+                connection=self.connection,
             )
 
             # Check if any objects are missing the external ID field
@@ -737,12 +740,14 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 batch_size=batch_size,
                 only_changes=only_changes,
                 all_or_none=all_or_none,
-                **callout_options
+                **callout_options,
             )
 
         # Check if we're dealing with mixed operations (some records have IDs, some don't)
         has_ids = [obj for obj in self if getattr(obj, obj.attributes.id_field, None)]
-        missing_ids = [obj for obj in self if not getattr(obj, obj.attributes.id_field, None)]
+        missing_ids = [
+            obj for obj in self if not getattr(obj, obj.attributes.id_field, None)
+        ]
 
         # If all records have IDs, use update
         if len(has_ids) == len(self):
@@ -750,17 +755,17 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 only_changes=only_changes,
                 concurrency=concurrency,
                 batch_size=batch_size,
-                **callout_options
+                **callout_options,
             )
 
         # If all records are missing IDs, use insert
         elif len(missing_ids) == len(self):
             if update_only:
-                raise ValueError("Cannot perform update_only operation when no records have IDs")
+                raise ValueError(
+                    "Cannot perform update_only operation when no records have IDs"
+                )
             return self.save_insert(
-                concurrency=concurrency,
-                batch_size=batch_size,
-                **callout_options
+                concurrency=concurrency, batch_size=batch_size, **callout_options
             )
 
         # Mixed case - some records have IDs, some don't
@@ -771,7 +776,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                     only_changes=only_changes,
                     concurrency=concurrency,
                     batch_size=batch_size,
-                    **callout_options
+                    **callout_options,
                 )
 
             # Otherwise, split and process separately
@@ -779,20 +784,22 @@ class SObjectList(list[_sObject], Generic[_sObject]):
 
             # Process updates first
             if has_ids:
-                update_results = SObjectList(has_ids, connection=self.connection).save_update(
+                update_results = SObjectList(
+                    has_ids, connection=self.connection
+                ).save_update(
                     only_changes=only_changes,
                     concurrency=concurrency,
                     batch_size=batch_size,
-                    **callout_options
+                    **callout_options,
                 )
                 results.extend(update_results)
 
             # Then process inserts
             if missing_ids and not update_only:
-                insert_results = SObjectList(missing_ids, connection=self.connection).save_insert(
-                    concurrency=concurrency,
-                    batch_size=batch_size,
-                    **callout_options
+                insert_results = SObjectList(
+                    missing_ids, connection=self.connection
+                ).save_insert(
+                    concurrency=concurrency, batch_size=batch_size, **callout_options
                 )
                 results.extend(insert_results)
 

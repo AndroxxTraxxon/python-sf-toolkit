@@ -163,7 +163,9 @@ class QueryResultBatch(Generic[_SObject]):
         Args:
             **kwargs: Key-value pairs from the Salesforce API response.
         """
-        self._connection = connection or SalesforceClient.get_connection(sobject_type.attributes.connection) # type: ignore
+        self._connection = connection or SalesforceClient.get_connection(
+            sobject_type.attributes.connection
+        )  # type: ignore
         self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
@@ -184,19 +186,25 @@ class QueryResultBatch(Generic[_SObject]):
             )[1].rsplit("-", maxsplit=1)
             self.batch_size = int(batch_size)
 
-    def query_more(self):
+    def query_more(self) -> "QueryResultBatch[_SObject]":
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
         result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
-        return QueryResultBatch(self._sobject_type, connection=self._connection, **result)  # type: ignore
+        return QueryResultBatch(
+            self._sobject_type, connection=self._connection, **result
+        )  # type: ignore
 
-    async def query_more_async(self):
+    async def query_more_async(self) -> "QueryResultBatch[_SObject]":
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
-        result: QueryResultJSON = (await self._connection.as_async.get(self.nextRecordsUrl)).json()
-        return QueryResultBatch(self._sobject_type, connection=self._connection, **result)  # type: ignore
+        result: QueryResultJSON = (
+            await self._connection.as_async.get(self.nextRecordsUrl)
+        ).json()
+        return QueryResultBatch(
+            self._sobject_type, connection=self._connection, **result
+        )  # type: ignore
 
 
 class QueryResult(Generic[_SObject]):
@@ -217,8 +225,9 @@ class QueryResult(Generic[_SObject]):
         return self.batches[-1].done
 
     def as_list(self) -> SObjectList[_SObject]:
-        return SObjectList(self, connection=self.batches[0]._sobject_type.attributes.connection)
-
+        return SObjectList(
+            self, connection=self.batches[0]._sobject_type.attributes.connection
+        )
 
     def copy(self) -> "QueryResult[_SObject]":
         """Perform a shallow copy of the QueryResult object."""
@@ -256,6 +265,7 @@ class QueryResult(Generic[_SObject]):
         finally:
             self.batch_index += 1
 
+
 class SoqlQuery(Generic[_SObject]):
     sobject_type: type[_SObject]
     _object_relationship_name: str | None = None
@@ -268,11 +278,7 @@ class SoqlQuery(Generic[_SObject]):
     _subqueries: dict[str, "SoqlQuery"]
     _include_deleted: bool
 
-    def __init__(
-        self,
-        sobject_type: type[_SObject],
-        include_deleted: bool = False
-    ):
+    def __init__(self, sobject_type: type[_SObject], include_deleted: bool = False):
         self.sobject_type = sobject_type
         self._subqueries = {}
         self._include_deleted = include_deleted
@@ -482,6 +488,7 @@ class SoqlQuery(Generic[_SObject]):
     def format(self, fields: list[str] | None = None):
         if not fields:
             fields = self.fields
+        assert fields, "Fields cannot be empty"
         segments = [
             "SELECT",
             ", ".join(fields),
@@ -536,8 +543,9 @@ class SoqlQuery(Generic[_SObject]):
         client = self._sf_connection()
 
         result: QueryResultJSON
-        assert not (self.sobject_type.attributes.tooling and self._include_deleted), \
+        assert not (self.sobject_type.attributes.tooling and self._include_deleted), (
             "Tooling API does not support query deleted records (QueryAll)"
+        )
         if self.sobject_type.attributes.tooling:
             url = f"{client.data_url}/tooling/query/"
         elif self._include_deleted:
