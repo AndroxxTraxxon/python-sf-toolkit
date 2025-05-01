@@ -5,7 +5,7 @@ from datetime import datetime, date
 from sf_toolkit.data.fields import DateField, IdField, IntField, ListField, NumberField, TextField
 from sf_toolkit.data.query_builder import AND, EQ, GT, OR, QueryResult, SoqlQuery, Order
 from sf_toolkit.data.sobject import SObject, SObjectList
-from .unit_test_models import Opportunity, Account
+from ..unit_test_models import Opportunity, Account
 
 
 @pytest.fixture
