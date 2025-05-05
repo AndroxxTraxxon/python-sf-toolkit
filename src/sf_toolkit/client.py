@@ -222,7 +222,6 @@ class SalesforceClient(I_SalesforceClient):
             for version in versions_data
         }
 
-
     # resources for the client
     @property
     def tooling(self) -> "ToolingResource":
@@ -235,7 +234,6 @@ class SalesforceClient(I_SalesforceClient):
             self._tooling = ToolingResource(self)
             return self._tooling
 
-
     @property
     def metadata(self) -> "MetadataResource":
         try:
@@ -246,7 +244,6 @@ class SalesforceClient(I_SalesforceClient):
                 from .resources.metadata import MetadataResource
             self._metadata = MetadataResource(self)
             return self._metadata
-
 
     @tooling.deleter
     def tooling(self):

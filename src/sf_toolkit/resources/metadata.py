@@ -12,6 +12,7 @@ class DeployMessage(fields.FieldConfigurableObject):
     """
     https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_deployresult.htm#deploymessage
     """
+
     changed = fields.CheckboxField()
     columnNumber = fields.IntField()
     componentType = fields.TextField()
@@ -36,19 +37,20 @@ class FileProperties(fields.FieldConfigurableObject):
     lastModifiedById = fields.IdField()
     lastModifiedByName = fields.TextField()
     lastModifiedDate = fields.DateTimeField()
-    manageableState = fields.PicklistField(options=[
-        "beta",
-        "deleted",
-        "deprecated",
-        "deprecatedEditable",
-        "installed",
-        "installedEditable",
-        "released",
-        "unmanaged"
-    ])
+    manageableState = fields.PicklistField(
+        options=[
+            "beta",
+            "deleted",
+            "deprecated",
+            "deprecatedEditable",
+            "installed",
+            "installedEditable",
+            "released",
+            "unmanaged",
+        ]
+    )
     namespacePrefix = fields.TextField()
     type = fields.TextField()
-
 
 
 class RetrieveMessage(fields.FieldConfigurableObject):
@@ -63,13 +65,11 @@ class RetrieveResult(fields.FieldConfigurableObject):
     fileProperties = fields.ListField(FileProperties)
     id = fields.IdField()
     message = fields.ListField(RetrieveMessage)
-    status = fields.PicklistField(options=[
-        "Pending",
-        "InProgress",
-        "Succeeded",
-        "Failed"
-    ])
+    status = fields.PicklistField(
+        options=["Pending", "InProgress", "Succeeded", "Failed"]
+    )
     zipFile = NotImplementedError()
+
 
 class CodeLocation(fields.FieldConfigurableObject):
     column = fields.IntField()
@@ -88,11 +88,13 @@ class CodeCoverageResult(fields.FieldConfigurableObject):
     numLocations = fields.IntField()
     soqlInfo = fields.ListField(CodeLocation)
 
+
 class CodeCoverageWarning(fields.FieldConfigurableObject):
     id = fields.IdField()
     message = fields.TextField()
     name = fields.TextField()
     namespace = fields.TextField()
+
 
 class RunTestSuccess(fields.FieldConfigurableObject):
     id = fields.IdField()
@@ -101,6 +103,7 @@ class RunTestSuccess(fields.FieldConfigurableObject):
     namespace = fields.TextField()
     seeAllData = fields.CheckboxField()
     time = fields.NumberField()
+
 
 class RunTestFailure(fields.FieldConfigurableObject):
     id = fields.IdField()
@@ -130,6 +133,7 @@ class FlowCoverageWarning(fields.FieldConfigurableObject):
     flowNamespace = fields.TextField()
     message = fields.TextField()
 
+
 class RunTestsResult(fields.FieldConfigurableObject):
     apexLogId = fields.IdField()
     codeCoverage = fields.ListField(CodeCoverageResult)
@@ -139,6 +143,7 @@ class RunTestsResult(fields.FieldConfigurableObject):
     numFailures = fields.IntField()
     numTestsRun = fields.IntField()
     totalTime = fields.NumberField()
+
 
 class DeployDetails(fields.FieldConfigurableObject):
     componentFailures = fields.ListField(DeployMessage)
@@ -151,15 +156,17 @@ class DeployResult(fields.FieldConfigurableObject):
     checkOnly = fields.CheckboxField()
     ignoreWarnings = fields.CheckboxField()
     rollbackOnError = fields.CheckboxField()
-    status = fields.PicklistField(options=[
-        "Pending",
-        "InProgress",
-        "Succeeded",
-        "SucceededPartial",
-        "Failed",
-        "Canceling",
-        "Canceled",
-    ])
+    status = fields.PicklistField(
+        options=[
+            "Pending",
+            "InProgress",
+            "Succeeded",
+            "SucceededPartial",
+            "Failed",
+            "Canceling",
+            "Canceled",
+        ]
+    )
     numberComponentsDeployed = fields.IntField()
     numberComponentsTotal = fields.IntField()
     numberComponentErrors = fields.IntField()
@@ -189,37 +196,40 @@ class DeployOptionsDict(TypedDict):
     rollbackOnError: NotRequired[bool]
     runTests: list[str] | None
     singlePackage: bool
-    testLevel: NotRequired[Literal[
-        "NoTestRun",
-        "RunSpecifiedTests",
-        "RunLocalTests",
-        "RunAllTestsInOrg"
-    ]]
+    testLevel: NotRequired[
+        Literal["NoTestRun", "RunSpecifiedTests", "RunLocalTests", "RunAllTestsInOrg"]
+    ]
 
 
-class DeployOptions(fields.FieldConfigurableObject) :
+class DeployOptions(fields.FieldConfigurableObject):
     """
     Salesforce Deployment Options parameters:
     https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm
     """
+
     allowMissingFiles = fields.CheckboxField()
+    autoUpdatePackage = fields.CheckboxField()
     checkOnly = fields.CheckboxField()
     ignoreWarnings = fields.CheckboxField()
     performRetrieve = fields.CheckboxField()
     purgeOnDelete = fields.CheckboxField()
     rollbackOnError = fields.CheckboxField()
+    runAllTests = fields.CheckboxField()
     runTests = fields.ListField(str)
     singlePackage = fields.CheckboxField()
-    testLevel = fields.PicklistField(options = [
-        "NoTestRun",
-        "RunSpecifiedTests",
-        "RunLocalTests",
-        "RunAllTestsInOrg"
-    ])
+    testLevel = fields.PicklistField(
+        options=["NoTestRun", "RunSpecifiedTests", "RunLocalTests", "RunAllTestsInOrg"]
+    )
 
 
 class DeployRequest(fields.FieldConfigurableObject):
+    """
+    Deploy Metadata with Apex Testing Using REST
+    https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm
+    """
+
     id = fields.IdField()
+    validatedDeployRequestId = fields.IdField()
     url = fields.TextField()
     deployResult = fields.ReferenceField(DeployResult)
     deployOptions = fields.ReferenceField(DeployOptions)
@@ -228,8 +238,15 @@ class DeployRequest(fields.FieldConfigurableObject):
         super().__init__(**fields)
         self._connection = _connection
 
-
-    def current_status(self, include_details: bool = True, connection: I_SalesforceClient | str | None = None) -> "DeployRequest":
+    def current_status(
+        self,
+        include_details: bool = True,
+        connection: I_SalesforceClient | str | None = None,
+    ) -> "DeployRequest":
+        """
+        Get the current status of a deployment request
+        https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_checkstatus.htm
+        """
         if connection is None and self._connection:
             connection = self._connection
         if not isinstance(connection, I_SalesforceClient):
@@ -237,12 +254,44 @@ class DeployRequest(fields.FieldConfigurableObject):
         url = self.url or f"{connection.data_url}/metadata/deployRequest/{self.id}"
         params = {"includeDetails": True} if include_details else {}
         response = connection.get(url, params=params)
-        return type(self)(**response.json())
+        return type(self)(_connection=connection, **response.json())
+
+    def cancel(self, connection: I_SalesforceClient | str | None) -> "DeployRequest":
+        """
+        Cancel the deployment request
+        https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_cancel.htm
+        """
+        if connection is None and self._connection:
+            connection = self._connection
+        if not isinstance(connection, I_SalesforceClient):
+            connection = I_SalesforceClient.get_connection(connection)
+        url = self.url or f"{connection.data_url}/metadata/deployRequest/{self.id}"
+        response = connection.patch(url, json={"deployResult": {"status": "Canceling"}})
+        if not response.status_code == 202:
+            raise ValueError("Deployment Failed to cancel")
+        return type(self)(_connection=connection, **response.json())
+
+    def quick_deploy_validated(self, connection: I_SalesforceClient) -> "DeployRequest":
+        """
+        Deploy a Recently Validated Component Set Without Tests
+        https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_recentvalidation.htm
+        """
+        assert self.deployOptions.checkOnly, (
+            "Original deployOptions.checkOnly needs to have been true to quick deploy."
+        )
+        if connection is None and self._connection:
+            connection = self._connection
+        if not isinstance(connection, I_SalesforceClient):
+            connection = I_SalesforceClient.get_connection(connection)
+        url = self.url or f"{connection.data_url}/metadata/deployRequest/{self.id}"
+        response = connection.post(url, json={"validatedDeployRequestId": self.id})
+        return type(self)(_connection=connection, **response.json())
 
 
 class MetadataResource(ApiResource):
-
-    def request_deploy(self, deploy_options: DeployOptions | DeployOptionsDict, archive_path: Path) -> DeployRequest:
+    def request_deploy(
+        self, deploy_options: DeployOptions | DeployOptionsDict, archive_path: Path
+    ) -> DeployRequest:
         """
         Request a deployment via the Metadata REST API
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm
@@ -250,16 +299,25 @@ class MetadataResource(ApiResource):
         if isinstance(deploy_options, DeployOptions):
             _serialized: DeployOptionsDict = deploy_options.serialize()  # type: ignore
             deploy_options = _serialized
-        assert isinstance(archive_path, Path), "archive_path must be an instance of pathlib.Path"
+        assert isinstance(archive_path, Path), (
+            "archive_path must be an instance of pathlib.Path"
+        )
         assert archive_path.suffix.casefold() == ".zip", "Must be a .zip archive"
         response = None
         with archive_path.open("rb") as archive_file:
             response = self.client.post(
                 self.client.data_url + "/metadata/deployRequest",
                 files=[
-                    ("json", (None, json.dumps({"deployOptions": deploy_options}), "application/json")),
-                    ("file", (archive_file.name, archive_file, "application/zip"))
-                ]
+                    (
+                        "json",
+                        (
+                            None,
+                            json.dumps({"deployOptions": deploy_options}),
+                            "application/json",
+                        ),
+                    ),
+                    ("file", (archive_file.name, archive_file, "application/zip")),
+                ],
             )
         assert response is not None, "Did not receive response for Deploy Request."
         return DeployRequest(_connection=self.client, **response.json())

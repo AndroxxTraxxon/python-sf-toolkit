@@ -6,7 +6,9 @@ from .sobject import SObject
 class User(SObject):
     Id = IdField()
 
-    def password_expired(self, connection: str | SalesforceClient | None = None) -> bool:
+    def password_expired(
+        self, connection: str | SalesforceClient | None = None
+    ) -> bool:
         assert self.Id is not None, "User Id must be set to check password expiration"
         if isinstance(connection, str):
             client = SalesforceClient.get_connection(connection)
@@ -19,7 +21,9 @@ class User(SObject):
         response = client.get(url, headers={"Accept": "application/json"})
         return response.json()["IsExpired"]
 
-    def set_password(self, password: str, connection: str | SalesforceClient | None = None):
+    def set_password(
+        self, password: str, connection: str | SalesforceClient | None = None
+    ):
         assert self.Id is not None, "User Id must be set to set password"
         if isinstance(connection, str):
             client = SalesforceClient.get_connection(connection)
@@ -32,7 +36,7 @@ class User(SObject):
         client.post(url, json={"NewPassword": password})
 
     def reset_password(self, connection: str | SalesforceClient | None = None):
-        """Reset the user's password and return the new system-generated """
+        """Reset the user's password and return the new system-generated"""
         assert self.Id is not None, "User Id must be set to set password"
         if isinstance(connection, str):
             client = SalesforceClient.get_connection(connection)
