@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from sf_toolkit.resources.tooling import Tooling
+from sf_toolkit.resources.tooling import ToolingResource
 from sf_toolkit.exceptions import SalesforceError
 
 
@@ -28,7 +28,7 @@ def test_execute_anonymous_success(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Create Tooling instance with mock client
-    tooling = Tooling(mock_sf_client)
+    tooling = ToolingResource(mock_sf_client)
 
     # Execute anonymous code
     result = tooling.execute_anonymous("System.debug('Hello World');")
@@ -62,7 +62,7 @@ def test_execute_anonymous_compile_error(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Create Tooling instance with mock client
-    tooling = Tooling(mock_sf_client)
+    tooling = ToolingResource(mock_sf_client)
 
     # Execute anonymous code with compilation error
     result = tooling.execute_anonymous("Invalid Apex code;")
@@ -97,7 +97,7 @@ def test_execute_anonymous_runtime_error(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Create Tooling instance with mock client
-    tooling = Tooling(mock_sf_client)
+    tooling = ToolingResource(mock_sf_client)
 
     # Execute anonymous code with runtime error
     result = tooling.execute_anonymous("String s = null; s.length();")
@@ -123,7 +123,7 @@ def test_execute_anonymous_http_error(mock_sf_client):
     mock_sf_client.get.side_effect = SalesforceError(Mock(status_code=401, text="Unauthorized"), "ExecuteAnonymous")
 
     # Create Tooling instance with mock client
-    tooling = Tooling(mock_sf_client)
+    tooling = ToolingResource(mock_sf_client)
 
     # Execute anonymous code should propagate the exception
     with pytest.raises(SalesforceError) as excinfo:
@@ -144,7 +144,7 @@ def test_tooling_api_resource_with_connection_string():
         mock_get_connection.return_value = mock_client
 
         # Create Tooling instance with connection string
-        tooling = Tooling("test_connection")
+        tooling = ToolingResource("test_connection")
 
         # Verify get_connection was called with the connection string
         mock_get_connection.assert_called_once_with("test_connection")
@@ -162,7 +162,7 @@ def test_tooling_api_resource_with_default_connection():
 
 
         # Create Tooling instance with no connection (should use default)
-        tooling = Tooling()
+        tooling = ToolingResource()
 
         # Verify get_connection was called with None (default connection)
         mock_get_connection.assert_called_once_with(None)

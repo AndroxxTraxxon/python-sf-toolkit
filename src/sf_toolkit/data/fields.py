@@ -201,6 +201,16 @@ class Field(typing.Generic[T]):
                 f"on {self._owner.__name__}, got {type(value).__name__}"
             )
 
+class RawField(Field[typing.Any]):
+    """
+    A Field that does no transformation or validation on the values passed to it.
+    """
+    def __init__(self, *flags: FieldFlag):
+        super().__init__(type(None), *flags)
+
+    def validate(self, value):
+        return
+
 
 class TextField(Field[str]):
     def __init__(self, *flags: FieldFlag):
@@ -335,10 +345,14 @@ class ListField(Field[list[T]]):
         if isinstance(value, SObjectList):
             return value
         if isinstance(value, list):
-            return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
+            if issubclass(self._nested_type, FieldConfigurableObject):
+                return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
+            return value
         if isinstance(value, dict):
             # assume the dict is a QueryResult-formatted dictionary
-            return SObjectList([self._nested_type(**item) for item in value["records"]])  # type: ignore
+            if issubclass(self._nested_type, FieldConfigurableObject):
+                return SObjectList([self._nested_type(**item) for item in value["records"]])  # type: ignore
+            return list(value.items())
         raise TypeError(f"Unexpected type {type(value)} for {type(self).__name__}[{self._nested_type.__name__}]")
 
 FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {

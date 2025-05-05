@@ -11,7 +11,7 @@ class AnonExecResult(NamedTuple):
     exceptionStackTrace: str | None
     exceptionMessage: str | None
 
-class Tooling(ApiResource):
+class ToolingResource(ApiResource):
 
     def execute_anonymous(self, code: str):
         return AnonExecResult(**self.client.get(
