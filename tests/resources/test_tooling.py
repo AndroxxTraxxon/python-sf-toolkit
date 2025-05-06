@@ -40,8 +40,8 @@ def test_execute_anonymous_success(mock_sf_client):
     )
 
     # Verify the result was processed correctly
-    assert result.success == True
-    assert result.compiled == True
+    assert result.success
+    assert result.compiled
     assert result.compileProblem == ""
     assert result.exceptionMessage == ""
 
@@ -74,8 +74,8 @@ def test_execute_anonymous_compile_error(mock_sf_client):
     )
 
     # Verify the result contains compilation error information
-    assert result.success == False
-    assert result.compiled == False
+    assert not result.success
+    assert not result.compiled
     assert result.compileProblem == "Line: 1, Column: 1: Invalid syntax"
     assert result.line == 1
     assert result.column == 1
@@ -109,8 +109,8 @@ def test_execute_anonymous_runtime_error(mock_sf_client):
     )
 
     # Verify the result contains runtime error information
-    assert result.success == False
-    assert result.compiled == True
+    assert not result.success
+    assert result.compiled
     assert result.exceptionMessage == "System.NullPointerException"
     assert result.exceptionStackTrace == "Class.Method: line 5, column 10"
     assert result.line == 5

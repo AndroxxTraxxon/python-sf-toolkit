@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
-from typing import Any, Literal, NotRequired, TypedDict
-import warnings
+from typing import Literal, NotRequired, TypedDict
+
 
 from sf_toolkit.interfaces import I_SalesforceClient
 from .base import ApiResource
