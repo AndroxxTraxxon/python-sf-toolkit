@@ -78,9 +78,16 @@ class FieldConfigurableObject:
         dict
     )
 
-    def __init__(self):
+    def __init__(self, _strict_fields: bool = False, **field_values):
         self._values = {}
         self._dirty_fields = set()
+        for field, value in field_values.items():
+            if _strict_fields and field not in self._fields:
+                raise KeyError(
+                    f"Field {field} not defined for {type(self).__qualname__}"
+                )
+            setattr(self, field, value)
+        self._dirty_fields.clear()
 
     def __init_subclass__(cls) -> None:
         cls._fields = cls._type_field_registry[cls]
@@ -333,6 +340,11 @@ class ReferenceField(Field[T]):
         if isinstance(value, dict):
             return self._py_type(**value)
 
+    def format(self, value: FieldConfigurableObject):
+        try:
+            return value.serialize()
+        except:
+            return value
 
 class ListField(Field[list[T]]):
     _nested_type: type[T]
@@ -468,13 +480,13 @@ FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
     "url": TextField,
     "email": TextField,
     "textarea": TextField,
-    "picklist": TextField,
+    "picklist": PicklistField,
     "multipicklist": MultiPicklistField,
     "reference": ReferenceField,
     "currency": NumberField,
     "double": NumberField,
     "percent": NumberField,
-    "int": NumberField,
+    "int": IntField,
     "date": DateField,
     "datetime": DateTimeField,
     "time": TimeField,

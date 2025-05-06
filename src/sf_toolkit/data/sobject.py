@@ -175,19 +175,16 @@ class SObject(FieldConfigurableObject, I_SObject):
 
         return SoqlQuery(cls, include_deleted)  # type: ignore
 
-    def __init__(self, /, __strict_fields: bool = True, **fields):
-        super().__init__()
-        for name, value in fields.items():
-            if name == "attributes":
-                continue
+    def __init__(self, /, _strict_fields: bool = True, **fields):
 
-            if name in self._fields or name == self.attributes.blob_field:
-                setattr(self, name, value)
-            elif __strict_fields:
-                raise KeyError(
-                    f"Field {name} not defined for {type(self).__qualname__}"
-                )
-        self.dirty_fields.clear()
+        fields.pop("attributes", None)
+        blob_value = None
+        if self.attributes.blob_field:
+            blob_value = fields.pop(self.attributes.blob_field, None)
+        super().__init__(_strict_fields=_strict_fields, **fields)
+        if self.attributes.blob_field and blob_value is not None:
+            setattr(self, self.attributes.blob_field, blob_value)
+
 
     @classmethod
     def _client_connection(cls) -> I_SalesforceClient:

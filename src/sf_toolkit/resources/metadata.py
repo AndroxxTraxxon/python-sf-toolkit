@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict, Unpack
 
 
 from sf_toolkit.interfaces import I_SalesforceClient
@@ -68,7 +68,7 @@ class RetrieveResult(fields.FieldConfigurableObject):
     status = fields.PicklistField(
         options=["Pending", "InProgress", "Succeeded", "Failed"]
     )
-    zipFile = NotImplementedError()
+    zipFile = fields.BlobField()
 
 
 class CodeLocation(fields.FieldConfigurableObject):
@@ -189,13 +189,13 @@ class DeployResult(fields.FieldConfigurableObject):
 
 
 class DeployOptionsDict(TypedDict):
-    allowMissingFiles: NotRequired[bool]  # defaults to false
-    checkOnly: NotRequired[bool]  # defaults to false
-    ignoreWarnings: NotRequired[bool]  # defaults to false
-    purgeOnDelete: NotRequired[bool]  # defaults to false
+    allowMissingFiles: NotRequired[bool]
+    checkOnly: NotRequired[bool]
+    ignoreWarnings: NotRequired[bool]
+    purgeOnDelete: NotRequired[bool]
     rollbackOnError: NotRequired[bool]
-    runTests: list[str] | None
-    singlePackage: bool
+    runTests: NotRequired[list[str]]
+    singlePackage: NotRequired[bool]
     testLevel: NotRequired[
         Literal["NoTestRun", "RunSpecifiedTests", "RunLocalTests", "RunAllTestsInOrg"]
     ]
@@ -204,7 +204,20 @@ class DeployOptionsDict(TypedDict):
 class DeployOptions(fields.FieldConfigurableObject):
     """
     Salesforce Deployment Options parameters:
-    https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm
+
+    allowMissingFiles: bool
+    autoUpdatePackage: bool
+    checkOnly: bool
+    ignoreWarnings: bool
+    performRetrieve: bool
+    purgeOnDelete: bool
+    rollbackOnError: bool
+    runAllTests: bool
+    runTests: list[str]
+    singlePackage: bool
+    testLevel: Literal["NoTestRun", "RunSpecifiedTests", "RunLocalTests", "RunAllTestsInOrg"]
+
+    "https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm"
     """
 
     allowMissingFiles = fields.CheckboxField()
@@ -290,15 +303,17 @@ class DeployRequest(fields.FieldConfigurableObject):
 
 class MetadataResource(ApiResource):
     def request_deploy(
-        self, deploy_options: DeployOptions | DeployOptionsDict, archive_path: Path
+        self, archive_path: Path, deploy_options: DeployOptions | None = None, **kwargs: Unpack[DeployOptionsDict]
     ) -> DeployRequest:
         """
         Request a deployment via the Metadata REST API
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm
         """
-        if isinstance(deploy_options, DeployOptions):
-            _serialized: DeployOptionsDict = deploy_options.serialize()  # type: ignore
-            deploy_options = _serialized
+        if deploy_options is None:
+            assert kwargs, "Must provide either deploy_options or deploy options as kwargs"
+            deploy_options = DeployOptions(**kwargs)
+        else:
+            assert not kwargs, "deploy_options cannot be provided with other kwargs"
         assert isinstance(archive_path, Path), (
             "archive_path must be an instance of pathlib.Path"
         )
@@ -312,11 +327,11 @@ class MetadataResource(ApiResource):
                         "json",
                         (
                             None,
-                            json.dumps({"deployOptions": deploy_options}),
+                            json.dumps(DeployRequest(deployOptions=deploy_options).serialize()),
                             "application/json",
                         ),
                     ),
-                    ("file", (archive_file.name, archive_file, "application/zip")),
+                    ("file", (archive_path.name, archive_file, "application/zip")),
                 ],
             )
         assert response is not None, "Did not receive response for Deploy Request."
