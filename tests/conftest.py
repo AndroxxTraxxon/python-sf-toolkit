@@ -39,6 +39,8 @@ def mock_sf_client():
     # Create a mock SalesforceClient for testing
     mock_client = MagicMock(spec=SalesforceClient)
     mock_client.sobjects_url = "/services/data/v57.0/sobjects"
+    mock_client.tooling_url = "/services/data/v57.0/tooling"
+    mock_client.metadata_url = "/services/data/v57.0/metadata"
     mock_client.data_url = "/services/data/v57.0/query"
     mock_client.composite_sobjects_url = MagicMock(
         return_value="/services/data/v57.0/composite/sobjects/Account"

@@ -4,14 +4,6 @@ from sf_toolkit.resources.tooling import ToolingResource
 from sf_toolkit.exceptions import SalesforceError
 
 
-@pytest.fixture
-def mock_sf_client():
-    """Create a mock SalesforceClient for testing the Tooling API."""
-    mock_client = MagicMock()
-    mock_client.tooling_url = "/services/data/v55.0/tooling"
-    return mock_client
-
-
 def test_execute_anonymous_success(mock_sf_client):
     """Test successful execution of anonymous Apex code."""
     # Setup mock response for successful execution
@@ -35,7 +27,7 @@ def test_execute_anonymous_success(mock_sf_client):
 
     # Verify the API call was made correctly
     mock_sf_client.get.assert_called_once_with(
-        "/services/data/v55.0/tooling/executeAnonymous",
+        mock_sf_client.tooling_url + "/executeAnonymous",
         params={"anonymousBody": "System.debug('Hello World');"},
     )
 
@@ -69,7 +61,7 @@ def test_execute_anonymous_compile_error(mock_sf_client):
 
     # Verify the API call was made correctly
     mock_sf_client.get.assert_called_once_with(
-        "/services/data/v55.0/tooling/executeAnonymous",
+        mock_sf_client.tooling_url + "/executeAnonymous",
         params={"anonymousBody": "Invalid Apex code;"},
     )
 
@@ -104,7 +96,7 @@ def test_execute_anonymous_runtime_error(mock_sf_client):
 
     # Verify the API call was made correctly
     mock_sf_client.get.assert_called_once_with(
-        "/services/data/v55.0/tooling/executeAnonymous",
+        mock_sf_client.tooling_url + "/executeAnonymous",
         params={"anonymousBody": "String s = null; s.length();"},
     )
 

@@ -3,6 +3,7 @@
 .pytest_cache
 .mypy_cache
 .ruff_cache
+.zed
 
 **/__pycache__
 

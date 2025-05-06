@@ -251,7 +251,7 @@ class DeployRequest(fields.FieldConfigurableObject):
             connection = self._connection
         if not isinstance(connection, I_SalesforceClient):
             connection = I_SalesforceClient.get_connection(connection)
-        url = self.url or f"{connection.data_url}/metadata/deployRequest/{self.id}"
+        url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         params = {"includeDetails": True} if include_details else {}
         response = connection.get(url, params=params)
         return type(self)(_connection=connection, **response.json())
@@ -265,7 +265,7 @@ class DeployRequest(fields.FieldConfigurableObject):
             connection = self._connection
         if not isinstance(connection, I_SalesforceClient):
             connection = I_SalesforceClient.get_connection(connection)
-        url = self.url or f"{connection.data_url}/metadata/deployRequest/{self.id}"
+        url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         response = connection.patch(url, json={"deployResult": {"status": "Canceling"}})
         if not response.status_code == 202:
             raise ValueError("Deployment Failed to cancel")
@@ -283,7 +283,7 @@ class DeployRequest(fields.FieldConfigurableObject):
             connection = self._connection
         if not isinstance(connection, I_SalesforceClient):
             connection = I_SalesforceClient.get_connection(connection)
-        url = self.url or f"{connection.data_url}/metadata/deployRequest/{self.id}"
+        url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         response = connection.post(url, json={"validatedDeployRequestId": self.id})
         return type(self)(_connection=connection, **response.json())
 
@@ -306,7 +306,7 @@ class MetadataResource(ApiResource):
         response = None
         with archive_path.open("rb") as archive_file:
             response = self.client.post(
-                self.client.data_url + "/metadata/deployRequest",
+                self.client.metadata_url + "/deployRequest",
                 files=[
                     (
                         "json",
