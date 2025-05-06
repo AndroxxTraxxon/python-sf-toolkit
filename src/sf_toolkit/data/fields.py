@@ -2,8 +2,10 @@ from collections import defaultdict
 import datetime
 from enum import Flag, auto
 import typing
+import io
+from pathlib import Path
 
-
+from httpx._types import FileContent
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
@@ -143,7 +145,8 @@ class FieldConfigurableObject:
         return {
             name: field.format(value)
             for name, value in self._values.items()
-            if (field := self._fields[name]) and FieldFlag.readonly not in field.flags
+            if (field := self._fields[name])
+            and FieldFlag.readonly not in field.flags
         }
 
     def __getitem__(self, name):
@@ -348,7 +351,7 @@ class ListField(Field[list[T]]):
     def revive(self, value: list[dict | FieldConfigurableObject]):
         if value is None:
             return value
-        if isinstance(value, SObjectList):
+        if isinstance(value, SObjectList):  # type: ignore
             return value
         if isinstance(value, list):
             if issubclass(self._nested_type, FieldConfigurableObject):
@@ -364,6 +367,97 @@ class ListField(Field[list[T]]):
         raise TypeError(
             f"Unexpected type {type(value)} for {type(self).__name__}[{self._nested_type.__name__}]"
         )
+
+
+class BlobData:
+    """Class to represent blob data that will be uploaded to Salesforce"""
+    _filepointer: io.IOBase | None = None
+    def __init__(
+        self,
+        data: typing.Union[str, bytes, Path, io.IOBase],
+        filename: str | None = None,
+        content_type: str | None = None
+    ):
+        self.data = data
+        self.filename = filename
+        self.content_type = content_type
+
+        # Determine filename if not provided
+        if self.filename is None:
+            if isinstance(data, Path):
+                self.filename = data.name
+
+        # Determine content type if not provided
+        if self.content_type is None:
+            if self.filename and '.' in self.filename:
+                ext = self.filename.split('.')[-1].lower()
+                if ext in ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']:
+                    self.content_type = f'application/{ext}'
+                elif ext in ['jpg', 'jpeg', 'png', 'gif']:
+                    self.content_type = f'image/{ext}'
+                else:
+                    self.content_type = 'application/octet-stream'
+            else:
+                self.content_type = 'application/octet-stream'
+
+    def __enter__(self) -> FileContent:
+        """Get the binary content of the blob data"""
+        if isinstance(self.data, str):
+            return self.data.encode('utf-8')
+        elif isinstance(self.data, bytes):
+            return self.data
+        elif isinstance(self.data, Path):
+            self._filepointer = self.data.open()
+            with open(self.data, 'rb') as f:
+                return f.read()
+        elif isinstance(self.data, io.IOBase):
+            # Reset the file pointer if it's a file object
+            if hasattr(self.data, 'seek'):
+                self.data.seek(0)
+            return self.data.read()
+        else:
+            raise TypeError(f"Unsupported data type: {type(self.data)}")
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._filepointer:
+            self._filepointer.close()
+
+
+class BlobField(Field[BlobData]):
+    """Field type for handling blob data in Salesforce"""
+
+    def __init__(self, *flags: FieldFlag):
+        super().__init__(BlobData, *flags)
+
+    def revive(self, value):
+        if value is None:
+            return None
+        if isinstance(value, BlobData):
+            return value
+        # Convert different input types to BlobData
+        return BlobData(value)
+
+    def format(self, value):
+        # This is a special case - BlobFields are not included in the JSON payload
+        # They are handled specially when uploading via multipart/form-data
+        return None
+
+
+    # Add descriptor protocol methods
+    def __get__(self, obj: FieldConfigurableObject, objtype=None) -> BlobData:
+        if obj is None:
+            return self
+        return getattr(obj, self._name + "_BlobData", None)  # type: ignore
+
+    def __set__(self, obj: FieldConfigurableObject, value: typing.Any):
+        value = self.revive(value)
+        self.validate(value)
+        if FieldFlag.readonly in self.flags and self._name in obj._values:
+            raise ReadOnlyAssignmentException(
+                f"Field {self._name} is readonly on object {self._owner.__name__}"
+            )
+        setattr(obj, self._name + "_BlobData", value)
+        obj.dirty_fields.add(self._name)
 
 
 FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
@@ -384,4 +478,6 @@ FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
     "date": DateField,
     "datetime": DateTimeField,
     "time": TimeField,
+    "blob": BlobField,
+    "base64": BlobField,
 }

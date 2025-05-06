@@ -1,8 +1,10 @@
 import asyncio
+from contextlib import ExitStack
+import json
+from pathlib import Path
 from typing import (
     Any,
     Callable,
-    Generic,
     Iterable,
     TypeVar,
     Coroutine,
@@ -20,6 +22,9 @@ from ..async_utils import run_concurrently
 from .._models import SObjectAttributes, SObjectSaveResult
 from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 from .fields import (
+    BlobData,
+    BlobField,
+    Field,
     FIELD_TYPE_LOOKUP,
     FieldConfigurableObject,
     FieldFlag,
@@ -123,14 +128,21 @@ class SObject(FieldConfigurableObject, I_SObject):
         api_name: str | None = None,
         connection: str = "",
         id_field: str = "Id",
-        blob_field: str | None = None,
         tooling: bool = False,
         **kwargs,
     ) -> None:
         super().__init_subclass__(**kwargs)
         if not api_name:
             api_name = cls.__name__
+        blob_field = None
         connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
+        for name, field in cls._fields.items():
+            if isinstance(field, BlobField):
+                assert blob_field is None, "Cannot have multiple Field/Blob fields on a single object"
+                blob_field = name
+
+        if blob_field:
+            del cls._fields[blob_field]
         cls.attributes = SObjectAttributes(
             api_name, connection, id_field, blob_field, tooling
         )
@@ -168,21 +180,28 @@ class SObject(FieldConfigurableObject, I_SObject):
         for name, value in fields.items():
             if name == "attributes":
                 continue
-            try:
-                if name not in self.keys():
-                    raise KeyError(
-                        f"Field {name} not defined for {type(self).__qualname__}"
-                    )
+
+            if name in self._fields or name == self.attributes.blob_field:
                 setattr(self, name, value)
-            except KeyError:
-                if __strict_fields:
-                    continue
-                raise
+            elif __strict_fields:
+                raise KeyError(
+                    f"Field {name} not defined for {type(self).__qualname__}"
+                )
         self.dirty_fields.clear()
 
     @classmethod
     def _client_connection(cls) -> I_SalesforceClient:
         return sftk_client.SalesforceClient.get_connection(cls.attributes.connection)
+
+    def _has_blob_content(self) -> bool:
+        """
+        Check if the SObject instance has any BlobFields with content set
+        """
+        if not self.attributes.blob_field:
+            return False
+        if self.attributes.blob_field in self._values:
+            return True
+        return False
 
     @classmethod
     def read(
@@ -198,8 +217,9 @@ class SObject(FieldConfigurableObject, I_SObject):
         else:
             url = f"{sf_client.sobjects_url}/{cls.attributes.type}/{record_id}"
 
+        fields = list(cls.keys())
         response_data = sf_client.get(
-            url, params={"fields": ",".join(cls.keys())}
+            url, params={"fields": ",".join(fields)}
         ).json()
 
         return cls(**response_data)
@@ -220,17 +240,34 @@ class SObject(FieldConfigurableObject, I_SObject):
 
         # Prepare the payload with all fields
         payload = self.serialize()
+
         if self.attributes.tooling:
             url = f"{sf_client.tooling_sobjects_url}/{self.attributes.type}"
         else:
             url = f"{sf_client.sobjects_url}/{self.attributes.type}"
 
+        blob_data: BlobData | None = None
         # Create a new record
-        response_data = sf_client.post(
-            url,
-            json=payload,
-            headers={"Content-Type": "application/json"},
-        ).json()
+        if self.attributes.blob_field and (blob_data := getattr(self, self.attributes.blob_field)) :
+            with blob_data as blob_payload:
+                # use BlobData context manager to safely open & close files
+                response_data = sf_client.post(
+                    url,
+                    files=[
+                        (
+                            "entity_document",
+                            (None, json.dumps(payload), "application/json")
+                        ), (
+                            self.attributes.blob_field,
+                            (blob_data.filename, blob_payload, blob_data.content_type)
+                        ),
+                    ]
+                ).json()
+        else:
+            response_data = sf_client.post(
+                url,
+                json=payload,
+            ).json()
 
         # Set the new ID on the object
         _id_val = response_data["id"]
@@ -250,6 +287,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         sf_client: I_SalesforceClient | None = None,
         only_changes: bool = False,
         reload_after_success: bool = False,
+        only_blob: bool = False
     ):
         if sf_client is None:
             sf_client = self._client_connection()
@@ -271,7 +309,24 @@ class SObject(FieldConfigurableObject, I_SObject):
         else:
             url = f"{sf_client.sobjects_url}/{self.attributes.type}/{_id_val}"
 
-        if payload:
+        blob_data: BlobData | None = None
+        # Create a new record
+        if self.attributes.blob_field and (blob_data := getattr(self, self.attributes.blob_field)) :
+            with blob_data as blob_payload:
+                # use BlobData context manager to safely open & close files
+                sf_client.patch(
+                    url,
+                    files=[
+                        (
+                            "entity_content",
+                            (None, json.dumps(payload), "application/json")
+                        ), (
+                            self.attributes.blob_field,
+                            (blob_data.filename, blob_payload, blob_data.content_type)
+                        ),
+                    ]
+                ).json()
+        elif payload:
             sf_client.patch(
                 url,
                 json=payload,
@@ -399,6 +454,40 @@ class SObject(FieldConfigurableObject, I_SObject):
         if clear_id_field:
             delattr(self, self.attributes.id_field)
 
+
+    def download_file(
+        self,
+        dest: Path | None,
+        sf_client: I_SalesforceClient | None = None
+    ) -> None | bytes:
+        """
+        Download the file associated with the blob field to the specified destination.
+        https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/dome_sobject_blob_retrieve.htm
+
+        Args:
+            dest (Path | None): The destination path to save the file.
+            If None, file content will be returned as bytes instead.
+        """
+        assert self.attributes.blob_field, "Object type must specify a blob field"
+        assert not self.attributes.tooling, "Cannot download file/BLOB from tooling object"
+        record_id = getattr(self, self.attributes.id_field, None)
+        assert record_id, "Record ID cannot be None or Empty for file download"
+
+        if sf_client is None:
+            sf_client = self._client_connection()
+        url = (
+            f"{sf_client.sobjects_url}/{self.attributes.type}"
+            f"/{record_id}/{self.attributes.blob_field}"
+        )
+        with sf_client.stream("GET", url) as response:
+            if dest:
+                with dest.open("wb") as file:
+                    for block in response.iter_bytes():
+                        file.write(block)
+            else:
+                return response.read()
+
+
     def reload(self, sf_client: I_SalesforceClient | None = None):
         record_id: str = getattr(self, self.attributes.id_field)
         if sf_client is None:
@@ -418,7 +507,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         sf_client: I_SalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], None] | None = None,
-    ) -> "SObjectList":
+    ) -> "SObjectList[_sObject]":
         if sf_client is None:
             sf_client = cls._client_connection()
 
@@ -439,7 +528,9 @@ class SObject(FieldConfigurableObject, I_SObject):
                 )
             )
         else:
-            result = SObjectList(connection=cls.attributes.connection)
+            result: SObjectList[_sObject] = SObjectList(
+                connection=cls.attributes.connection
+            )
             for chunk in chunked(ids, 2000):
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(cls.attributes.type),
@@ -460,7 +551,7 @@ class SObject(FieldConfigurableObject, I_SObject):
         sf_client: I_AsyncSalesforceClient | None = None,
         concurrency: int = 1,
         on_chunk_received: Callable[[Response], Coroutine | None] | None = None,
-    ) -> "SObjectList":
+    ) -> "SObjectList[_sObject]":
         if sf_client is None:
             sf_client = cls._client_connection().as_async
         async with sf_client:
@@ -471,8 +562,8 @@ class SObject(FieldConfigurableObject, I_SObject):
                 )
                 for chunk in chunked(ids, 2000)
             ]
-            records: list[cls] = SObjectList(  # type: ignore
-                (
+            records: SObjectList[_sObject] = SObjectList(
+                (  # type: ignore
                     cls(**record)
                     for response in (
                         await run_concurrently(concurrency, tasks, on_chunk_received)
@@ -527,17 +618,17 @@ class SObject(FieldConfigurableObject, I_SObject):
             field_name = field.name
             field_type = field.type
 
-            field_cls = FIELD_TYPE_LOOKUP[field_type]
-            kwargs = {}
-            flags = []
+            field_cls: type[Field] = FIELD_TYPE_LOOKUP[field_type]
+            kwargs: dict[str, Any] = {}
+            flags: list[FieldFlag] = []
 
             if not field.updateable:
                 flags.append(FieldFlag.readonly)
 
-            fields[field_name] = field_cls(*flags, **kwargs)
+            fields[field_name] = field_cls(*flags, **kwargs)  # type: ignore
 
         # Create a new SObject subclass
-        sobject_class: type[_sObject] = type(  # type: ignore
+        sobject_class = type(
             f"SObject__{sobject}",
             (SObject,),
             {
@@ -559,7 +650,7 @@ def _is_sobject_subclass(cls):
     return issubclass(cls, SObject)
 
 
-class SObjectList(list[_sObject], Generic[_sObject]):
+class SObjectList(list[_sObject]):
     """A list that contains SObject instances and provides bulk operations via Salesforce's composite API."""
 
     def __init__(self, iterable: Iterable[_sObject] = (), *, connection: str = ""):
@@ -650,11 +741,12 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             )
             max_batch_size = 200
         emitted_records: list[_sObject] = []
-        batches = []
+        batches: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]] = []
         previous_record = None
-        current_batch = []
+        batch_records: list[dict[str, Any]] = []
+        batch_binary_parts: list[tuple[str, BlobData]] = []
         batch_chunk_count = 0
-        for record in self:
+        for idx, record in enumerate(self):
             if only_changes and not record.dirty_fields:
                 continue
             s_record = record.serialize(only_changes)
@@ -664,9 +756,16 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                         record._values.get(fieldname)
                     )
             s_record["attributes"] = {"type": record.attributes.type}
-            if len(current_batch) >= max_batch_size:
-                batches.append(current_batch)
-                current_batch = []
+            if record.attributes.blob_field and (blob_value := getattr(record, record.attributes.blob_field)):
+                binary_part_name = "binaryPart" + str(idx)
+                s_record["attributes"].update({
+                    "binaryPartName": binary_part_name,
+                    "binaryPartNameAlias": record.attributes.blob_field
+                })
+                batch_binary_parts.append((binary_part_name, blob_value))
+            if len(batch_records) >= max_batch_size:
+                batches.append((batch_records, batch_binary_parts))
+                batch_records = []
                 batch_chunk_count = 0
                 previous_record = None
             if (
@@ -675,15 +774,15 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             ):
                 batch_chunk_count += 1
                 if batch_chunk_count > 10:
-                    batches.append(current_batch)
-                    current_batch = []
+                    batches.append((batch_records, batch_binary_parts))
+                    batch_records = []
                     batch_chunk_count = 0
                     previous_record = None
-            current_batch.append(s_record)
+            batch_records.append(s_record)
             emitted_records.append(record)
             previous_record = record
-        if current_batch:
-            batches.append(current_batch)
+        if batch_records:
+            batches.append((batch_records, batch_binary_parts))
         return batches, emitted_records
 
     def save(
@@ -841,13 +940,35 @@ class SObjectList(list[_sObject], Generic[_sObject]):
 
         # execute sync
         results = []
-        for chunk in record_chunks:
-            response = sf_client.post(
-                sf_client.composite_sobjects_url(),
-                json=chunk,
-                headers=headers,
-                **callout_options,
-            )
+        for records, blobs in record_chunks:
+            if blobs:
+                with ExitStack() as blob_context:
+                    files: list[tuple[str, tuple[str | None, Any, str | None]]] = [
+                        (
+                            "entity_content",
+                            (None, json.dumps(records), "application/json")
+                        ),
+                        # (
+                        #     self.attributes.blob_field,
+                        #     (blob_data.filename, blob_payload, blob_data.content_type)
+                        # ),
+                    ]
+                    for name, blob_data in blobs:
+                        blob_payload = blob_context.enter_context(blob_data)
+                        files.append((
+                            name, (blob_data.filename, blob_payload, blob_data.content_type)
+                        ))
+                    response = sf_client.post(
+                        sf_client.composite_sobjects_url(),
+                        files=files
+                    )
+            else:
+                response = sf_client.post(
+                    sf_client.composite_sobjects_url(),
+                    json=records,
+                    headers=headers,
+                    **callout_options,
+                )
             results.extend([SObjectSaveResult(**result) for result in response.json()])
 
         for record, result in zip(emitted_records, results):
@@ -856,10 +977,11 @@ class SObjectList(list[_sObject], Generic[_sObject]):
 
         return results
 
-    @staticmethod
+    @classmethod
     async def save_insert_async(
+        cls,
         sf_client: I_SalesforceClient,
-        record_chunks: list[list[dict[str, Any]]],
+        record_chunks: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]],
         headers: dict[str, str],
         concurrency: int,
         **callout_options,
@@ -868,13 +990,15 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             headers.update(header_options)
         async with sf_client.as_async as a_client:
             tasks = [
-                a_client.post(
+                cls._save_insert_async_batch(
+                    a_client,
                     sf_client.composite_sobjects_url(),
-                    json=chunk,
-                    headers=headers,
-                    **callout_options,
+                    records,
+                    blobs,
+                    headers,
+                    **callout_options
                 )
-                for chunk in record_chunks
+                for records, blobs in record_chunks
             ]
             responses = await run_concurrently(concurrency, tasks)
             return [
@@ -882,6 +1006,41 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 for response in responses
                 for result in response.json()
             ]
+
+    @classmethod
+    async def _save_insert_async_batch(
+        cls,
+        sf_client: I_AsyncSalesforceClient,
+        url: str,
+        records: list[dict[str, Any]],
+        blobs: list[tuple[str, BlobData]] | None,
+        headers: dict[str, str],
+        **callout_options
+    ):
+        if blobs:
+            with ExitStack() as blob_context:
+                return await sf_client.post(
+                    url,
+                    files=[
+                        (
+                            "entity_content",
+                            (None, json.dumps(records), "application/json")
+                        ),
+                        *(
+                            (
+                                name,
+                                (blob_data.filename, blob_context.enter_context(blob_data), blob_data.content_type)
+                            )
+                            for name, blob_data in blobs
+                        )
+                    ]
+                )
+        return await sf_client.post(
+            sf_client.composite_sobjects_url(),
+            json=records,
+            headers=headers,
+            **callout_options,
+        )
 
     def save_update(
         self,
@@ -914,6 +1073,12 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 raise ValueError(
                     f"Record at index {i} has no {record.attributes.id_field} for update"
                 )
+            if record.attributes.blob_field and getattr(record, record.attributes.blob_field):
+                raise ValueError(
+                    f"Cannot update files in composite calls. "
+                    f"{type(record).__name__} Record at index {i} has Blob/File "
+                    f"value for field {record.attributes.blob_field}"
+                )
 
         # Prepare records for update
         record_chunks, emitted_records = self._generate_record_batches(
@@ -926,14 +1091,23 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         if concurrency > 1:
             # execute async
             return asyncio.run(
-                self.save_update_async(record_chunks, headers, sf_client)
+                self.save_update_async(
+                    [chunk[0] for chunk in record_chunks],
+                    headers,
+                    sf_client,
+                    **callout_options
+                )
             )
 
         # execute sync
         results: list[SObjectSaveResult] = []
-        for chunk in record_chunks:
+        for records, blobs in record_chunks:
+            assert not blobs, "Cannot update collections with files"
             response = sf_client.post(
-                sf_client.composite_sobjects_url(), json=chunk, headers=headers
+                sf_client.composite_sobjects_url(),
+                json=records,
+                headers=headers,
+                **callout_options
             )
             results.extend([SObjectSaveResult(**result) for result in response.json()])
 
@@ -948,11 +1122,15 @@ class SObjectList(list[_sObject], Generic[_sObject]):
         record_chunks: list[list[dict[str, Any]]],
         headers: dict[str, str],
         sf_client: I_SalesforceClient,
+        **callout_options
     ) -> list[SObjectSaveResult]:
         async with sf_client.as_async as a_client:
             tasks = [
                 a_client.post(
-                    sf_client.composite_sobjects_url(), json=chunk, headers=headers
+                    sf_client.composite_sobjects_url(),
+                    json=chunk,
+                    headers=headers,
+                    **callout_options
                 )
                 for chunk in record_chunks
             ]
@@ -1000,6 +1178,12 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 raise AssertionError(
                     f"Record at index {i} has no value for external ID field '{external_id_field}'"
                 )
+            if record.attributes.blob_field and getattr(record, record.attributes.blob_field):
+                raise ValueError(
+                    f"Cannot update files in composite calls. "
+                    f"{type(record).__name__} Record at index {i} has Blob/File "
+                    f"value for field {record.attributes.blob_field}"
+                )
 
         # Chunk the requests
         record_batches, emitted_records = self._generate_record_batches(
@@ -1022,7 +1206,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                 self.save_upsert_async(
                     sf_client,
                     url,
-                    record_batches,
+                    [batch[0] for batch in record_batches],
                     headers,
                     concurrency,
                     all_or_none,
@@ -1035,7 +1219,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
             for record_batch in record_batches:
                 response = sf_client.patch(
                     url,
-                    json={"allOrNone": all_or_none, "records": record_batch},
+                    json={"allOrNone": all_or_none, "records": record_batch[0]},
                     headers=headers,
                 )
 
@@ -1069,6 +1253,7 @@ class SObjectList(list[_sObject], Generic[_sObject]):
                     **callout_options,
                 )
                 for chunk in record_chunks
+                if chunk
             ]
             responses = await run_concurrently(concurrency, tasks)
 

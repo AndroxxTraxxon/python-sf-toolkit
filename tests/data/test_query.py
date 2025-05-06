@@ -240,14 +240,13 @@ def test_count_query(mock_sf_client):
     # Setup mock response for count query
     mock_sf_client.get.return_value.json.return_value = {
         "done": True,
-        "totalSize": 1,
-        "records": [{"expr0": 42}],
+        "totalSize": 42,
     }
 
     query = SoqlQuery(Account)
     count = query.count()
 
-    assert count == 1
+    assert count == 42
     mock_sf_client.get.assert_called_once()
 
     # Verify COUNT() was used in the query

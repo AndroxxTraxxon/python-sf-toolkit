@@ -186,7 +186,7 @@ class QueryResultBatch(Generic[_SObject]):
             )[1].rsplit("-", maxsplit=1)
             self.batch_size = int(batch_size)
 
-    def query_more(self):
+    def query_more(self) -> "QueryResultBatch[_SObject]":
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
@@ -195,7 +195,7 @@ class QueryResultBatch(Generic[_SObject]):
             self._sobject_type, connection=self._connection, **result
         )  # type: ignore
 
-    async def query_more_async(self):
+    async def query_more_async(self) -> "QueryResultBatch[_SObject]":
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
@@ -488,6 +488,7 @@ class SoqlQuery(Generic[_SObject]):
     def format(self, fields: list[str] | None = None):
         if not fields:
             fields = self.fields
+        assert fields, "Fields cannot be empty"
         segments = [
             "SELECT",
             ", ".join(fields),

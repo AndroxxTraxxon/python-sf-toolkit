@@ -50,7 +50,7 @@ Querying Records
    results = query.execute()
 
    # Process results
-   for contact in results.records:
+   for contact in results:
        print(f"{contact.FirstName} {contact.LastName}: {contact.Email}")
 
 Creating Records

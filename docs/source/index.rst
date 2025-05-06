@@ -14,6 +14,8 @@ It provides a clean, object-oriented interface for connecting to Salesforce inst
    auth
    sobjects
    query
+   file_upload
+   blobfield
    advanced
    api_reference
 

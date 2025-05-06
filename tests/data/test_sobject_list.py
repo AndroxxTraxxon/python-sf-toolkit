@@ -181,15 +181,16 @@ def test_generate_record_batches(test_accounts):
     # Basic batching
     batches, emitted_records = account_list._generate_record_batches(max_batch_size=2)
     assert len(batches) == 3  # 5 accounts, batch size 2 = 3 batches
-    assert len(batches[0]) == 2
-    assert len(batches[1]) == 2
-    assert len(batches[2]) == 1
+    assert len(batches[0][0]) == 2
+    assert len(batches[1][0]) == 2
+    assert len(batches[2][0]) == 1
 
     # Validate structure of a record in the batch
-    record = batches[0][0]
-    assert "attributes" in record
-    assert record["attributes"]["type"] == "TestAccount"
-    assert "Name" in record
+    batch_records, _ = batches[0]
+    first_record = batch_records[0]
+    assert "attributes" in first_record
+    assert first_record["attributes"]["type"] == "TestAccount"
+    assert "Name" in first_record
 
     # Test with only_changes=True
     for account in test_accounts:
@@ -202,7 +203,8 @@ def test_generate_record_batches(test_accounts):
     batches, emitted_records = account_list._generate_record_batches(only_changes=True)
     assert len(batches) == 1  # Only one record has changes
     assert len(emitted_records) == 1
-    assert batches[0][0]["Name"] == "Updated Name"
+    records, _ = batches[0]
+    assert records[0]["Name"] == "Updated Name"
 
     # Test with multiple object types - Salesforce processes in chunks by SObject type
     mixed_list = SObjectList([])
@@ -231,8 +233,8 @@ def test_generate_record_batches(test_accounts):
     batches, emitted_records = mixed_list._generate_record_batches()
 
     # First batch should be TestAccounts, second should be TestContact
-    assert len(batches[0]) == 20
-    assert len(batches[1]) == 2
+    assert len(batches[0][0]) == 20
+    assert len(batches[1][0]) == 2
     assert len(emitted_records) == 22
 
 

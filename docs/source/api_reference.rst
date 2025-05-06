@@ -42,8 +42,8 @@ SObject Classes
    :undoc-members:
    :show-inheritance:
 
-Fields
-------
+SObject Fields
+--------------
 
 .. automodule:: sf_toolkit.data.fields
    :members:

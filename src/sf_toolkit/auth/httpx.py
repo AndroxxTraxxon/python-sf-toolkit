@@ -26,6 +26,7 @@ class SalesforceAuth(httpx.Auth):
     def auth_flow(
         self, request: httpx.Request
     ) -> typing.Generator[httpx.Request, httpx.Response, None]:
+        new_token: SalesforceToken
         if self.token is None or request.url.is_relative_url:
             assert self.login is not None, "No login method provided"
             try:
@@ -39,7 +40,7 @@ class SalesforceAuth(httpx.Auth):
                         login_request = next(login_flow)
 
             except StopIteration as login_result:
-                new_token: SalesforceToken = login_result.value
+                new_token = login_result.value
                 self.token = SalesforceToken(*new_token)
                 if self.callback is not None:
                     self.callback(new_token)
@@ -67,7 +68,7 @@ class SalesforceAuth(httpx.Auth):
                         login_flow.send(login_response)
 
             except StopIteration as login_result:
-                new_token: SalesforceToken = login_result.value
+                new_token = login_result.value
                 self.token = new_token
                 if self.callback is not None:
                     self.callback(new_token)
