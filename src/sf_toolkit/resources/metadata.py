@@ -153,9 +153,30 @@ class DeployDetails(fields.FieldConfigurableObject):
 
 
 class DeployResult(fields.FieldConfigurableObject):
+    id = fields.IdField()
+    canceledBy = fields.IdField()
+    canceledByName = fields.TextField()
     checkOnly = fields.CheckboxField()
+    completedDate = fields.DateTimeField()
+    createdBy = fields.IdField()
+    createdByName = fields.TextField()
+    createdDate = fields.DateTimeField()
+    details = fields.ReferenceField(DeployDetails)
+    done = fields.CheckboxField()
+    errorMessage = fields.TextField()
+    errorStatusCode = fields.TextField()
     ignoreWarnings = fields.CheckboxField()
+    lastModifiedDate = fields.DateTimeField()
+    numberComponentErrors = fields.IntField()
+    numberComponentsDeployed = fields.IntField()
+    numberComponentsTotal = fields.IntField()
+    numberTestErrors = fields.IntField()
+    numberTestsCompleted = fields.IntField()
+    numberTestsTotal = fields.IntField()
+    runTestsEnabled = fields.CheckboxField()
     rollbackOnError = fields.CheckboxField()
+    startDate = fields.DateTimeField()
+    stateDetail = fields.TextField()
     status = fields.PicklistField(
         options=[
             "Pending",
@@ -167,25 +188,7 @@ class DeployResult(fields.FieldConfigurableObject):
             "Canceled",
         ]
     )
-    numberComponentsDeployed = fields.IntField()
-    numberComponentsTotal = fields.IntField()
-    numberComponentErrors = fields.IntField()
-    numberTestsCompleted = fields.IntField()
-    numberTestsTotal = fields.IntField()
-    numberTestErrors = fields.IntField()
-    details = fields.ReferenceField(DeployDetails)
-    createdDate = fields.DateTimeField()
-    startDate = fields.DateTimeField()
-    lastModifiedDate = fields.DateTimeField()
-    completedDate = fields.DateTimeField()
-    errorStatusCode = fields.TextField()
-    errorMessage = fields.TextField()
-    stateDetail = fields.TextField()
-    createdBy = fields.IdField()
-    createdByName = fields.TextField()
-    canceledBy = fields.IdField()
-    canceledByName = fields.TextField()
-    isRunTestsEnabled = fields.CheckboxField()
+    success = fields.CheckboxField()
 
 
 class DeployOptionsDict(TypedDict):
@@ -269,7 +272,7 @@ class DeployRequest(fields.FieldConfigurableObject):
         response = connection.get(url, params=params)
         return type(self)(_connection=connection, **response.json())
 
-    def cancel(self, connection: I_SalesforceClient | str | None) -> "DeployRequest":
+    def cancel(self, connection: I_SalesforceClient | str | None = None) -> "DeployRequest":
         """
         Cancel the deployment request
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_cancel.htm
@@ -280,11 +283,11 @@ class DeployRequest(fields.FieldConfigurableObject):
             connection = I_SalesforceClient.get_connection(connection)
         url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         response = connection.patch(url, json={"deployResult": {"status": "Canceling"}})
-        if not response.status_code == 202:
+        if response.status_code != 202:
             raise ValueError("Deployment Failed to cancel")
         return type(self)(_connection=connection, **response.json())
 
-    def quick_deploy_validated(self, connection: I_SalesforceClient) -> "DeployRequest":
+    def quick_deploy_validated(self, connection: I_SalesforceClient | str | None = None) -> "DeployRequest":
         """
         Deploy a Recently Validated Component Set Without Tests
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_recentvalidation.htm
@@ -302,7 +305,7 @@ class DeployRequest(fields.FieldConfigurableObject):
 
 
 class MetadataResource(ApiResource):
-    def request_deploy(
+    def deploy(
         self,
         archive_path: Path,
         deploy_options: DeployOptions | None = None,

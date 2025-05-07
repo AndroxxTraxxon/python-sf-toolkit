@@ -4,6 +4,7 @@ from enum import Flag, auto
 import typing
 import io
 from pathlib import Path
+import warnings
 
 from httpx._types import FileContent
 
@@ -83,10 +84,12 @@ class FieldConfigurableObject:
         self._values = {}
         self._dirty_fields = set()
         for field, value in field_values.items():
-            if _strict_fields and field not in self._fields:
-                raise KeyError(
-                    f"Field {field} not defined for {type(self).__qualname__}"
-                )
+            if field not in self._fields:
+                message = f"Field {field} not defined for {type(self).__qualname__}"
+                if _strict_fields:
+                    raise KeyError(message)
+                else:
+                    warnings.warn(message)
             setattr(self, field, value)
         self._dirty_fields.clear()
 
