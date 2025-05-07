@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Generator
+from typing import Generator
 from unittest.mock import MagicMock
 
 import zipfile
@@ -71,9 +71,9 @@ def mock_sf_client():
 @pytest.fixture
 def mock_zip_file(tmp_path: Path) -> Generator[Path, None, None]:
     """Generates a temp zip file that is torn down after the test"""
-    random_filename = ''.join(random.choices(string.ascii_letters, k=10)) + ".zip"
+    random_filename = "".join(random.choices(string.ascii_letters, k=10)) + ".zip"
     filepath = tmp_path / random_filename
-    with zipfile.ZipFile(filepath, 'w') as zipf:
+    with zipfile.ZipFile(filepath, "w") as zipf:
         zipf.writestr("example.txt", "Hello, World!")
     yield filepath
     filepath.unlink

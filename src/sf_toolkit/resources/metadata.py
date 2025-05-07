@@ -303,14 +303,19 @@ class DeployRequest(fields.FieldConfigurableObject):
 
 class MetadataResource(ApiResource):
     def request_deploy(
-        self, archive_path: Path, deploy_options: DeployOptions | None = None, **kwargs: Unpack[DeployOptionsDict]
+        self,
+        archive_path: Path,
+        deploy_options: DeployOptions | None = None,
+        **kwargs: Unpack[DeployOptionsDict],
     ) -> DeployRequest:
         """
         Request a deployment via the Metadata REST API
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy.htm
         """
         if deploy_options is None:
-            assert kwargs, "Must provide either deploy_options or deploy options as kwargs"
+            assert kwargs, (
+                "Must provide either deploy_options or deploy options as kwargs"
+            )
             deploy_options = DeployOptions(**kwargs)
         else:
             assert not kwargs, "deploy_options cannot be provided with other kwargs"
@@ -327,7 +332,9 @@ class MetadataResource(ApiResource):
                         "json",
                         (
                             None,
-                            json.dumps(DeployRequest(deployOptions=deploy_options).serialize()),
+                            json.dumps(
+                                DeployRequest(deployOptions=deploy_options).serialize()
+                            ),
                             "application/json",
                         ),
                     ),

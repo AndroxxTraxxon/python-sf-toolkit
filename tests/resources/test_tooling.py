@@ -15,7 +15,7 @@ def test_execute_anonymous_success(mock_sf_client):
         "exceptionMessage": "",
         "exceptionStackTrace": "",
         "line": -1,
-        "column": -1
+        "column": -1,
     }
     mock_sf_client.get.return_value = mock_response
 
@@ -112,7 +112,9 @@ def test_execute_anonymous_runtime_error(mock_sf_client):
 def test_execute_anonymous_http_error(mock_sf_client):
     """Test execution with HTTP errors from Salesforce."""
     # Setup mock to raise SalesforceError
-    mock_sf_client.get.side_effect = SalesforceError(Mock(status_code=401, text="Unauthorized"), "ExecuteAnonymous")
+    mock_sf_client.get.side_effect = SalesforceError(
+        Mock(status_code=401, text="Unauthorized"), "ExecuteAnonymous"
+    )
 
     # Create Tooling instance with mock client
     tooling = ToolingResource(mock_sf_client)
@@ -129,7 +131,9 @@ def test_execute_anonymous_http_error(mock_sf_client):
 
 def test_tooling_api_resource_with_connection_string():
     """Test creating a Tooling API resource with a connection string."""
-    with patch("sf_toolkit.resources.base.I_SalesforceClient.get_connection") as mock_get_connection:
+    with patch(
+        "sf_toolkit.resources.base.I_SalesforceClient.get_connection"
+    ) as mock_get_connection:
         # Setup mock client returned by get_connection
         mock_client = MagicMock()
         mock_client.tooling_url = "/services/data/v55.0/tooling"
@@ -147,11 +151,12 @@ def test_tooling_api_resource_with_connection_string():
 
 def test_tooling_api_resource_with_default_connection():
     """Test creating a Tooling API resource with default connection."""
-    with patch("sf_toolkit.resources.base.I_SalesforceClient.get_connection") as mock_get_connection:
+    with patch(
+        "sf_toolkit.resources.base.I_SalesforceClient.get_connection"
+    ) as mock_get_connection:
         # Setup mock client returned by get_connection
         mock_client = MagicMock()
         mock_get_connection.return_value = mock_client
-
 
         # Create Tooling instance with no connection (should use default)
         tooling = ToolingResource()

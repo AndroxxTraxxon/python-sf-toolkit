@@ -6,6 +6,7 @@ import io
 from pathlib import Path
 
 from httpx._types import FileContent
+
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
@@ -152,8 +153,7 @@ class FieldConfigurableObject:
         return {
             name: field.format(value)
             for name, value in self._values.items()
-            if (field := self._fields[name])
-            and FieldFlag.readonly not in field.flags
+            if (field := self._fields[name]) and FieldFlag.readonly not in field.flags
         }
 
     def __getitem__(self, name):
@@ -343,8 +343,9 @@ class ReferenceField(Field[T]):
     def format(self, value: FieldConfigurableObject):
         try:
             return value.serialize()
-        except:
+        except AttributeError:
             return value
+
 
 class ListField(Field[list[T]]):
     _nested_type: type[T]
@@ -383,12 +384,14 @@ class ListField(Field[list[T]]):
 
 class BlobData:
     """Class to represent blob data that will be uploaded to Salesforce"""
+
     _filepointer: io.IOBase | None = None
+
     def __init__(
         self,
         data: typing.Union[str, bytes, Path, io.IOBase],
         filename: str | None = None,
-        content_type: str | None = None
+        content_type: str | None = None,
     ):
         self.data = data
         self.filename = filename
@@ -401,30 +404,30 @@ class BlobData:
 
         # Determine content type if not provided
         if self.content_type is None:
-            if self.filename and '.' in self.filename:
-                ext = self.filename.split('.')[-1].lower()
-                if ext in ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']:
-                    self.content_type = f'application/{ext}'
-                elif ext in ['jpg', 'jpeg', 'png', 'gif']:
-                    self.content_type = f'image/{ext}'
+            if self.filename and "." in self.filename:
+                ext = self.filename.split(".")[-1].lower()
+                if ext in ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"]:
+                    self.content_type = f"application/{ext}"
+                elif ext in ["jpg", "jpeg", "png", "gif"]:
+                    self.content_type = f"image/{ext}"
                 else:
-                    self.content_type = 'application/octet-stream'
+                    self.content_type = "application/octet-stream"
             else:
-                self.content_type = 'application/octet-stream'
+                self.content_type = "application/octet-stream"
 
     def __enter__(self) -> FileContent:
         """Get the binary content of the blob data"""
         if isinstance(self.data, str):
-            return self.data.encode('utf-8')
+            return self.data.encode("utf-8")
         elif isinstance(self.data, bytes):
             return self.data
         elif isinstance(self.data, Path):
             self._filepointer = self.data.open()
-            with open(self.data, 'rb') as f:
+            with open(self.data, "rb") as f:
                 return f.read()
         elif isinstance(self.data, io.IOBase):
             # Reset the file pointer if it's a file object
-            if hasattr(self.data, 'seek'):
+            if hasattr(self.data, "seek"):
                 self.data.seek(0)
             return self.data.read()
         else:
@@ -453,7 +456,6 @@ class BlobField(Field[BlobData]):
         # This is a special case - BlobFields are not included in the JSON payload
         # They are handled specially when uploading via multipart/form-data
         return None
-
 
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> BlobData:

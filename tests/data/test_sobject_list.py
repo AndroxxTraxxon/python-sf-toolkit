@@ -750,7 +750,9 @@ def test_save_upsert_with_external_id(mock_sf_client):
     custom_objects = [
         _TestAccount(Name=f"Account {i}", ExternalId__c=f"EXT-{i}") for i in range(3)
     ]
-    object_list = SObjectList(custom_objects, connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
+    object_list = SObjectList(
+        custom_objects, connection=SalesforceClient.DEFAULT_CONNECTION_NAME
+    )
 
     # Mock response
     mock_response = Mock()
@@ -814,7 +816,9 @@ def test_save_with_update_only_option(mock_sf_client):
     custom_objects = [
         _TestAccount(Name=f"Account {i}", ExternalId__c=f"EXT-{i}") for i in range(2)
     ]
-    object_list = SObjectList(custom_objects, connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
+    object_list = SObjectList(
+        custom_objects, connection=SalesforceClient.DEFAULT_CONNECTION_NAME
+    )
 
     # Mock response
     mock_response = Mock()
@@ -864,10 +868,15 @@ def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
     assert request_data[0]["Name"] == "Updated with Multiple Options"
 
 
-def test_save_error_on_update_only_without_id_or_external_id(mock_sf_client, test_accounts):
+def test_save_error_on_update_only_without_id_or_external_id(
+    mock_sf_client, test_accounts
+):
     """Test save with update_only=True but no ID or external ID field"""
     account_list = SObjectList(test_accounts)
 
     # Call save with update_only=True but no ID or external ID
-    with pytest.raises(ValueError, match="Cannot perform update_only operation when no records have IDs"):
+    with pytest.raises(
+        ValueError,
+        match="Cannot perform update_only operation when no records have IDs",
+    ):
         account_list.save(update_only=True)
