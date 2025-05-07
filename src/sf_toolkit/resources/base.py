@@ -1,5 +1,6 @@
 from ..client import I_SalesforceClient
 
+
 class ApiResource:
     client: I_SalesforceClient
 

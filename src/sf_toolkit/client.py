@@ -222,18 +222,28 @@ class SalesforceClient(I_SalesforceClient):
             for version in versions_data
         }
 
-
     # resources for the client
     @property
-    def tooling(self) -> "Tooling":
+    def tooling(self) -> "ToolingResource":
         try:
             return self._tooling
         except AttributeError:
             if "Tooling" not in globals():
-                global Tooling
-                from .resources.tooling import Tooling
-            self._tooling = Tooling(self)
+                global ToolingResource
+                from .resources.tooling import ToolingResource
+            self._tooling = ToolingResource(self)
             return self._tooling
+
+    @property
+    def metadata(self) -> "MetadataResource":
+        try:
+            return self._metadata
+        except AttributeError:
+            if "MetadataResource" not in globals():
+                global MetadataResource
+                from .resources.metadata import MetadataResource
+            self._metadata = MetadataResource(self)
+            return self._metadata
 
     @tooling.deleter
     def tooling(self):

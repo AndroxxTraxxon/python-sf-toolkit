@@ -467,7 +467,6 @@ def test_save_upsert(mock_sf_client):
         External_Id__c = TextField()
         Custom_Field__c = TextField()
 
-
     # Create an instance with an external ID but no Salesforce ID
     custom_obj = CustomObject(
         Name="Test Upsert",
@@ -509,7 +508,6 @@ def test_save_upsert(mock_sf_client):
 
     # Verify dirty fields were cleared
     assert len(custom_obj.dirty_fields) == 0
-
 
 
 def test_save_upsert_insert(mock_sf_client):
@@ -560,7 +558,6 @@ def test_save_upsert_insert(mock_sf_client):
 
     # Verify the ID was set from the response
     assert custom_obj.Id == "a01XX000003GabcNEW"
-
 
 
 def test_save_method_with_id(mock_sf_client):
@@ -629,7 +626,6 @@ def test_save_method_with_external_id(mock_sf_client):
         External_Id__c = TextField()
         Description__c = TextField()
 
-
     # Create an instance with an external ID but no Salesforce ID
     custom_obj = CustomObject(
         Name="External ID Save Test",
@@ -660,8 +656,6 @@ def test_save_method_with_external_id(mock_sf_client):
     )
 
 
-
-
 def test_readonly_assignment_exception():
     """Test that assignment to readonly fields raises an exception"""
     # Create an account with readonly fields
@@ -683,6 +677,7 @@ def test_readonly_assignment_exception():
 
 def test_sobject_field_inheritance():
     """Test that fields are inherited correctly"""
+
     # Create a custom object with fields
     class SObject_A(SObject):
         field_a = TextField()

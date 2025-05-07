@@ -5,7 +5,7 @@ Requirements
 -----------
 
 * Python 3.11 or higher
-* The following dependencies:
+* Installing this package also installs the following dependencies:
   * httpx
   * jwt
   * lxml

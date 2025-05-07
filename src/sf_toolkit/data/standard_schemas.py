@@ -65,6 +65,7 @@ class ContentVersion(SObject):
     The standard Salesforce ContentVersion object
     https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_contentversion.htm
     """
+
     Id = IdField()
     ContentDocumentId = IdField()
     ContentLocation = PicklistField(options=["S", "L", "E"])
@@ -80,6 +81,7 @@ class Document(SObject):
     The Standard Salesforce Document object
     https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_document.htm
     """
+
     Id = IdField()
     AuthorId = IdField()
     Name = TextField()
@@ -105,6 +107,7 @@ class Attachment(SObject):
     """
     The Standard Salesforce Attachment object
     https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_attachment.htm"""
+
     Id = IdField()
     Body = BlobField()
     BodyLength = IntField(FieldFlag.readonly)

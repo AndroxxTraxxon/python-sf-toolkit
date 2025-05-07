@@ -2,7 +2,14 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from datetime import datetime, date
 
-from sf_toolkit.data.fields import DateField, IdField, IntField, ListField, NumberField, TextField
+from sf_toolkit.data.fields import (
+    DateField,
+    IdField,
+    IntField,
+    ListField,
+    NumberField,
+    TextField,
+)
 from sf_toolkit.data.query_builder import AND, EQ, GT, OR, QueryResult, SoqlQuery, Order
 from sf_toolkit.data.sobject import SObject, SObjectList
 from ..unit_test_models import Opportunity, Account
@@ -424,11 +431,11 @@ def test_query_with_field_subquery():
 
 def test_query_with_nested_field_subquery():
     """Test query construction with nested field subqueries"""
+
     # Create a more complex query with multiple nested subqueries
     class Contact(SObject):
         Id = IdField()
         Email = TextField()
-
 
     class Opportunity(SObject):
         Id = IdField()
@@ -443,14 +450,15 @@ def test_query_with_nested_field_subquery():
     opportunities_subquery = Opportunity.query().where(Amount__gt=10000)
     query = Account.query().filter_subqueries(
         Opportunities=opportunities_subquery,
-        Contacts=Contact.query().where(Email__like="%@example.com")
+        Contacts=Contact.query().where(Email__like="%@example.com"),
     )
 
     query_str = str(query)
     assert "SELECT Id, Name" in query_str
     assert "(SELECT Id, Name FROM Opportunities WHERE Amount > 10000)" in query_str
-    assert "(SELECT Id, Email FROM Contacts WHERE Email LIKE '%@example.com')" in query_str
-
+    assert (
+        "(SELECT Id, Email FROM Contacts WHERE Email LIKE '%@example.com')" in query_str
+    )
 
 
 def test_query_with_where_subquery():
@@ -464,24 +472,24 @@ def test_query_with_where_subquery():
         Id = IdField()
         Name = TextField()
 
-
-    query = Account.query().where(
-        Id__in=Opportunity.query().where(Amount__gt=50000)
-    )
+    query = Account.query().where(Id__in=Opportunity.query().where(Amount__gt=50000))
     query_str = str(query)
-    assert "FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Amount > 50000)" in query_str
+    assert (
+        "FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Amount > 50000)"
+        in query_str
+    )
 
 
 def test_query_with_complex_where_subquery():
     """Test query construction with complex WHERE clause subquery"""
 
     class Opportunity(SObject):
-        AccountId=IdField()
+        AccountId = IdField()
 
     class Account(SObject):
-        Id=IdField()
-        Name=TextField()
-        Industry=TextField()
+        Id = IdField()
+        Name = TextField()
+        Industry = TextField()
 
     opportunity_subquery = (
         Opportunity.query()
@@ -492,8 +500,7 @@ def test_query_with_complex_where_subquery():
     )
 
     query = Account.query().where(
-        Industry__in=["Technology", "Healthcare"],
-        Id__in=opportunity_subquery
+        Industry__in=["Technology", "Healthcare"], Id__in=opportunity_subquery
     )
 
     query_str = str(query)
@@ -524,34 +531,32 @@ def test_execution_with_field_subquery(mock_sf_client):
                             "attributes": {"type": "Opportunity"},
                             "Id": "006XX000004DGTYAA4",
                             "Name": "Opp 1",
-                            "Amount": 75000
+                            "Amount": 75000,
                         },
                         {
                             "attributes": {"type": "Opportunity"},
                             "Id": "006XX000004DGTYBZ4",
                             "Name": "Opp 2",
-                            "Amount": 125000
-                        }
-                    ]
-                }
+                            "Amount": 125000,
+                        },
+                    ],
+                },
             }
-        ]
+        ],
     }
 
     class Opportunity(SObject):
-        Id=IdField()
-        Name=TextField()
-        Amount=IntField()
+        Id = IdField()
+        Name = TextField()
+        Amount = IntField()
 
     class Account(SObject):
-        Id=IdField()
-        Name=TextField()
-        Opportunities=ListField(Opportunity)
-
+        Id = IdField()
+        Name = TextField()
+        Opportunities = ListField(Opportunity)
 
     # Create a query with a subquery
     query = Account.query()
-
 
     # Execute the query
     results = query.execute()
@@ -646,7 +651,9 @@ def test_query_result_list_conversion(mock_sf_client, mock_query_response_with_n
 
 
 @pytest.mark.asyncio
-async def test_query_result_async_iterator(mock_sf_client, mock_query_response_with_next):
+async def test_query_result_async_iterator(
+    mock_sf_client, mock_query_response_with_next
+):
     """Test QueryResult async iterator functionality"""
     # Setup mock responses
     mock_sf_client.get.return_value.json.return_value = mock_query_response_with_next

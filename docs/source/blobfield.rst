@@ -1,6 +1,6 @@
 # Using BlobField for File Uploads
 
-SF Toolkit now supports automatic file uploads when saving SObjects with blob data. This is done through the new `BlobField` field type, which allows you to set file content that will be uploaded to Salesforce when the SObject is saved.
+SF Toolkit supports automatic file uploads when saving SObjects with blob data. This is done through the new `BlobField` field type, which allows you to set file content that will be uploaded to Salesforce when the SObject is saved.
 
 ## Defining SObjects with BlobFields
 
