@@ -17,7 +17,7 @@ from .auth import (
     SalesforceToken,
     TokenRefreshCallback,
 )
-from .apimodels import ApiVersion, UserInfo
+from .apimodels import ApiVersion, UserInfo, OrgLimits
 
 LOGGER = getLogger("client")
 
@@ -221,6 +221,16 @@ class SalesforceClient(I_SalesforceClient):
             )
             for version in versions_data
         }
+
+    def limits(self):
+        """
+        Returns a dictionary of API versions available in the org.
+
+        Returns:
+            OrgLimits: dict-like object of available limits
+        """
+        return OrgLimits(**self.get(self.data_url + "/limits/").json())
+
 
     # resources for the client
     @property

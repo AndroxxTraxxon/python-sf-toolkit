@@ -1,4 +1,5 @@
 from typing import TypeVar
+from .interfaces import I_SalesforceClient
 
 
 _T_ApiVer = TypeVar("_T_ApiVer", bound="ApiVersion")
@@ -79,59 +80,7 @@ class ApiVersion:
         return hash(self.version)
 
 
-class OrgLimit:
-    """
-    Data structure representing a Salesforce Org Limit.
-    https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_limits.htm
-    """
 
-    def __init__(self, name: str, max_value: int, current_value: int):
-        """
-        Initialize an OrgLimit object.
-
-        Args:
-            name: The name of the limit
-            max_value: The maximum allowed value for this limit
-            current_value: The current consumption value for this limit
-        """
-        self.name = name
-        self.max_value = max_value
-        self.current_value = current_value
-
-    def __repr__(self) -> str:
-        return f"OrgLimit(name='{self.name}', current_value={self.current_value}, max_value={self.max_value})"
-
-    def remaining(self) -> int:
-        """
-        Calculate the remaining capacity for this limit.
-
-        Returns:
-            The difference between max_value and current_value
-        """
-        return self.max_value - self.current_value
-
-    def usage_percentage(self) -> float:
-        """
-        Calculate the percentage of the limit that has been used.
-
-        Returns:
-            The percentage of the limit used as a float between 0 and 100
-        """
-        if self.max_value == 0:
-            return 0.0
-        return (self.current_value / self.max_value) * 100
-
-    def is_critical(self, threshold: float = 90.0) -> bool:
-        """
-        Determine if the limit usage exceeds a critical threshold.
-
-        Args:
-            threshold: The percentage threshold to consider critical (default: 90%)
-
-        Returns:
-            True if usage percentage exceeds the threshold, False otherwise
-        """
-        return self.usage_percentage() >= threshold
 
 
 class UserInfo:
@@ -217,3 +166,103 @@ class UserInfo:
 
     def __repr__(self) -> str:
         return f"UserInfo(name='{self.name}', user_id='{self.user_id}', organization_id='{self.organization_id}')"
+
+
+class Limit:
+    """
+    Data structure representing a Salesforce Org Limit.
+    https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_limits.htm
+    """
+
+    def __init__(self, name: str, Max: int, Remaining: int, **sub_limits):
+        """
+        Initialize an OrgLimit object.
+
+        Args:
+            name: The name of the limit
+            max_value: The maximum allowed value for this limit
+            current_value: The current consumption value for this limit
+        """
+        self.name = name
+        self.Max = Max
+        self.Remaining = Remaining
+        for name, details in sub_limits.items():
+            setattr(self, name, Limit(name, **details))
+
+    def __repr__(self) -> str:
+        return f"OrgLimit(name='{self.name}', Max={self.Max}, Remaining={self.Remaining})"
+
+    @property
+    def usage(self) -> int:
+        """
+        Calculate the remaining capacity for this limit.
+
+        Returns:
+            The difference between max_value and current_value
+        """
+        return self.Max - self.Remaining
+
+    @property
+    def usage_percentage(self) -> float:
+        """
+        Calculate the percentage of the limit that has been used.
+
+        Returns:
+            The percentage of the limit used as a float between 0 and 100
+        """
+        if self.Max == 0:
+            return 0.0
+        return (self.usage / self.Max) * 100
+
+    @property
+    def remaining_percentage(self) -> float:
+        """
+        Calculate the percentage of the limit that has been used.
+
+        Returns:
+            The percentage of the limit used as a float between 0 and 100
+        """
+        if self.Max == 0:
+            return 0.0
+        return (self.Remaining / self.Max) * 100
+
+    @property
+    def is_critical(self, threshold: float = 90.0) -> bool:
+        """
+        Determine if the limit usage exceeds a critical threshold.
+
+        Args:
+            threshold: The percentage threshold to consider critical (default: 90%)
+
+        Returns:
+            True if usage percentage exceeds the threshold, False otherwise
+        """
+        return self.usage_percentage >= threshold
+
+
+class OrgLimits:
+
+    _values: dict[str, Limit]
+
+    def __init__(self, _connection: I_SalesforceClient | None = None, **limits):
+        self._connection = _connection
+        self._values = {
+            label: Limit(label, **values)
+            for label, values in limits.items()
+        }
+
+
+    def __getattr__(self, name: str) -> Limit:
+        try:
+            return self._values[name]
+        except KeyError:
+            try:
+                return object.__getattribute__(self, name)
+            except AttributeError as e:
+                raise AttributeError(f"No Limit '{name}' found.") from e
+
+    def __getitem__(self, name: str) -> Limit:
+        return self._values[name]
+
+    def get(self, name: str, default: Limit | None = None) -> Limit | None:
+        return self._values.get(name, default)

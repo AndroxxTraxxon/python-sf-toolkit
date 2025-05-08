@@ -194,7 +194,7 @@ class Field(typing.Generic[T]):
         obj._values[self._name] = value
         obj.dirty_fields.add(self._name)
 
-    def revive(self, value: typing.Any):
+    def revive(self, value: typing.Any) -> T:
         return value
 
     def format(self, value: T) -> typing.Any:
@@ -288,15 +288,24 @@ class NumberField(Field[float]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(float, *flags)
 
+    def revive(self, value: typing.Any):
+        return float(value)
+
 
 class IntField(Field[int]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(int, *flags)
 
+    def revive(self, value: typing.Any):
+        return int(value)
+
 
 class CheckboxField(Field[bool]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(bool, *flags)
+
+    def revive(self, value: typing.Any):
+        return bool(value)
 
 
 class DateField(Field[datetime.date]):
@@ -318,6 +327,9 @@ class TimeField(Field[datetime.time]):
 
     def format(self, value):
         return value.isoformat(timespec="milliseconds")
+
+    def revive(self, value):
+        return datetime.time.fromisoformat(str(value))
 
 
 class DateTimeField(Field[datetime.datetime]):
