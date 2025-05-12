@@ -66,6 +66,10 @@ class SalesforceApiHelpersMixin(BaseClient):
     def tooling_sobjects_url(self):
         return f"{self.data_url}/tooling"
 
+    @property
+    def metadata_url(self):
+        return f"{self.data_url}/metadata"
+
 
 class I_AsyncSalesforceClient(
     TokenRefreshCallbackMixin, SalesforceApiHelpersMixin, AsyncClient, ABC

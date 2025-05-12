@@ -17,7 +17,6 @@ class Document(SObject, api_name="Document"):
     Body = BlobField()  # This is where the file content will be stored
 
 
-
 def test_sobject_with_blobfield_definition():
     """Test that an SObject with a BlobField is properly defined"""
     # Check that blob_field is properly set in attributes
@@ -27,7 +26,7 @@ def test_sobject_with_blobfield_definition():
     doc = Document(
         Name="Test Document",
         Description="Description",
-        Body=BlobData("Test content", filename="test.txt")
+        Body=BlobData("Test content", filename="test.txt"),
     )
 
     # Test basic properties
@@ -62,7 +61,7 @@ def test_save_insert_with_text_blob(mock_sf_client):
     doc = Document(
         Name="Text Document",
         Description="A document with text content",
-        Body=BlobData("Hello, world!", filename="hello.txt")
+        Body=BlobData("Hello, world!", filename="hello.txt"),
     )
 
     # Mock the response
@@ -70,7 +69,7 @@ def test_save_insert_with_text_blob(mock_sf_client):
     mock_response.json.return_value = {
         "id": "069XX000001abcdIAA",
         "success": True,
-        "errors": []
+        "errors": [],
     }
     mock_sf_client.post.return_value = mock_response
 
@@ -106,13 +105,13 @@ def test_save_insert_with_text_blob(mock_sf_client):
 def test_save_insert_with_binary_blob(mock_sf_client):
     """Test inserting an SObject with binary data"""
     # Create binary data
-    binary_data = b'\x89PNG\r\n\x1a\n\x00\x00'  # Start of a PNG file
+    binary_data = b"\x89PNG\r\n\x1a\n\x00\x00"  # Start of a PNG file
 
     # Create a document with binary content
     doc = Document(
         Name="Binary Document",
         Description="A document with binary content",
-        Body=BlobData(binary_data, filename="image.png", content_type="image/png")
+        Body=BlobData(binary_data, filename="image.png", content_type="image/png"),
     )
 
     # Mock the response
@@ -120,7 +119,7 @@ def test_save_insert_with_binary_blob(mock_sf_client):
     mock_response.json.return_value = {
         "id": "069XX000001abceIAA",
         "success": True,
-        "errors": []
+        "errors": [],
     }
     mock_sf_client.post.return_value = mock_response
 
@@ -155,7 +154,7 @@ def test_save_insert_with_file_blob(mock_sf_client):
         doc = Document(
             Name="File Document",
             Description="A document with file content",
-            Body=BlobData(temp_path)
+            Body=BlobData(temp_path),
         )
 
         # Mock the response
@@ -163,7 +162,7 @@ def test_save_insert_with_file_blob(mock_sf_client):
         mock_response.json.return_value = {
             "id": "069XX000001abcfIAA",
             "success": True,
-            "errors": []
+            "errors": [],
         }
         mock_sf_client.post.return_value = mock_response
 
@@ -198,7 +197,7 @@ def test_save_insert_with_stream_blob(mock_sf_client):
     doc = Document(
         Name="Stream Document",
         Description="A document with stream content",
-        Body=BlobData(stream, filename="stream.txt")
+        Body=BlobData(stream, filename="stream.txt"),
     )
 
     # Mock the response
@@ -206,7 +205,7 @@ def test_save_insert_with_stream_blob(mock_sf_client):
     mock_response.json.return_value = {
         "id": "069XX000001abcgIAA",
         "success": True,
-        "errors": []
+        "errors": [],
     }
     mock_sf_client.post.return_value = mock_response
 
@@ -235,7 +234,7 @@ def test_save_insert_with_blob_and_reload(mock_sf_client):
     doc = Document(
         Name="Reload Document",
         Description="Testing reload after insert",
-        Body=BlobData("Content to upload", filename="reload.txt")
+        Body=BlobData("Content to upload", filename="reload.txt"),
     )
 
     # Mock the insert response
@@ -243,7 +242,7 @@ def test_save_insert_with_blob_and_reload(mock_sf_client):
     insert_response.json.return_value = {
         "id": "069XX000001abchIAA",
         "success": True,
-        "errors": []
+        "errors": [],
     }
 
     # Mock the get response for reload
@@ -252,7 +251,7 @@ def test_save_insert_with_blob_and_reload(mock_sf_client):
         "attributes": {"type": "Document"},
         "Id": "069XX000001abchIAA",
         "Name": "Reload Document (Updated)",
-        "Description": "Description updated after insert"
+        "Description": "Description updated after insert",
         # Note: Body is not returned in the reload
     }
     # Configure the mock client to return different responses
@@ -283,7 +282,7 @@ def test_blob_field_not_included_in_serialization():
     doc = Document(
         Name="Serialization Test",
         Description="Testing serialization",
-        Body=BlobData("Test content", filename="serialize.txt")
+        Body=BlobData("Test content", filename="serialize.txt"),
     )
 
     # Serialize the document

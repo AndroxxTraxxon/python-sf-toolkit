@@ -3,6 +3,8 @@ import httpx
 from sf_toolkit.apimodels import ApiVersion
 from sf_toolkit.auth.types import SalesforceToken
 from sf_toolkit.client import SalesforceClient
+from sf_toolkit.resources.metadata import MetadataResource
+from sf_toolkit.resources.tooling import ToolingResource
 
 
 def test_client_context_manager(mocker):
@@ -67,3 +69,15 @@ def test_client_context_manager(mocker):
         # Assert that the second call was to versions endpoint
         versions_request = mock_send.call_args_list[1][0][0]
         assert versions_request.url.path.endswith("/services/data")
+
+
+def test_api_resource_helpers():
+    client = SalesforceClient(token=SalesforceToken(URL("https://test.salesforce.com"), "mock_access_token"))
+
+    assert client.tooling is not None
+    assert client.tooling.client is client
+    assert isinstance(client.tooling, ToolingResource)
+
+    assert client.metadata is not None
+    assert client.metadata.client is client
+    assert isinstance(client.metadata, MetadataResource)

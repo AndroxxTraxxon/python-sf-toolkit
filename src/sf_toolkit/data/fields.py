@@ -4,8 +4,10 @@ from enum import Flag, auto
 import typing
 import io
 from pathlib import Path
+import warnings
 
 from httpx._types import FileContent
+
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
@@ -78,9 +80,18 @@ class FieldConfigurableObject:
         dict
     )
 
-    def __init__(self):
+    def __init__(self, _strict_fields: bool = False, **field_values):
         self._values = {}
         self._dirty_fields = set()
+        for field, value in field_values.items():
+            if field not in self._fields:
+                message = f"Field {field} not defined for {type(self).__qualname__}"
+                if _strict_fields:
+                    raise KeyError(message)
+                else:
+                    warnings.warn(message)
+            setattr(self, field, value)
+        self._dirty_fields.clear()
 
     def __init_subclass__(cls) -> None:
         cls._fields = cls._type_field_registry[cls]
@@ -145,8 +156,7 @@ class FieldConfigurableObject:
         return {
             name: field.format(value)
             for name, value in self._values.items()
-            if (field := self._fields[name])
-            and FieldFlag.readonly not in field.flags
+            if (field := self._fields[name]) and FieldFlag.readonly not in field.flags
         }
 
     def __getitem__(self, name):
@@ -208,6 +218,18 @@ class Field(typing.Generic[T]):
                 f"Expected {self._py_type.__qualname__} for field {self._name} "
                 f"on {self._owner.__name__}, got {type(value).__name__}"
             )
+
+
+class RawField(Field[typing.Any]):
+    """
+    A Field that does no transformation or validation on the values passed to it.
+    """
+
+    def __init__(self, *flags: FieldFlag):
+        super().__init__(type(None), *flags)
+
+    def validate(self, value):
+        return
 
 
 class TextField(Field[str]):
@@ -321,6 +343,12 @@ class ReferenceField(Field[T]):
         if isinstance(value, dict):
             return self._py_type(**value)
 
+    def format(self, value: FieldConfigurableObject):
+        try:
+            return value.serialize()
+        except AttributeError:
+            return value
+
 
 class ListField(Field[list[T]]):
     _nested_type: type[T]
@@ -342,10 +370,16 @@ class ListField(Field[list[T]]):
         if isinstance(value, SObjectList):  # type: ignore
             return value
         if isinstance(value, list):
-            return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
+            if issubclass(self._nested_type, FieldConfigurableObject):
+                return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
+            return value
         if isinstance(value, dict):
             # assume the dict is a QueryResult-formatted dictionary
-            return SObjectList([self._nested_type(**item) for item in value["records"]])  # type: ignore
+            if issubclass(self._nested_type, FieldConfigurableObject):
+                return SObjectList(
+                    [self._nested_type(**item) for item in value["records"]]
+                )  # type: ignore
+            return list(value.items())
         raise TypeError(
             f"Unexpected type {type(value)} for {type(self).__name__}[{self._nested_type.__name__}]"
         )
@@ -353,12 +387,14 @@ class ListField(Field[list[T]]):
 
 class BlobData:
     """Class to represent blob data that will be uploaded to Salesforce"""
+
     _filepointer: io.IOBase | None = None
+
     def __init__(
         self,
         data: typing.Union[str, bytes, Path, io.IOBase],
         filename: str | None = None,
-        content_type: str | None = None
+        content_type: str | None = None,
     ):
         self.data = data
         self.filename = filename
@@ -371,30 +407,30 @@ class BlobData:
 
         # Determine content type if not provided
         if self.content_type is None:
-            if self.filename and '.' in self.filename:
-                ext = self.filename.split('.')[-1].lower()
-                if ext in ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']:
-                    self.content_type = f'application/{ext}'
-                elif ext in ['jpg', 'jpeg', 'png', 'gif']:
-                    self.content_type = f'image/{ext}'
+            if self.filename and "." in self.filename:
+                ext = self.filename.split(".")[-1].lower()
+                if ext in ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"]:
+                    self.content_type = f"application/{ext}"
+                elif ext in ["jpg", "jpeg", "png", "gif"]:
+                    self.content_type = f"image/{ext}"
                 else:
-                    self.content_type = 'application/octet-stream'
+                    self.content_type = "application/octet-stream"
             else:
-                self.content_type = 'application/octet-stream'
+                self.content_type = "application/octet-stream"
 
     def __enter__(self) -> FileContent:
         """Get the binary content of the blob data"""
         if isinstance(self.data, str):
-            return self.data.encode('utf-8')
+            return self.data.encode("utf-8")
         elif isinstance(self.data, bytes):
             return self.data
         elif isinstance(self.data, Path):
             self._filepointer = self.data.open()
-            with open(self.data, 'rb') as f:
+            with open(self.data, "rb") as f:
                 return f.read()
         elif isinstance(self.data, io.IOBase):
             # Reset the file pointer if it's a file object
-            if hasattr(self.data, 'seek'):
+            if hasattr(self.data, "seek"):
                 self.data.seek(0)
             return self.data.read()
         else:
@@ -424,7 +460,6 @@ class BlobField(Field[BlobData]):
         # They are handled specially when uploading via multipart/form-data
         return None
 
-
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> BlobData:
         if obj is None:
@@ -450,13 +485,13 @@ FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
     "url": TextField,
     "email": TextField,
     "textarea": TextField,
-    "picklist": TextField,
+    "picklist": PicklistField,
     "multipicklist": MultiPicklistField,
     "reference": ReferenceField,
     "currency": NumberField,
     "double": NumberField,
     "percent": NumberField,
-    "int": NumberField,
+    "int": IntField,
     "date": DateField,
     "datetime": DateTimeField,
     "time": TimeField,
