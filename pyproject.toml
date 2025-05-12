@@ -45,6 +45,22 @@ build-backend = "poetry_dynamic_versioning.backend"
 [project]
 dynamic = ["version"]
 name = "sf_toolkit"
+keywords = [
+    "salesforce",
+    "api",
+    "rest",
+    "adapter",
+    "toolkit",
+    "sfdc",
+    "sfdx",
+    "forcedotcom",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
 
 [project.urls]
 Homepage = "https://github.com/AndroxxTraxxon/python-sf-toolkit"
