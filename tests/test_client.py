@@ -1,6 +1,9 @@
+from unittest.mock import Mock
+
 from httpx import URL
 import httpx
-from sf_toolkit.apimodels import ApiVersion
+
+from sf_toolkit.apimodels import ApiVersion, OrgLimits, Limit
 from sf_toolkit.auth.types import SalesforceToken
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.resources.metadata import MetadataResource
@@ -81,3 +84,229 @@ def test_api_resource_helpers():
     assert client.metadata is not None
     assert client.metadata.client is client
     assert isinstance(client.metadata, MetadataResource)
+
+
+def test_limits():
+    client = SalesforceClient(token=SalesforceToken(URL("https://test.salesforce.com"), "mock_access_token"))
+    client.get = Mock()
+    client.get.return_value.json.return_value = {
+        "ActiveScratchOrgs": {
+            "Max": 3,
+            "Remaining": 3
+        },
+        "AnalyticsExternalDataSizeMB": {
+            "Max": 40960,
+            "Remaining": 40960
+        },
+        "ConcurrentAsyncGetReportInstances": {
+            "Max": 200,
+            "Remaining": 200
+        },
+        "ConcurrentEinsteinDataInsightsStoryCreation": {
+            "Max": 5,
+            "Remaining": 5
+        },
+        "ConcurrentEinsteinDiscoveryStoryCreation": {
+            "Max": 2,
+            "Remaining": 2
+        },
+        "ConcurrentSyncReportRuns": {
+            "Max": 20,
+            "Remaining": 20
+        },
+        "DailyAnalyticsDataflowJobExecutions": {
+            "Max": 60,
+            "Remaining": 60
+        },
+        "DailyAnalyticsUploadedFilesSizeMB": {
+            "Max": 51200,
+            "Remaining": 51200
+        },
+        "DailyFunctionsApiCallLimit" : {
+          "Max" : 235000,
+          "Remaining" : 235000
+        },
+        "DailyApiRequests": {
+            "Max": 5000,
+            "Remaining": 4937
+        },
+        "DailyAsyncApexExecutions": {
+            "Max": 250000,
+            "Remaining": 250000
+        },
+        "DailyAsyncApexTests": {
+            "Max": 500,
+            "Remaining": 500
+        },
+        "DailyBulkApiBatches": {
+            "Max": 15000,
+            "Remaining": 15000
+        },
+        "DailyBulkV2QueryFileStorageMB": {
+            "Max": 976562,
+            "Remaining": 976562
+        },
+        "DailyBulkV2QueryJobs": {
+            "Max": 10000,
+            "Remaining": 10000
+        },
+        "DailyDeliveredPlatformEvents" : {
+          "Max" : 10000,
+          "Remaining" : 10000
+        },
+        "DailyDurableGenericStreamingApiEvents": {
+            "Max": 10000,
+            "Remaining": 10000
+        },
+        "DailyDurableStreamingApiEvents": {
+            "Max": 10000,
+            "Remaining": 10000
+        },
+        "DailyEinsteinDataInsightsStoryCreation": {
+            "Max": 1000,
+            "Remaining": 1000
+        },
+        "DailyEinsteinDiscoveryPredictAPICalls": {
+            "Max": 50000,
+            "Remaining": 50000
+        },
+        "DailyEinsteinDiscoveryPredictionsByCDC": {
+            "Max": 5000000,
+            "Remaining": 5000000
+        },
+        "DailyEinsteinDiscoveryStoryCreation": {
+            "Max": 100,
+            "Remaining": 100
+        },
+        "DailyGenericStreamingApiEvents": {
+            "Max": 10000,
+            "Remaining": 10000
+        },
+        "DailyScratchOrgs": {
+            "Max": 6,
+            "Remaining": 6
+        },
+        "DailyStandardVolumePlatformEvents": {
+            "Max": 10000,
+            "Remaining": 10000
+        },
+        "DailyStreamingApiEvents": {
+            "Max": 10000,
+            "Remaining": 10000
+        },
+        "DailyWorkflowEmails": {
+            "Max": 100000,
+            "Remaining": 100000
+        },
+        "DataStorageMB": {
+            "Max": 1024,
+            "Remaining": 1024
+        },
+        "DurableStreamingApiConcurrentClients": {
+            "Max": 20,
+            "Remaining": 20
+        },
+        "FileStorageMB": {
+            "Max": 1024,
+            "Remaining": 1024
+        },
+        "HourlyAsyncReportRuns": {
+            "Max": 1200,
+            "Remaining": 1200
+        },
+        "HourlyDashboardRefreshes": {
+            "Max": 200,
+            "Remaining": 200
+        },
+        "HourlyDashboardResults": {
+            "Max": 5000,
+            "Remaining": 5000
+        },
+        "HourlyDashboardStatuses": {
+            "Max": 999999999,
+            "Remaining": 999999999
+        },
+        "HourlyLongTermIdMapping": {
+            "Max": 100000,
+            "Remaining": 100000
+        },
+        "HourlyManagedContentPublicRequests": {
+            "Max": 50000,
+            "Remaining": 50000
+        },
+        "HourlyODataCallout": {
+            "Max": 20000,
+            "Remaining": 20000
+        },
+        "HourlyPublishedPlatformEvents": {
+            "Max": 50000,
+            "Remaining": 50000
+        },
+        "HourlyPublishedStandardVolumePlatformEvents": {
+            "Max": 1000,
+            "Remaining": 1000
+        },
+        "HourlyShortTermIdMapping": {
+            "Max": 100000,
+            "Remaining": 100000
+        },
+        "HourlySyncReportRuns": {
+            "Max": 500,
+            "Remaining": 500
+        },
+        "HourlyTimeBasedWorkflow": {
+            "Max": 1000,
+            "Remaining": 1000
+        },
+        "MassEmail": {
+            "Max": 5000,
+            "Remaining": 5000
+        },
+        "MonthlyEinsteinDiscoveryStoryCreation": {
+            "Max": 500,
+            "Remaining": 500
+        },
+        "Package2VersionCreates": {
+            "Max": 6,
+            "Remaining": 6
+        },
+        "Package2VersionCreatesWithoutValidation": {
+            "Max": 500,
+            "Remaining": 500
+        },
+        "PermissionSets": {
+            "Max": 1500,
+            "Remaining": 1499,
+            "CreateCustom": {
+                "Max": 1000,
+                "Remaining": 999
+            }
+        },
+        "PlatformEventTriggersWithParallelProcessing": {
+          "Max": 5,
+          "Remaining": 4
+        },
+        "PrivateConnectOutboundCalloutHourlyLimitMB": {
+            "Max": 0,
+            "Remaining": 0
+        },
+        "SingleEmail": {
+            "Max": 5000,
+            "Remaining": 5000
+        },
+        "StreamingApiConcurrentClients": {
+            "Max": 20,
+            "Remaining": 20
+        }
+    }
+    client.api_version = ApiVersion.lazy_build(63)
+    limits = client.limits()
+
+    assert isinstance(limits, OrgLimits)
+    scratchOrgLimit = limits.ActiveScratchOrgs
+    assert isinstance(scratchOrgLimit, Limit)
+    assert scratchOrgLimit.Max == 3
+    assert scratchOrgLimit.Remaining == 3
+    assert not scratchOrgLimit.is_critical()
+
+    assert isinstance(limits.PermissionSets.CreateCustom, Limit)

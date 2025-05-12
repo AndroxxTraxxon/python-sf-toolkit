@@ -1,5 +1,4 @@
 from typing import TypeVar
-from .interfaces import I_SalesforceClient
 
 
 _T_ApiVer = TypeVar("_T_ApiVer", bound="ApiVersion")
@@ -186,8 +185,22 @@ class Limit:
         self.name = name
         self.Max = Max
         self.Remaining = Remaining
-        for name, details in sub_limits.items():
-            setattr(self, name, Limit(name, **details))
+
+        self._sub_limits = {
+            name: Limit(name, **details)
+            for name, details in sub_limits.items()
+        }
+
+    def __getattr__(self, name: str) -> "Limit":
+        try:
+            return self._sub_limits[name]
+        except KeyError:
+            try:
+                return object.__getattribute__(self, name)
+            except AttributeError as e:
+                raise AttributeError(f"No Sub-Limit '{name}' found for Limit '{self.name}'.") from e
+
+
 
     def __repr__(self) -> str:
         return f"OrgLimit(name='{self.name}', Max={self.Max}, Remaining={self.Remaining})"
@@ -226,7 +239,6 @@ class Limit:
             return 0.0
         return (self.Remaining / self.Max) * 100
 
-    @property
     def is_critical(self, threshold: float = 90.0) -> bool:
         """
         Determine if the limit usage exceeds a critical threshold.
@@ -244,8 +256,7 @@ class OrgLimits:
 
     _values: dict[str, Limit]
 
-    def __init__(self, _connection: I_SalesforceClient | None = None, **limits):
-        self._connection = _connection
+    def __init__(self, **limits):
         self._values = {
             label: Limit(label, **values)
             for label, values in limits.items()

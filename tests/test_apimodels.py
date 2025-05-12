@@ -107,54 +107,54 @@ class TestOrgLimit:
         """Test basic initialization."""
         limit = Limit("DailyApiRequests", 1000000, 500000)
         assert limit.name == "DailyApiRequests"
-        assert limit.max_value == 1000000
-        assert limit.current_value == 500000
+        assert limit.Max == 1000000
+        assert limit.Remaining == 500000
 
     def test_repr(self):
         """Test string representation."""
         limit = Limit("DailyApiRequests", 1000000, 500000)
         assert (
             repr(limit)
-            == "OrgLimit(name='DailyApiRequests', current_value=500000, max_value=1000000)"
+            == "OrgLimit(name='DailyApiRequests', Max=1000000, Remaining=500000)"
         )
 
     def test_remaining(self):
         """Test remaining method."""
         limit = Limit("DailyApiRequests", 1000000, 250000)
-        assert limit.remaining() == 750000
+        assert limit.Remaining == 250000
 
     def test_usage_percentage(self):
         """Test usage_percentage method."""
         # 50% usage
         limit = Limit("DailyApiRequests", 1000000, 500000)
-        assert limit.usage_percentage() == 50.0
+        assert limit.usage_percentage == 50.0
 
         # 0% usage
-        limit = Limit("DailyApiRequests", 1000000, 0)
-        assert limit.usage_percentage() == 0.0
+        limit = Limit("DailyApiRequests", 1000000, 1000000)
+        assert limit.usage_percentage == 0.0
 
         # 100% usage
-        limit = Limit("DailyApiRequests", 1000000, 1000000)
-        assert limit.usage_percentage() == 100.0
+        limit = Limit("DailyApiRequests", 1000000, 0)
+        assert limit.usage_percentage == 100.0
 
         # Handle division by zero
         limit = Limit("Unlimited", 0, 0)
-        assert limit.usage_percentage() == 0.0
+        assert limit.usage_percentage == 0.0
 
     def test_is_critical(self):
         """Test is_critical method."""
         # Below threshold
-        limit = Limit("DailyApiRequests", 1000000, 800000)  # 80%
+        limit = Limit("DailyApiRequests", 1000000, 200000)  # 80%
         assert not limit.is_critical()
         assert not limit.is_critical(85.0)
 
         # At threshold
-        limit = Limit("DailyApiRequests", 1000000, 900000)  # 90%
+        limit = Limit("DailyApiRequests", 1000000, 100000)  # 90%
         assert limit.is_critical()  # Default threshold is 90%
         assert not limit.is_critical(95.0)  # But not critical at 95% threshold
 
         # Above threshold
-        limit = Limit("DailyApiRequests", 1000000, 950000)  # 95%
+        limit = Limit("DailyApiRequests", 1000000, 50000)  # 95%
         assert limit.is_critical()
         assert limit.is_critical(90.0)
 
