@@ -1,4 +1,5 @@
 from unittest.mock import Mock
+import pytest
 
 from httpx import URL
 import httpx
@@ -304,9 +305,18 @@ def test_limits():
 
     assert isinstance(limits, OrgLimits)
     scratchOrgLimit = limits.ActiveScratchOrgs
+    assert limits.ActiveScratchOrgs is limits["ActiveScratchOrgs"]
+    assert limits.ActiveScratchOrgs is limits.get("ActiveScratchOrgs")
     assert isinstance(scratchOrgLimit, Limit)
     assert scratchOrgLimit.Max == 3
     assert scratchOrgLimit.Remaining == 3
     assert not scratchOrgLimit.is_critical()
 
     assert isinstance(limits.PermissionSets.CreateCustom, Limit)
+    assert not limits.PermissionSets.CreateCustom.is_critical()
+
+    with pytest.raises(AttributeError):
+        limits.FakeLimit.is_critical()
+
+    with pytest.raises(AttributeError):
+        limits.PermissionSets.FakeLimit.is_critical()

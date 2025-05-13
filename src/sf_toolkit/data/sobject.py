@@ -176,7 +176,7 @@ class SObject(FieldConfigurableObject, I_SObject):
             global SoqlQuery
             from .query_builder import SoqlQuery
 
-        return SoqlQuery(cls, include_deleted)  # type: ignore
+        return SoqlQuery(cls, include_deleted)
 
     def __init__(self, /, _strict_fields: bool = True, **fields):
         fields.pop("attributes", None)
@@ -674,7 +674,9 @@ class SObjectList(list[_sObject]):
         self.connection = connection
 
     @classmethod
-    async def async_init(cls, a_iterable: AsyncIterable[_sObject], connection: str = ""):
+    async def async_init(
+        cls, a_iterable: AsyncIterable[_sObject], connection: str = ""
+    ):
         collected_records = [record async for record in a_iterable]
         return cls(collected_records, connection=connection)
 

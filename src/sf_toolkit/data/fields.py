@@ -289,7 +289,7 @@ class NumberField(Field[float]):
         super().__init__(float, *flags)
 
     def revive(self, value: typing.Any):
-        return float(value)
+        return None if value is None else float(value)
 
 
 class IntField(Field[int]):
@@ -297,7 +297,7 @@ class IntField(Field[int]):
         super().__init__(int, *flags)
 
     def revive(self, value: typing.Any):
-        return int(value)
+        return None if value is None else int(value)
 
 
 class CheckboxField(Field[bool]):
@@ -305,7 +305,7 @@ class CheckboxField(Field[bool]):
         super().__init__(bool, *flags)
 
     def revive(self, value: typing.Any):
-        return bool(value)
+        return None if value is None else bool(value)
 
 
 class DateField(Field[datetime.date]):
@@ -313,6 +313,8 @@ class DateField(Field[datetime.date]):
         super().__init__(datetime.date, *flags)
 
     def revive(self, value: datetime.date | str):
+        if value is None:
+            return None
         if isinstance(value, datetime.date):
             return value
         return datetime.date.fromisoformat(value)
@@ -326,6 +328,8 @@ class TimeField(Field[datetime.time]):
         super().__init__(datetime.time, *flags)
 
     def format(self, value):
+        if value is None:
+            return None
         return value.isoformat(timespec="milliseconds")
 
     def revive(self, value):
@@ -336,10 +340,12 @@ class DateTimeField(Field[datetime.datetime]):
     def __init__(self, *flags: FieldFlag):
         super().__init__(datetime.datetime, *flags)
 
-    def revive(self, value: str):
+    def revive(self, value: str | None):
+        if value is None:
+            return None
         return datetime.datetime.fromisoformat(str(value))
 
-    def format(self, value):
+    def format(self, value: datetime.datetime) -> str:
         if value.tzinfo is None:
             value = value.astimezone()
         return value.isoformat(timespec="milliseconds")
@@ -348,7 +354,7 @@ class DateTimeField(Field[datetime.datetime]):
 class ReferenceField(Field[T]):
     def revive(self, value):
         if value is None:
-            return value
+            return None
         assert self._py_type is not None
         if isinstance(value, self._py_type):
             return value

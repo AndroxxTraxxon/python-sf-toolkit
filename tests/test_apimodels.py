@@ -140,6 +140,7 @@ class TestOrgLimit:
         # Handle division by zero
         limit = Limit("Unlimited", 0, 0)
         assert limit.usage_percentage == 0.0
+        assert limit.remaining_percentage == 0.0
 
     def test_is_critical(self):
         """Test is_critical method."""
@@ -157,6 +158,7 @@ class TestOrgLimit:
         limit = Limit("DailyApiRequests", 1000000, 50000)  # 95%
         assert limit.is_critical()
         assert limit.is_critical(90.0)
+        assert limit.remaining_percentage == 5.0
 
 
 class TestUserInfo:

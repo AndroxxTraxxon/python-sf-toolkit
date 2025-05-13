@@ -1,5 +1,4 @@
 from unittest.mock import MagicMock, Mock, AsyncMock
-
 import pytest
 
 from more_itertools import chunked
@@ -40,8 +39,10 @@ def mock_sf_client():
     )
 
     # Mock the async client property
-    mock_async_client = AsyncMock()
-    mock_client.as_async.__enter__.return_value = mock_async_client
+    mock_async_client = Mock()
+    mock_client.as_async = mock_async_client
+    mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+    mock_async_client.__aexit__ = AsyncMock(return_value=None)
 
     # Keep a reference to the original _connections dictionary to restore later
     original_connections = I_SalesforceClient._connections
@@ -317,7 +318,7 @@ def test_save_insert_async(mock_sf_client, test_accounts):
     account_list = SObjectList(many_accounts)
 
     # Mock response for async client
-    async_client = mock_sf_client.as_async.__aenter__.return_value
+    async_client = mock_sf_client.as_async
     mock_response = AsyncMock()
     mock_response.return_value = Mock()
     mock_response.return_value.json.side_effect = list(

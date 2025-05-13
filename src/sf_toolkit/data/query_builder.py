@@ -218,7 +218,7 @@ class QueryResult(Generic[_SObject]):
     def __init__(
         self,
         batches: list[QueryResultBatch[_SObject]],
-        _async_tasks: list[Task] | None = None
+        _async_tasks: list[Task] | None = None,
     ):
         self.batches = batches
         self.total_size = batches[0].totalSize
@@ -229,7 +229,7 @@ class QueryResult(Generic[_SObject]):
 
     @property
     def done(self):
-        return self.batches[-1].done
+        return self.batches[self.batch_index].done
 
     def as_list(self) -> SObjectList[_SObject]:
         return SObjectList(
@@ -237,15 +237,17 @@ class QueryResult(Generic[_SObject]):
         )
 
     async def as_list_async(self):
-        return await SObjectList.async_init(self, self.batches[0]._sobject_type.attributes.connection)
+        return await SObjectList.async_init(
+            self, self.batches[0]._sobject_type.attributes.connection
+        )
 
     async def _fetch_query_locator_batch(self, query_locator_url: str):
         connection = self.batches[0]._connection.as_async
-        result: QueryResultJSON = (
-            await connection.get(query_locator_url)
-        ).json()
+        result: QueryResultJSON = (await connection.get(query_locator_url)).json()
         return QueryResultBatch(
-            self.batches[0]._sobject_type, connection=self.batches[0]._connection, **result
+            self.batches[0]._sobject_type,
+            connection=self.batches[0]._connection,
+            **result,
         )
 
     def copy(self) -> "QueryResult[_SObject]":
@@ -256,7 +258,9 @@ class QueryResult(Generic[_SObject]):
         return self.copy()
 
     def schedule_async_tasks(self):
-        assert self.batches[0].nextRecordsUrl is not None, "Cannot iterate with no query locator"
+        assert self.batches[0].nextRecordsUrl is not None, (
+            "Cannot iterate with no query locator"
+        )
         url_root, _ = self.batches[0].nextRecordsUrl.rsplit("-", maxsplit=1)
         batch_size = len(self.batches[0].records)
         fetched_record_count = batch_size * self.batch_index
@@ -273,34 +277,35 @@ class QueryResult(Generic[_SObject]):
 
     def __next__(self) -> _SObject:
         try:
-            record = self.batches[self.batch_index].records[self.record_index]
+            return self.batches[self.batch_index].records[self.record_index]
         except IndexError:
-            if self.batches[-1].done:
+            if self.done:
                 raise StopIteration
-            self.batches.append(self.batches[self.batch_index].query_more())
+            if self.batch_index >= (len(self.batches) - 1):
+                self.batches.append(self.batches[self.batch_index].query_more())
             self.batch_index += 1
             self.record_index = 0
-            record = self.batches[self.batch_index].records[self.record_index]
-
-        self.record_index += 1
-        return record
+            return self.batches[self.batch_index].records[self.record_index]
+        finally:
+            self.record_index += 1
 
     async def __anext__(self) -> _SObject:
         try:
-            return self.batches[-1].records[self.batch_index]
+            return self.batches[self.batch_index].records[self.record_index]
         except IndexError:
-            if self.batches[-1].done:
+            if self.done:
                 raise StopAsyncIteration
             if self._async_tasks:
                 self.batches.append(await self._async_tasks.pop(0))
                 if not self._async_tasks:
                     self._async_tasks = None
-            else:
+            elif self.batch_index >= (len(self.batches) - 1):
                 self.batches.append(await self.batches[-1].query_more_async())
-            self.batch_index = 0
-            return self.batches[-1].records[self.batch_index]
-        finally:
             self.batch_index += 1
+            self.record_index = 0
+            return self.batches[self.batch_index].records[self.record_index]
+        finally:
+            self.record_index += 1
 
 
 class SoqlQuery(Generic[_SObject]):

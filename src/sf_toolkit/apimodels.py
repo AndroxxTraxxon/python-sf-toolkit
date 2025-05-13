@@ -79,9 +79,6 @@ class ApiVersion:
         return hash(self.version)
 
 
-
-
-
 class UserInfo:
     """
     Data structure representing user information returned from the Salesforce OAuth2 userinfo endpoint.
@@ -187,8 +184,7 @@ class Limit:
         self.Remaining = Remaining
 
         self._sub_limits = {
-            name: Limit(name, **details)
-            for name, details in sub_limits.items()
+            name: Limit(name, **details) for name, details in sub_limits.items()
         }
 
     def __getattr__(self, name: str) -> "Limit":
@@ -198,12 +194,14 @@ class Limit:
             try:
                 return object.__getattribute__(self, name)
             except AttributeError as e:
-                raise AttributeError(f"No Sub-Limit '{name}' found for Limit '{self.name}'.") from e
-
-
+                raise AttributeError(
+                    f"No Sub-Limit '{name}' found for Limit '{self.name}'."
+                ) from e
 
     def __repr__(self) -> str:
-        return f"OrgLimit(name='{self.name}', Max={self.Max}, Remaining={self.Remaining})"
+        return (
+            f"OrgLimit(name='{self.name}', Max={self.Max}, Remaining={self.Remaining})"
+        )
 
     @property
     def usage(self) -> int:
@@ -253,15 +251,12 @@ class Limit:
 
 
 class OrgLimits:
-
     _values: dict[str, Limit]
 
     def __init__(self, **limits):
         self._values = {
-            label: Limit(label, **values)
-            for label, values in limits.items()
+            label: Limit(label, **values) for label, values in limits.items()
         }
-
 
     def __getattr__(self, name: str) -> Limit:
         try:

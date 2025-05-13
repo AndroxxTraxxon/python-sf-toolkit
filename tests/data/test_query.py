@@ -172,8 +172,7 @@ def test_query_execution(mock_sf_client, mock_query_response):
     mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
-    query = SoqlQuery(Account)
-    results = query.execute()
+    results = Account.query().execute()
 
     # Verify response handling
     assert isinstance(results, QueryResult)
@@ -188,6 +187,20 @@ def test_query_execution(mock_sf_client, mock_query_response):
     assert record.Industry == "Technology"
     assert record.AnnualRevenue == 1000000.0
 
+def test_query_result_multiple_iteration(mock_sf_client, mock_query_response):
+    """Test query execution and result handling"""
+    # Set up mock response
+    mock_sf_client.get.return_value = mock_query_response
+
+    # Create and execute query
+    query_result = Account.query().execute()
+    result_copy = query_result.copy()
+
+    record_list = query_result.as_list()
+    for index, (original, copy) in enumerate(zip(query_result, result_copy)):
+        assert record_list[index] is original  # This should always be true
+        assert original is copy  # This should also always be true
+
 
 def test_query_with_group_by(mock_sf_client):
     """Test query construction with GROUP BY clause"""
@@ -200,28 +213,22 @@ def test_query_with_group_by(mock_sf_client):
 
 def test_query_with_order_by():
     """Test query construction with ORDER BY clause"""
-    query = SoqlQuery(Account)
-    query.order_by(Order("Name", "DESC"), Id="ASC")
 
-    query_str = str(query)
+    query_str = str(Account.query().order_by(Order("Name", "DESC"), Id="ASC"))
     assert "ORDER BY Name DESC, Id ASC" in query_str
 
 
 def test_query_with_limit():
     """Test query construction with LIMIT clause"""
-    query = SoqlQuery(Account)
-    query.limit(10)
 
-    query_str = str(query)
+    query_str = str(Account.query().limit(10))
     assert "LIMIT 10" in query_str
 
 
 def test_query_with_offset():
     """Test query construction with OFFSET clause"""
-    query = SoqlQuery(Account)
-    query.offset(20)
 
-    query_str = str(query)
+    query_str = str(Account.query().offset(20))
     assert "OFFSET 20" in query_str
 
 

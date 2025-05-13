@@ -272,7 +272,9 @@ class DeployRequest(fields.FieldConfigurableObject):
         response = connection.get(url, params=params)
         return type(self)(_connection=connection, **response.json())
 
-    def cancel(self, connection: I_SalesforceClient | str | None = None) -> "DeployRequest":
+    def cancel(
+        self, connection: I_SalesforceClient | str | None = None
+    ) -> "DeployRequest":
         """
         Cancel the deployment request
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_cancel.htm
@@ -287,7 +289,9 @@ class DeployRequest(fields.FieldConfigurableObject):
             raise ValueError("Deployment Failed to cancel")
         return type(self)(_connection=connection, **response.json())
 
-    def quick_deploy_validated(self, connection: I_SalesforceClient | str | None = None) -> "DeployRequest":
+    def quick_deploy_validated(
+        self, connection: I_SalesforceClient | str | None = None
+    ) -> "DeployRequest":
         """
         Deploy a Recently Validated Component Set Without Tests
         https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_rest_deploy_recentvalidation.htm

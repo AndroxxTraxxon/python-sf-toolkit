@@ -231,7 +231,6 @@ class SalesforceClient(I_SalesforceClient):
         """
         return OrgLimits(**self.get(self.data_url + "/limits/").json())
 
-
     # resources for the client
     @property
     def tooling(self) -> "ToolingResource":
