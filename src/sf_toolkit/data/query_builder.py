@@ -1,3 +1,4 @@
+from asyncio import Task, create_task
 from typing import Any, AsyncIterator, Iterator, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
@@ -212,10 +213,16 @@ class QueryResult(Generic[_SObject]):
     total_size: int
     batch_index: int = 0
     record_index: int = 0
+    _async_tasks: list[Task] | None
 
-    def __init__(self, *batches: QueryResultBatch[_SObject]):
-        self.batches = [*batches]
+    def __init__(
+        self,
+        batches: list[QueryResultBatch[_SObject]],
+        _async_tasks: list[Task] | None = None
+    ):
+        self.batches = batches
         self.total_size = batches[0].totalSize
+        self._async_tasks = _async_tasks
 
     def __len__(self):
         return self.total_size
@@ -229,14 +236,39 @@ class QueryResult(Generic[_SObject]):
             self, connection=self.batches[0]._sobject_type.attributes.connection
         )
 
+    async def as_list_async(self):
+        return await SObjectList.async_init(self, self.batches[0]._sobject_type.attributes.connection)
+
+    async def _fetch_query_locator_batch(self, query_locator_url: str):
+        connection = self.batches[0]._connection.as_async
+        result: QueryResultJSON = (
+            await connection.get(query_locator_url)
+        ).json()
+        return QueryResultBatch(
+            self.batches[0]._sobject_type, connection=self.batches[0]._connection, **result
+        )
+
     def copy(self) -> "QueryResult[_SObject]":
         """Perform a shallow copy of the QueryResult object."""
-        return QueryResult(*self.batches)
+        return QueryResult(self.batches, self._async_tasks)
 
     def __iter__(self) -> Iterator[_SObject]:
         return self.copy()
 
+    def schedule_async_tasks(self):
+        assert self.batches[0].nextRecordsUrl is not None, "Cannot iterate with no query locator"
+        url_root, _ = self.batches[0].nextRecordsUrl.rsplit("-", maxsplit=1)
+        batch_size = len(self.batches[0].records)
+        fetched_record_count = batch_size * self.batch_index
+        self._async_tasks = [
+            create_task(self._fetch_query_locator_batch(f"{url_root}-{index}"))
+            for index in range(fetched_record_count, len(self), batch_size)
+        ]
+
     def __aiter__(self) -> AsyncIterator[_SObject]:
+        if not self.done:
+            self.schedule_async_tasks()
+
         return self.copy()
 
     def __next__(self) -> _SObject:
@@ -259,7 +291,12 @@ class QueryResult(Generic[_SObject]):
         except IndexError:
             if self.batches[-1].done:
                 raise StopAsyncIteration
-            self.batches.append(await self.batches[-1].query_more_async())
+            if self._async_tasks:
+                self.batches.append(await self._async_tasks.pop(0))
+                if not self._async_tasks:
+                    self._async_tasks = None
+            else:
+                self.batches.append(await self.batches[-1].query_more_async())
             self.batch_index = 0
             return self.batches[-1].records[self.batch_index]
         finally:
@@ -555,4 +592,12 @@ class SoqlQuery(Generic[_SObject]):
         result = client.get(url, params={"q": self.format(fields)}).json()
         batch = QueryResultBatch(self.sobject_type, connection=client, **result)  # type: ignore
 
-        return QueryResult(batch)
+        return QueryResult([batch])
+
+    def __iter__(self):
+        return self.execute()
+
+    def __aiter__(self):
+        result = self.execute()
+        result.schedule_async_tasks()
+        return result

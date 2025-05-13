@@ -6,6 +6,7 @@ from typing import (
     Any,
     Callable,
     Iterable,
+    AsyncIterable,
     TypeVar,
     Coroutine,
 )
@@ -671,6 +672,11 @@ class SObjectList(list[_sObject]):
                 )
 
         self.connection = connection
+
+    @classmethod
+    async def async_init(cls, a_iterable: AsyncIterable[_sObject], connection: str = ""):
+        collected_records = [record async for record in a_iterable]
+        return cls(collected_records, connection=connection)
 
     def append(self, item):
         """Add an SObject to the list."""
