@@ -18,7 +18,7 @@ from ..unit_test_models import Opportunity, Account
 @pytest.fixture
 def mock_query_response(mock_sf_client):
     """Creates a mock response for query results"""
-    return {
+    json_result = Mock(return_value= {
         "done": True,
         "totalSize": 2,
         "records": [
@@ -37,16 +37,19 @@ def mock_query_response(mock_sf_client):
                 "AnnualRevenue": 2000000.0,
             },
         ],
-    }
+    })
+    response = Mock()
+    response.json = json_result
+    return response
 
 
 @pytest.fixture
-def mock_query_response_with_next(mock_sf_client):
+def mock_query_response_with_next():
     """Creates a mock response for query results with next records URL"""
-    return {
+    json_result = Mock(return_value = {
         "done": False,
         "totalSize": 4,
-        "nextRecordsUrl": "/services/data/v63.0/query/01gRO0000016PIAYA2-500",
+        "nextRecordsUrl": "/services/data/v63.0/query/01gRO0000016PIAYA2-2",
         "records": [
             {
                 "attributes": {"type": "Account"},
@@ -61,7 +64,46 @@ def mock_query_response_with_next(mock_sf_client):
                 "Industry": "Healthcare",
             },
         ],
-    }
+    })
+    response = Mock()
+    response.json = json_result
+    return response
+
+@pytest.fixture
+def mock_next_query_response():
+    json_result = Mock(return_value ={
+        "done": True,
+        "totalSize": 4,
+        "records": [
+            {
+                "attributes": {"type": "Account"},
+                "Id": "001XX000003DGTYAA5",
+                "Name": "Test Account 3",
+                "Industry": "Retail",
+            },
+            {
+                "attributes": {"type": "Account"},
+                "Id": "001XX000003DGTZBZ6",
+                "Name": "Test Account 4",
+                "Industry": "Manufacturing",
+            },
+        ],
+    })
+    response = Mock()
+    response.json = json_result
+    return response
+
+@pytest.fixture
+def mock_query_result_responses(
+    mock_query_response_with_next,
+    mock_next_query_response
+):
+    responses = Mock()
+    responses.side_effect = [
+        mock_query_response_with_next,
+        mock_next_query_response
+    ]
+    return responses
 
 
 def test_simple_query_construction():
@@ -127,7 +169,7 @@ def test_query_with_in_operator():
 def test_query_execution(mock_sf_client, mock_query_response):
     """Test query execution and result handling"""
     # Set up mock response
-    mock_sf_client.get.return_value.json.return_value = mock_query_response
+    mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
     query = SoqlQuery(Account)
@@ -183,33 +225,13 @@ def test_query_with_offset():
     assert "OFFSET 20" in query_str
 
 
-def test_query_more_results(mock_sf_client, mock_query_response_with_next):
+def test_query_more_results(mock_sf_client, mock_query_result_responses):
     """Test fetching additional results with query_more"""
     # Setup initial response
-    mock_sf_client.get.return_value.json.side_effect = [
-        mock_query_response_with_next,
-        {
-            "done": True,
-            "totalSize": 4,
-            "records": [
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001XX000003DGTYAA5",
-                    "Name": "Test Account 3",
-                    "Industry": "Retail",
-                },
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001XX000003DGTZBZ6",
-                    "Name": "Test Account 4",
-                    "Industry": "Manufacturing",
-                },
-            ],
-        },
-    ]
+    mock_sf_client.get = mock_query_result_responses
 
     # Execute initial query
-    query = SoqlQuery(Account)
+    query = Account.query()
     result = query.execute()
 
     # Verify initial results
@@ -230,7 +252,7 @@ def test_query_more_results(mock_sf_client, mock_query_response_with_next):
 
 def test_query_more_without_next_url(mock_sf_client, mock_query_response):
     """Test query_more when there are no more results"""
-    mock_sf_client.get.return_value.json.return_value = mock_query_response
+    mock_sf_client.get.return_value = mock_query_response
 
     query = SoqlQuery(Account)
     result = query.execute()
@@ -555,11 +577,9 @@ def test_execution_with_field_subquery(mock_sf_client):
         Name = TextField()
         Opportunities = ListField(Opportunity)
 
-    # Create a query with a subquery
-    query = Account.query()
 
     # Execute the query
-    results = query.execute()
+    results = Account.query().execute()
 
     # Verify the results
     assert len(results) == 1
@@ -571,39 +591,13 @@ def test_execution_with_field_subquery(mock_sf_client):
     assert account.Opportunities[1].Amount == 125000
 
 
-def test_query_result_iterator(mock_sf_client, mock_query_response_with_next):
+def test_query_result_iterator(mock_sf_client, mock_query_result_responses):
     """Test QueryResult iterator functionality"""
     # Setup mock responses - first batch and second batch
-    mock_sf_client.get.return_value.json.side_effect = [
-        mock_query_response_with_next,
-        {
-            "done": True,
-            "totalSize": 4,
-            "records": [
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001XX000003DGTYAA5",
-                    "Name": "Test Account 3",
-                    "Industry": "Retail",
-                },
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001XX000003DGTZBZ6",
-                    "Name": "Test Account 4",
-                    "Industry": "Manufacturing",
-                },
-            ],
-        },
-    ]
-
-    # Execute initial query
-    query = SoqlQuery(Account)
-    results = query.execute()
+    mock_sf_client.get = mock_query_result_responses
 
     # Use the iterator to get all records
-    record_list = []
-    for record in results:
-        record_list.append(record)
+    record_list = Account.query().execute().as_list()
 
     # Verify all 4 records were retrieved through iteration
     assert len(record_list) == 4
@@ -612,37 +606,13 @@ def test_query_result_iterator(mock_sf_client, mock_query_response_with_next):
     assert record_list[3].Industry == "Manufacturing"
 
 
-def test_query_result_list_conversion(mock_sf_client, mock_query_response_with_next):
+def test_query_result_list_conversion(mock_sf_client, mock_query_result_responses):
     """Test converting QueryResult to a list"""
     # Setup mock responses
-    mock_sf_client.get.return_value.json.side_effect = [
-        mock_query_response_with_next,
-        {
-            "done": True,
-            "totalSize": 4,
-            "records": [
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001XX000003DGTYAA5",
-                    "Name": "Test Account 3",
-                    "Industry": "Retail",
-                },
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001XX000003DGTZBZ6",
-                    "Name": "Test Account 4",
-                    "Industry": "Manufacturing",
-                },
-            ],
-        },
-    ]
-
-    # Execute query and convert result to list
-    query = SoqlQuery(Account)
-    results = query.execute()
+    mock_sf_client.get = mock_query_result_responses
 
     # Convert to list (should handle pagination automatically)
-    all_records = list(results)
+    all_records = list(Account.query())
 
     # Verify all records were included
     assert len(all_records) == 4
@@ -652,39 +622,15 @@ def test_query_result_list_conversion(mock_sf_client, mock_query_response_with_n
 
 @pytest.mark.asyncio
 async def test_query_result_async_iterator(
-    mock_sf_client, mock_query_response_with_next
+    mock_sf_client, mock_query_response_with_next, mock_next_query_response
 ):
     """Test QueryResult async iterator functionality"""
     # Setup mock responses
-    mock_sf_client.get.return_value.json.return_value = mock_query_response_with_next
-    mock_sf_client.as_async.get = (async_get := AsyncMock())
-    async_get.return_value = Mock()
-    async_get.return_value.json.return_value = {
-        "done": True,
-        "totalSize": 4,
-        "records": [
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTYAA5",
-                "Name": "Test Account 3",
-                "Industry": "Retail",
-            },
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTZBZ6",
-                "Name": "Test Account 4",
-                "Industry": "Manufacturing",
-            },
-        ],
-    }
-    # Execute query
-    query = SoqlQuery(Account)
-    results = query.execute()
+    mock_sf_client.get.return_value = mock_query_response_with_next
+    mock_sf_client.as_async.get = AsyncMock(return_value=mock_next_query_response)
 
     # Use async iterator
-    records = []
-    async for record in results:
-        records.append(record)
+    records = [record async for record in Account.query()]
 
     # Verify all records were retrieved
     assert len(records) == 4
