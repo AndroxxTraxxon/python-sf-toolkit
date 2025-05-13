@@ -1,3 +1,7 @@
+"""
+Module for basic field and field-configurable object scaffolding
+"""
+
 from collections import defaultdict
 import datetime
 from enum import Flag, auto
@@ -6,13 +10,14 @@ import io
 from pathlib import Path
 import warnings
 
-from httpx._types import FileContent
+from httpx._types import FileContent  # type: ignore
 
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
 
 
-class ReadOnlyAssignmentException(TypeError): ...
+class ReadOnlyAssignmentException(TypeError):
+    """Exception for when value assignments are performed on readonly fields"""
 
 
 class SObjectFieldDescribe(typing.NamedTuple):
@@ -46,6 +51,8 @@ class SObjectFieldDescribe(typing.NamedTuple):
 
 
 class MultiPicklistValue(str):
+    """type for semicolon-delimited multi-value attributes"""
+
     values: list[str]
 
     def __init__(self, source: str):
@@ -56,6 +63,8 @@ class MultiPicklistValue(str):
 
 
 class FieldFlag(Flag):
+    """Flags to describe the allowed functionality on defined fields"""
+
     nillable = auto()
     unique = auto()
     readonly = auto()
@@ -73,12 +82,16 @@ class FieldFlag(Flag):
 
 
 class FieldConfigurableObject:
+    """
+    Base object to be extended with Field definitions.
+    """
+
     _values: dict[str, typing.Any]
     _dirty_fields: set[str]
     _fields: typing.ClassVar[dict[str, "Field"]]
-    _type_field_registry: typing.ClassVar[dict[type, dict[str, "Field"]]] = defaultdict(
-        dict
-    )
+    _type_field_registry: typing.ClassVar[
+        dict[type["FieldConfigurableObject"], dict[str, "Field"]]
+    ] = defaultdict(dict)
 
     def __init__(self, _strict_fields: bool = False, **field_values):
         self._values = {}
@@ -103,6 +116,10 @@ class FieldConfigurableObject:
 
     @classmethod
     def keys(cls) -> typing.Iterable[str]:
+        """
+        Returns the field names for the fields configured on the class
+        This is most frequently used with the **operator
+        """
         assert hasattr(cls, "_fields"), (
             f"No Field definitions found for class {cls.__name__}"
         )
@@ -110,16 +127,22 @@ class FieldConfigurableObject:
 
     @classmethod
     def query_fields(cls) -> list[str]:
+        """
+        returns the list of fully qualified fields as they would
+        need to appear in a SOQL query
+        """
         assert hasattr(cls, "_fields"), (
             f"No Field definitions found for class {cls.__name__}"
         )
         fields = list()
         for field, fieldtype in cls._fields.items():
-            if isinstance(fieldtype, ReferenceField) and fieldtype._py_type:
+            if isinstance(fieldtype, ReferenceField) and isinstance(
+                fieldtype.meta_py_type, FieldConfigurableObject
+            ):
                 fields.extend(
                     [
                         field + "." + subfield
-                        for subfield in fieldtype._py_type.query_fields()
+                        for subfield in fieldtype.meta_py_type.query_fields()
                     ]
                 )
             else:
@@ -128,6 +151,10 @@ class FieldConfigurableObject:
 
     @property
     def dirty_fields(self) -> set[str]:
+        """
+        Returns the set of fields that have been modified since the last
+        time this object was `.save()`-d to Salesforce
+        """
         return self._dirty_fields
 
     @dirty_fields.deleter
@@ -135,6 +162,11 @@ class FieldConfigurableObject:
         self._dirty_fields = set()
 
     def serialize(self, only_changes: bool = False, all_fields: bool = False):
+        """
+        Serialize this record to standard python types (dict, list, str, etc.)
+        for easier transport
+        with file formats like JSON, YAML
+        """
         assert not (only_changes and all_fields), (
             "Cannot serialize both only changes and all fields."
         )
@@ -170,13 +202,23 @@ class FieldConfigurableObject:
         setattr(self, name, value)
 
 
+_FCO_Type = typing.TypeVar("_FCO_Type", bound=FieldConfigurableObject)
+
+
 class Field(typing.Generic[T]):
+    """
+    Base class for all configurable field types
+    """
+
+    _owner: type
     _py_type: type[T] | None = None
     flags: set[FieldFlag]
 
     def __init__(self, py_type: type[T], *flags: FieldFlag):
         self._py_type = py_type
         self.flags = set(flags)
+        self._owner = type(None)
+        self._name = ""
 
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> T:
@@ -194,13 +236,27 @@ class Field(typing.Generic[T]):
         obj._values[self._name] = value
         obj.dirty_fields.add(self._name)
 
-    def revive(self, value: typing.Any) -> T:
+    @property
+    def meta_py_type(self) -> type[T] | None:
+        """Get the configured underlying Python type of this field's content"""
+        return self._py_type
+
+    def revive(self, value: typing.Any) -> T | None:
+        """
+        Attempts to "revive" value to be assigned to this field
+        into a more useful type.
+        """
         return value
 
     def format(self, value: T) -> typing.Any:
+        """
+        Formats the value contained in this field
+        into a more serializeable format.
+        """
         return value
 
     def __set_name__(self, cls: type[FieldConfigurableObject], name):
+        """Lifecycle hook implicitly called"""
         self._owner = cls
         self._name = name
         cls._type_field_registry[cls][name] = self
@@ -211,6 +267,7 @@ class Field(typing.Generic[T]):
             obj._dirty_fields.discard(self._name)
 
     def validate(self, value):
+        """Validates the revived value passed to the field"""
         if value is None:
             return
         if self._py_type is not None and not isinstance(value, self._py_type):
@@ -233,26 +290,37 @@ class RawField(Field[typing.Any]):
 
 
 class TextField(Field[str]):
+    """
+    A field to contain text or string values
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(str, *flags)
 
 
 class IdField(TextField):
+    """
+    A field to contain 15- or 18-character alphanumeric Id
+    Strings used by Salesforce
+    """
+
     def validate(self, value):
         if value is None:
             return
-        assert isinstance(value, str), (
-            f" '{value}' is not a valid Salesforce Id. Expected a string."
-        )
-        assert len(value) in (15, 18), (
-            f" '{value}' is not a valid Salesforce Id. Expected a string of length 15 or 18, found {len(value)}"
-        )
-        assert value.isalnum(), (
-            f" '{value}' is not a valid Salesforce Id. Expected strictly alphanumeric characters."
-        )
+        message = f" '{value}' is not a valid Salesforce Id. "
+        assert isinstance(value, str), message + "Expected a string."
+        assert len(value) in (
+            15,
+            18,
+        ), message + f"Expected a string of length 15 or 18, found {len(value)}"
+        assert value.isalnum(), message + "Expected strictly alphanumeric characters."
 
 
 class PicklistField(TextField):
+    """
+    A field to contain text values chosen from a pre-configured list.
+    """
+
     _options_: list[str]
 
     def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
@@ -262,11 +330,17 @@ class PicklistField(TextField):
     def validate(self, value: str):
         if self._options_ and value not in self._options_:
             raise ValueError(
-                f"Selection '{value}' is not in configured values for field {self._name}"
+                f"Selection '{value}' is not in "
+                f"configured values for field {self._name}"
             )
 
 
 class MultiPicklistField(Field[MultiPicklistValue]):
+    """
+    A field to contain text values (optionally more than one)
+    chosen from a pre-configured list
+    """
+
     _options_: list[str]
 
     def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
@@ -285,6 +359,10 @@ class MultiPicklistField(Field[MultiPicklistValue]):
 
 
 class NumberField(Field[float]):
+    """
+    A field to contain a floating-point numeric value.
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(float, *flags)
 
@@ -293,6 +371,10 @@ class NumberField(Field[float]):
 
 
 class IntField(Field[int]):
+    """
+    A field to contain an integer numeric value.
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(int, *flags)
 
@@ -301,6 +383,10 @@ class IntField(Field[int]):
 
 
 class CheckboxField(Field[bool]):
+    """
+    A field to contain a boolean value.
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(bool, *flags)
 
@@ -309,6 +395,10 @@ class CheckboxField(Field[bool]):
 
 
 class DateField(Field[datetime.date]):
+    """
+    A field to contain a date value.
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(datetime.date, *flags)
 
@@ -324,6 +414,10 @@ class DateField(Field[datetime.date]):
 
 
 class TimeField(Field[datetime.time]):
+    """
+    A field to contain a time value.
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(datetime.time, *flags)
 
@@ -337,6 +431,10 @@ class TimeField(Field[datetime.time]):
 
 
 class DateTimeField(Field[datetime.datetime]):
+    """
+    A field to contain a datetime value.
+    """
+
     def __init__(self, *flags: FieldFlag):
         super().__init__(datetime.datetime, *flags)
 
@@ -351,7 +449,12 @@ class DateTimeField(Field[datetime.datetime]):
         return value.isoformat(timespec="milliseconds")
 
 
-class ReferenceField(Field[T]):
+class ReferenceField(Field[_FCO_Type]):
+    """
+    A field to contain a nested field configurable object,
+    typically represented in Salesforce as a lookup or master-detail relationship
+    """
+
     def revive(self, value):
         if value is None:
             return None
@@ -361,31 +464,37 @@ class ReferenceField(Field[T]):
         if isinstance(value, dict):
             return self._py_type(**value)
 
-    def format(self, value: FieldConfigurableObject):
+    def format(self, value: _FCO_Type):
         try:
             return value.serialize()
         except AttributeError:
             return value
 
 
-class ListField(Field[list[T]]):
-    _nested_type: type[T]
+class ListField(Field[list[_FCO_Type]]):
+    """
+    A field to contain a nested list of field configurable object,
+    typically represented in Salesforce as a lookup or master-detail relationship
+    """
 
-    def __init__(self, item_type: type[T], *flags: FieldFlag):
+    _nested_type: type[_FCO_Type]
+
+    def __init__(self, item_type: type[_FCO_Type], *flags: FieldFlag):
         self._nested_type = item_type
         super().__init__(list, *flags)
 
         try:
             global SObjectList
-            # ensure SObjectList is imported at the time of SObject type/class definition
-            SObjectList  # type: ignore
+            # ensure SObjectList is imported
+            # at the time of SObject type/class definition
+            SObjectList  # type: ignore  #noqa
         except NameError:
             from .sobject import SObjectList
 
-    def revive(self, value: list[dict | FieldConfigurableObject]):
+    def revive(self, value: list[dict | _FCO_Type] | None):  # type: ignore
         if value is None:
-            return value
-        if isinstance(value, SObjectList):  # type: ignore
+            return None
+        if isinstance(value, SObjectList):
             return value
         if isinstance(value, list):
             if issubclass(self._nested_type, FieldConfigurableObject):

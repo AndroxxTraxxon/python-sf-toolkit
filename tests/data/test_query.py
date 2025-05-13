@@ -18,26 +18,28 @@ from ..unit_test_models import Opportunity, Account
 @pytest.fixture
 def mock_query_response(mock_sf_client):
     """Creates a mock response for query results"""
-    json_result = Mock(return_value= {
-        "done": True,
-        "totalSize": 2,
-        "records": [
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTYAA4",
-                "Name": "Test Account 1",
-                "Industry": "Technology",
-                "AnnualRevenue": 1000000.0,
-            },
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTZBZ4",
-                "Name": "Test Account 2",
-                "Industry": "Healthcare",
-                "AnnualRevenue": 2000000.0,
-            },
-        ],
-    })
+    json_result = Mock(
+        return_value={
+            "done": True,
+            "totalSize": 2,
+            "records": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTYAA4",
+                    "Name": "Test Account 1",
+                    "Industry": "Technology",
+                    "AnnualRevenue": 1000000.0,
+                },
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTZBZ4",
+                    "Name": "Test Account 2",
+                    "Industry": "Healthcare",
+                    "AnnualRevenue": 2000000.0,
+                },
+            ],
+        }
+    )
     response = Mock()
     response.json = json_result
     return response
@@ -46,63 +48,65 @@ def mock_query_response(mock_sf_client):
 @pytest.fixture
 def mock_query_response_with_next():
     """Creates a mock response for query results with next records URL"""
-    json_result = Mock(return_value = {
-        "done": False,
-        "totalSize": 4,
-        "nextRecordsUrl": "/services/data/v63.0/query/01gRO0000016PIAYA2-2",
-        "records": [
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTYAA4",
-                "Name": "Test Account 1",
-                "Industry": "Technology",
-            },
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTZBZ4",
-                "Name": "Test Account 2",
-                "Industry": "Healthcare",
-            },
-        ],
-    })
+    json_result = Mock(
+        return_value={
+            "done": False,
+            "totalSize": 4,
+            "nextRecordsUrl": "/services/data/v63.0/query/01gRO0000016PIAYA2-2",
+            "records": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTYAA4",
+                    "Name": "Test Account 1",
+                    "Industry": "Technology",
+                },
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTZBZ4",
+                    "Name": "Test Account 2",
+                    "Industry": "Healthcare",
+                },
+            ],
+        }
+    )
     response = Mock()
     response.json = json_result
     return response
+
 
 @pytest.fixture
 def mock_next_query_response():
-    json_result = Mock(return_value ={
-        "done": True,
-        "totalSize": 4,
-        "records": [
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTYAA5",
-                "Name": "Test Account 3",
-                "Industry": "Retail",
-            },
-            {
-                "attributes": {"type": "Account"},
-                "Id": "001XX000003DGTZBZ6",
-                "Name": "Test Account 4",
-                "Industry": "Manufacturing",
-            },
-        ],
-    })
+    json_result = Mock(
+        return_value={
+            "done": True,
+            "totalSize": 4,
+            "records": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTYAA5",
+                    "Name": "Test Account 3",
+                    "Industry": "Retail",
+                },
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001XX000003DGTZBZ6",
+                    "Name": "Test Account 4",
+                    "Industry": "Manufacturing",
+                },
+            ],
+        }
+    )
     response = Mock()
     response.json = json_result
     return response
 
+
 @pytest.fixture
 def mock_query_result_responses(
-    mock_query_response_with_next,
-    mock_next_query_response
+    mock_query_response_with_next, mock_next_query_response
 ):
     responses = Mock()
-    responses.side_effect = [
-        mock_query_response_with_next,
-        mock_next_query_response
-    ]
+    responses.side_effect = [mock_query_response_with_next, mock_next_query_response]
     return responses
 
 
@@ -186,6 +190,7 @@ def test_query_execution(mock_sf_client, mock_query_response):
     assert record.Name == "Test Account 1"
     assert record.Industry == "Technology"
     assert record.AnnualRevenue == 1000000.0
+
 
 def test_query_result_multiple_iteration(mock_sf_client, mock_query_response):
     """Test query execution and result handling"""
@@ -583,7 +588,6 @@ def test_execution_with_field_subquery(mock_sf_client):
         Id = IdField()
         Name = TextField()
         Opportunities = ListField(Opportunity)
-
 
     # Execute the query
     results = Account.query().execute()

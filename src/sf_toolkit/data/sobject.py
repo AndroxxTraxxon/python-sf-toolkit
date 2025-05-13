@@ -485,6 +485,8 @@ class SObject(FieldConfigurableObject, I_SObject):
                 with dest.open("wb") as file:
                     for block in response.iter_bytes():
                         file.write(block)
+                return None
+
             else:
                 return response.read()
 

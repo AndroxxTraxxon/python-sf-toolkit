@@ -106,7 +106,8 @@ class Document(SObject):
 class Attachment(SObject):
     """
     The Standard Salesforce Attachment object
-    https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_attachment.htm"""
+    https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_attachment.htm
+    """
 
     Id = IdField()
     Body = BlobField()

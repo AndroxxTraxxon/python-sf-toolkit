@@ -231,7 +231,7 @@ class DeployOptions(fields.FieldConfigurableObject):
     purgeOnDelete = fields.CheckboxField()
     rollbackOnError = fields.CheckboxField()
     runAllTests = fields.CheckboxField()
-    runTests = fields.ListField(str)
+    runTests = fields.ListField(str)  # type: ignore
     singlePackage = fields.CheckboxField()
     testLevel = fields.PicklistField(
         options=["NoTestRun", "RunSpecifiedTests", "RunLocalTests", "RunAllTestsInOrg"]

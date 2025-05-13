@@ -87,9 +87,11 @@ class BooleanOperation:
 
     def __str__(self):
         formatted_conditions = [
-            str(condition)
-            if isinstance(condition, Comparison)
-            else "(" + str(condition) + ")"
+            (
+                str(condition)
+                if isinstance(condition, Comparison)
+                else "(" + str(condition) + ")"
+            )
             for condition in self.conditions
         ]
         return f" {self.operator} ".join(formatted_conditions)
@@ -171,10 +173,7 @@ class QueryResultBatch(Generic[_SObject]):
         self.done = done
         self.totalSize = totalSize
         self.records = SObjectList(
-            [
-                sobject_type(**record)
-                for record in records  # type: ignore
-            ]
+            [sobject_type(**record) for record in records]  # type: ignore
             if records
             else []
         )
@@ -193,8 +192,10 @@ class QueryResultBatch(Generic[_SObject]):
 
         result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
         return QueryResultBatch(
-            self._sobject_type, connection=self._connection, **result
-        )  # type: ignore
+            self._sobject_type,
+            connection=self._connection,
+            **result,  # type: ignore
+        )
 
     async def query_more_async(self) -> "QueryResultBatch[_SObject]":
         if not self.nextRecordsUrl:
@@ -204,8 +205,10 @@ class QueryResultBatch(Generic[_SObject]):
             await self._connection.as_async.get(self.nextRecordsUrl)
         ).json()
         return QueryResultBatch(
-            self._sobject_type, connection=self._connection, **result
-        )  # type: ignore
+            self._sobject_type,
+            connection=self._connection,
+            **result,  # type: ignore
+        )
 
 
 class QueryResult(Generic[_SObject]):
@@ -247,7 +250,7 @@ class QueryResult(Generic[_SObject]):
         return QueryResultBatch(
             self.batches[0]._sobject_type,
             connection=self.batches[0]._connection,
-            **result,
+            **result,  ## type: ignore
         )
 
     def copy(self) -> "QueryResult[_SObject]":
