@@ -69,6 +69,7 @@ def soap_login(
         if not response:
             raise ValueError("Unable to infer API version from response")
         response.raise_for_status()
+        response.read()
         sf_version = float(max(response.json(), key=lambda x: x["version"])["version"])
 
     soap_url = httpx.URL(f"{full_domain}/services/Soap/u/{sf_version:.01f}")
@@ -85,7 +86,7 @@ def soap_login(
     )
     if not response:
         raise AuthMissingResponse("No response provided for SOAP login")
-
+    response.read()
     if not response.is_success:
         except_code = get_xml_element_value(response.text, f"{XML_NS}:exceptionCode")
         except_msg = get_xml_element_value(response.text, f"{XML_NS}:exceptionMessage")

@@ -301,7 +301,6 @@ Best Practices
       from sf_toolkit import SalesforceClient
       from sf_toolkit.auth import SalesforceToken, cli_login
 
-
       # Try to load saved token
       token = None
       token_file = "saved_token.json"

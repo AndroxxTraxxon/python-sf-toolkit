@@ -3,7 +3,7 @@ import httpx
 import pytest
 from unittest.mock import patch
 
-from sf_toolkit.auth.httpx import SalesforceAuth
+from sf_toolkit.auth._httpx import SalesforceAuth
 from sf_toolkit.auth.login_cli import cli_login
 from sf_toolkit.auth.types import SalesforceToken
 

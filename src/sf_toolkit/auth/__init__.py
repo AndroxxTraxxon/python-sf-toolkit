@@ -1,4 +1,4 @@
-from .httpx import SalesforceAuth
+from ._httpx import SalesforceAuth
 from .types import SalesforceLogin, SalesforceToken, TokenRefreshCallback
 from .login_lazy import lazy_login
 from .login_cli import cli_login

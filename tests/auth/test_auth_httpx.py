@@ -2,7 +2,7 @@ import httpx
 import pytest
 from unittest.mock import MagicMock  # , AsyncMock
 
-from sf_toolkit.auth.httpx import SalesforceAuth
+from sf_toolkit.auth._httpx import SalesforceAuth
 from sf_toolkit.auth.types import SalesforceToken
 
 

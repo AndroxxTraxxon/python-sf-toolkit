@@ -24,7 +24,7 @@ Authentication
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: sf_toolkit.auth.httpx
+.. automodule:: sf_toolkit.auth._httpx
    :members:
    :undoc-members:
    :show-inheritance:
