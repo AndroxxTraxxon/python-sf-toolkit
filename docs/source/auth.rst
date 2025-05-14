@@ -95,7 +95,7 @@ For simple scripting and personal applications:
 .. code-block:: python
 
    from sf_toolkit import SalesforceClient, password_login
-
+   from sf_toolkit.auth import password_login
    client = SalesforceClient(
        login=password_login(
            username="user@example.com",
@@ -147,8 +147,8 @@ For service-to-service integration without a specific user context:
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, client_credentials_flow_login
-
+   from sf_toolkit import SalesforceClient
+   from sf_toolkit.auth import client_credentials_flow_login
    client = SalesforceClient(
        login=client_credentials_flow_login(
            consumer_key="your_consumer_key",
@@ -175,7 +175,8 @@ For orgs that require a security token with the password:
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, security_token_login
+   from sf_toolkit import SalesforceClient
+   from sf_toolkit.auth import security_token_login
 
    client = SalesforceClient(
        login=security_token_login(
@@ -195,7 +196,8 @@ For orgs with IP filtering enabled that allow specific IPs to skip the security 
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, ip_filtering_non_service_login
+   from sf_toolkit import SalesforceClient
+   from sf_toolkit.auth import ip_filtering_non_service_login
 
    client = SalesforceClient(
        login=ip_filtering_non_service_login(
@@ -214,7 +216,8 @@ For logging in to a specific organization within a multi-org setup:
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, ip_filtering_org_login
+   from sf_toolkit import SalesforceClient
+   from sf_toolkit.auth import ip_filtering_org_login
 
    client = SalesforceClient(
        login=ip_filtering_org_login(
@@ -234,7 +237,8 @@ If you already have a Salesforce access token and instance URL:
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, SalesforceToken
+   from sf_toolkit import SalesforceClient
+   from sf_toolkit.auth import SalesforceToken
    from httpx import URL
 
    # Create a token directly
@@ -294,7 +298,9 @@ Best Practices
       import os
       import json
       from httpx import URL
-      from sf_toolkit import SalesforceClient, SalesforceToken, cli_login
+      from sf_toolkit import SalesforceClient
+      from sf_toolkit.auth import SalesforceToken, cli_login
+
 
       # Try to load saved token
       token = None
