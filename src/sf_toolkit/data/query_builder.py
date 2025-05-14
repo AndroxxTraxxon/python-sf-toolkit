@@ -562,7 +562,7 @@ class SoqlQuery(Generic[_SObject]):
     def __str__(self):
         return self.format()
 
-    def count(self) -> int:
+    def count(self, connection: SalesforceClient | str | None = None) -> int:
         """
         Executes a count query instead of fetching records.
         Returns the count of records that match the query criteria.
@@ -572,12 +572,16 @@ class SoqlQuery(Generic[_SObject]):
         """
 
         # Execute the query
-        count_result = self.execute("COUNT()")
+        count_result = self.execute("COUNT()", connection=connection)
 
         # Count query returns a list with a single record containing the count
         return len(count_result)
 
-    def execute(self, *_fields: str) -> QueryResult[_SObject]:
+    def execute(
+        self,
+        *_fields: str,
+        connection: SalesforceClient | str | None = None
+    ) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).
         """
@@ -585,7 +589,13 @@ class SoqlQuery(Generic[_SObject]):
             fields = list(_fields)
         else:
             fields = self.fields
-        client = self._sf_connection()
+
+        if isinstance(connection, str):
+            client = SalesforceClient.get_connection(connection)
+        elif isinstance(connection, SalesforceClient):
+            client = connection
+        else:
+            client = self._sf_connection()
 
         result: QueryResultJSON
         assert not (self.sobject_type.attributes.tooling and self._include_deleted), (
