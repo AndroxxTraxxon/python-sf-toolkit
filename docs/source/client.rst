@@ -51,8 +51,8 @@ You can register and manage multiple connections to different Salesforce orgs:
 
     # Create connections with different names
     with (
-        SalesforceClient(connection_name="production", login=cli_login("prod-org") as prod,
-        SalesforceClient(connection_name="sandbox", login=cli_login("sandbox-org") as sandbox
+        SalesforceClient(connection_name="production", login=cli_login("prod-org")) as prod,
+        SalesforceClient(connection_name="sandbox", login=cli_login("sandbox-org")) as sandbox
     ):
             # Now you can use both clients
             prod_versions = prod.versions
