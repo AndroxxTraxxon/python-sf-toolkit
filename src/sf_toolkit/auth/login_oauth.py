@@ -25,7 +25,7 @@ def token_login(
     headers: dict[str, str] | None = None,
 ) -> SalesforceTokenGenerator:
     """Process OAuth 2.0 JWT Bearer Token Flow."""
-    response: httpx.Response = yield httpx.Request(
+    response = yield httpx.Request(
         "POST",
         f"https://{domain}.salesforce.com/services/oauth2/token",
         data=token_data,
