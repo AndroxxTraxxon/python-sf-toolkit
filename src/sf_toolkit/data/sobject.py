@@ -122,7 +122,7 @@ class SObjectDescribe:
     def get_raw_data(self) -> dict:
         """Get the raw JSON data from the describe call"""
         return self._raw_data
-    
+
 
 @staticmethod
 def unflatten(flattened_data: dict[str, Any]) -> dict[str, Any]:
@@ -146,13 +146,15 @@ def flatten(data: dict[str, Any]) -> dict[str, Any]:
     for fieldname in data.keys():
         if isinstance(fieldname, dict):
             flat_nested_data = flatten(data[fieldname])
-            flattened_data.update({
-                f"{fieldname}.{nested_field}" : nested_value
-                for nested_field, nested_value in flat_nested_data.items()
-            })
+            flattened_data.update(
+                {
+                    f"{fieldname}.{nested_field}": nested_value
+                    for nested_field, nested_value in flat_nested_data.items()
+                }
+            )
         else:
             flattened_data[fieldname] = data[fieldname]
-    
+
     return flattened_data
 
 
@@ -219,7 +221,7 @@ class SObject(FieldConfigurableObject, I_SObject):
             from .query_builder import SoqlQuery
 
         return SoqlQuery(cls, include_deleted)
-    
+
     @classmethod
     def from_file(cls, filepath: Path | str):
         ""
@@ -232,12 +234,16 @@ class SObject(FieldConfigurableObject, I_SObject):
             return cls.from_json_file(filepath)
         raise ValueError(f"Unknown file extension {file_extension}")
 
-
-
     @classmethod
-    def from_csv_file(cls, filepath: Path | str, file_encoding="utf-8", fieldnames: list[str] | None = None):
+    def from_csv_file(
+        cls,
+        filepath: Path | str,
+        file_encoding="utf-8",
+        fieldnames: list[str] | None = None,
+    ):
         ""
         import csv
+
         if isinstance(filepath, str):
             filepath = Path(filepath).resolve()
         with filepath.open(encoding=file_encoding) as csv_file:
@@ -246,8 +252,13 @@ class SObject(FieldConfigurableObject, I_SObject):
             object_fields = set(cls.query_fields())
             for field in reader.fieldnames:
                 if field not in object_fields:
-                    raise KeyError(f"Field {field} in {filepath} not found for SObject {cls.__qualname__} ({cls.attributes.type})")
-            return SObjectList((cls(**unflatten(row)) for row in reader), connection=cls.attributes.connection)  # type: ignore
+                    raise KeyError(
+                        f"Field {field} in {filepath} not found for SObject {cls.__qualname__} ({cls.attributes.type})"
+                    )
+            return SObjectList(
+                (cls(**unflatten(row)) for row in reader),
+                connection=cls.attributes.connection,
+            )  # type: ignore
 
     @classmethod
     def from_json_file(cls, filepath: Path | str, file_encoding="utf-8"):
@@ -257,13 +268,17 @@ class SObject(FieldConfigurableObject, I_SObject):
         with filepath.open(encoding=file_encoding) as csv_file:
             data = json.load(csv_file)
             if isinstance(data, list):
-                return SObjectList((cls(**record) for record in data), connection=cls.attributes.connection)
+                return SObjectList(
+                    (cls(**record) for record in data),
+                    connection=cls.attributes.connection,
+                )
             elif isinstance(data, dict):
                 return SObjectList([cls(**data)], connection=cls.attributes.connection)
             raise TypeError(
                 f"Unexpected {type(data).__name__} value "
                 f"{str(data)[:50] + '...' if len(str(data)) > 50 else ''} "
-                f"while attempting to load {cls.__qualname__} from {filepath}")
+                f"while attempting to load {cls.__qualname__} from {filepath}"
+            )
 
     @classmethod
     def _client_connection(cls) -> I_SalesforceClient:
@@ -485,6 +500,7 @@ class SObject(FieldConfigurableObject, I_SObject):
 
     def save_csv(self, filepath: Path | str, encoding="utf-8") -> None:
         import csv
+
         if isinstance(filepath, str):
             filepath = Path(filepath).resolve()
         with filepath.open("w+", encoding=encoding) as outfile:
@@ -497,7 +513,6 @@ class SObject(FieldConfigurableObject, I_SObject):
             filepath = Path(filepath).resolve()
         with filepath.open("w+", encoding=encoding) as outfile:
             json.dump(self.serialize(), outfile, **json_options)
-        
 
     def save(
         self,
@@ -1007,9 +1022,10 @@ class SObjectList(list[_sObject]):
                 results.extend(insert_results)
 
             return results
-        
+
     def save_csv(self, filepath: Path | str, encoding="utf-8") -> None:
         import csv
+
         if isinstance(filepath, str):
             filepath = Path(filepath).resolve()
         assert self, "Cannot save an empty list"

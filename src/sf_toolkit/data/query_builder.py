@@ -578,9 +578,7 @@ class SoqlQuery(Generic[_SObject]):
         return len(count_result)
 
     def execute(
-        self,
-        *_fields: str,
-        connection: SalesforceClient | str | None = None
+        self, *_fields: str, connection: SalesforceClient | str | None = None
     ) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).

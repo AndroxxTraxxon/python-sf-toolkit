@@ -192,6 +192,7 @@ def test_query_execution(mock_sf_client, mock_query_response):
     assert record.Industry == "Technology"
     assert record.AnnualRevenue == 1000000.0
 
+
 def test_query_execution_with_connection(mock_sf_client, mock_query_response):
     """Test query execution and result handling"""
     # Set up mock response
@@ -213,13 +214,16 @@ def test_query_execution_with_connection(mock_sf_client, mock_query_response):
     assert record.Industry == "Technology"
     assert record.AnnualRevenue == 1000000.0
 
+
 def test_query_execution_named_connection(mock_sf_client, mock_query_response):
     """Test query execution and result handling"""
     # Set up mock response
     mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
-    results = Account.query().execute(connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
+    results = Account.query().execute(
+        connection=SalesforceClient.DEFAULT_CONNECTION_NAME
+    )
 
     # Verify response handling
     assert isinstance(results, QueryResult)
