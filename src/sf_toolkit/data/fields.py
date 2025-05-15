@@ -487,7 +487,7 @@ class ListField(Field[list[_FCO_Type]]):
             global SObjectList
             # ensure SObjectList is imported
             # at the time of SObject type/class definition
-            SObjectList  # type: ignore  #noqa
+            SObjectList  # type: ignore
         except NameError:
             from .sobject import SObjectList
 

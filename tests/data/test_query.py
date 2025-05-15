@@ -10,6 +10,7 @@ from sf_toolkit.data.fields import (
     NumberField,
     TextField,
 )
+from sf_toolkit import SalesforceClient
 from sf_toolkit.data.query_builder import AND, EQ, GT, OR, QueryResult, SoqlQuery, Order
 from sf_toolkit.data.sobject import SObject, SObjectList
 from ..unit_test_models import Opportunity, Account
@@ -177,6 +178,48 @@ def test_query_execution(mock_sf_client, mock_query_response):
 
     # Create and execute query
     results = Account.query().execute()
+
+    # Verify response handling
+    assert isinstance(results, QueryResult)
+    assert results.done is True
+    assert len(results) == 2
+    assert len(results.batches[0].records) == 2
+
+    # Verify record content
+    record = next(results)
+    assert isinstance(record, Account)
+    assert record.Name == "Test Account 1"
+    assert record.Industry == "Technology"
+    assert record.AnnualRevenue == 1000000.0
+
+def test_query_execution_with_connection(mock_sf_client, mock_query_response):
+    """Test query execution and result handling"""
+    # Set up mock response
+    mock_sf_client.get.return_value = mock_query_response
+
+    # Create and execute query
+    results = Account.query().execute(connection=mock_sf_client)
+
+    # Verify response handling
+    assert isinstance(results, QueryResult)
+    assert results.done is True
+    assert len(results) == 2
+    assert len(results.batches[0].records) == 2
+
+    # Verify record content
+    record = next(results)
+    assert isinstance(record, Account)
+    assert record.Name == "Test Account 1"
+    assert record.Industry == "Technology"
+    assert record.AnnualRevenue == 1000000.0
+
+def test_query_execution_named_connection(mock_sf_client, mock_query_response):
+    """Test query execution and result handling"""
+    # Set up mock response
+    mock_sf_client.get.return_value = mock_query_response
+
+    # Create and execute query
+    results = Account.query().execute(connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
 
     # Verify response handling
     assert isinstance(results, QueryResult)
