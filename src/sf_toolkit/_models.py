@@ -28,16 +28,16 @@ class SObjectSaveError(NamedTuple):
 
 
 class SObjectSaveResult:
-    id: str
+    id: str | None
     success: bool
     errors: list[SObjectSaveError]
     created: bool | None
 
     def __init__(
         self,
-        id: str,
-        success: bool,
-        errors: list[SObjectSaveError | dict],
+        id: str | None = None,
+        success: bool = False,
+        errors: list[SObjectSaveError | dict] = [],
         created: bool | None = None,
     ):
         self.id = id

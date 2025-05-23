@@ -578,7 +578,9 @@ class SoqlQuery(Generic[_SObject]):
         return len(count_result)
 
     def execute(
-        self, *_fields: str, connection: SalesforceClient | str | None = None
+        self, *_fields: str,
+        connection: SalesforceClient | str | None = None,
+        **callout_options
     ) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).
@@ -605,7 +607,7 @@ class SoqlQuery(Generic[_SObject]):
             url = f"{client.data_url}/queryAll/"
         else:
             url = f"{client.data_url}/query/"
-        result = client.get(url, params={"q": self.format(fields)}).json()
+        result = client.get(url, params={"q": self.format(fields)}, **callout_options).json()
         batch = QueryResultBatch(self.sobject_type, connection=client, **result)  # type: ignore
 
         return QueryResult([batch])

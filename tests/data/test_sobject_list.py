@@ -359,14 +359,14 @@ def test_save_update(mock_sf_client, test_accounts_with_ids):
     mock_response.json.return_value = [
         {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
-    mock_sf_client.post.return_value = mock_response
+    mock_sf_client.patch.return_value = mock_response
 
     # Call save_update
     results = account_list.save_update()
 
     # Verify API call
-    mock_sf_client.post.assert_called_once()
-    args, kwargs = mock_sf_client.post.call_args
+    mock_sf_client.patch.assert_called_once()
+    args, kwargs = mock_sf_client.patch.call_args
     assert args[0] == "/services/data/v57.0/composite/sobjects"
 
     # Check if dirty fields were cleared
@@ -395,28 +395,28 @@ def test_save_update_only_changes(mock_sf_client, test_accounts_with_ids):
         {"id": account.Id, "success": True, "errors": []}
         for account in account_list[:2]  # Only first two have changes
     ]
-    mock_sf_client.post.return_value = mock_response
+    mock_sf_client.patch.return_value = mock_response
 
     # Call save_update with only_changes=True
     account_list.save_update(only_changes=True)
 
     # Verify API call
-    mock_sf_client.post.assert_called_once()
+    mock_sf_client.patch.assert_called_once()
 
     # Check the payload
-    args, kwargs = mock_sf_client.post.call_args
+    args, kwargs = mock_sf_client.patch.call_args
     request_data = kwargs.get("json", [])
 
     # Should include only the two modified records
-    assert len(request_data) == 2
+    assert len(request_data['records']) == 2
 
     # First record should have only Name field
-    assert "Name" in request_data[0]
-    assert "Industry" not in request_data[0]
+    assert "Name" in request_data['records'][0]
+    assert "Industry" not in request_data['records'][0]
 
     # Second record should have only Industry field
-    assert "Industry" in request_data[1]
-    assert "Name" not in request_data[1]
+    assert "Industry" in request_data['records'][1]
+    assert "Name" not in request_data['records'][1]
 
 
 def test_save_update_no_id(test_accounts, mock_sf_client):
@@ -497,6 +497,7 @@ def test_save_upsert(mock_sf_client):
     for result in results:
         assert isinstance(result, SObjectSaveResult)
         assert result.success
+        assert result.id is not None
         assert result.id.startswith("001XX000")
         assert not result.errors
 
@@ -730,14 +731,14 @@ def test_save_update_existing_records(mock_sf_client, test_accounts_with_ids):
     mock_response.json.return_value = [
         {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
-    mock_sf_client.post.return_value = mock_response
+    mock_sf_client.patch.return_value = mock_response
 
     # Call save
     account_list.save()
 
     # Verify API call for update
-    mock_sf_client.post.assert_called_once()
-    args, kwargs = mock_sf_client.post.call_args
+    mock_sf_client.patch.assert_called_once()
+    args, kwargs = mock_sf_client.patch.call_args
     assert args[0] == "/services/data/v57.0/composite/sobjects"
 
     # Check that dirty fields were cleared
@@ -790,25 +791,25 @@ def test_save_with_only_changes_option(mock_sf_client, test_accounts_with_ids):
         {"id": account.Id, "success": True, "errors": []}
         for account in account_list[:2]  # Only first two have changes
     ]
-    mock_sf_client.post.return_value = mock_response
+    mock_sf_client.patch.return_value = mock_response
 
     # Call save with only_changes=True
     account_list.save(only_changes=True)
 
     # Verify API call
-    mock_sf_client.post.assert_called_once()
+    mock_sf_client.patch.assert_called_once()
 
     # Check the payload contains only changed fields
-    args, kwargs = mock_sf_client.post.call_args
+    args, kwargs = mock_sf_client.patch.call_args
     request_data = kwargs.get("json", [])
 
     # First record should have only Name field
-    assert "Name" in request_data[0]
-    assert "Industry" not in request_data[0]
+    assert "Name" in request_data['records'][0]
+    assert "Industry" not in request_data['records'][0]
 
     # Second record should have only Industry field
-    assert "Industry" in request_data[1]
-    assert "Name" not in request_data[1]
+    assert "Industry" in request_data['records'][1]
+    assert "Name" not in request_data['records'][1]
 
 
 def test_save_with_update_only_option(mock_sf_client):
@@ -854,19 +855,19 @@ def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
     mock_response.json.return_value = [
         {"id": account_list[0].Id, "success": True, "errors": []}
     ]
-    mock_sf_client.post.return_value = mock_response
+    mock_sf_client.patch.return_value = mock_response
 
     # Call save with multiple options
     account_list.save(only_changes=True, reload_after_success=False)
 
     # Verify API call
-    mock_sf_client.post.assert_called_once()
+    mock_sf_client.patch.assert_called_once()
 
     # Check that only one record was sent (the one with changes)
-    args, kwargs = mock_sf_client.post.call_args
+    args, kwargs = mock_sf_client.patch.call_args
     request_data = kwargs.get("json", [])
-    assert len(request_data) == 1
-    assert request_data[0]["Name"] == "Updated with Multiple Options"
+    assert len(request_data['records']) == 1
+    assert request_data['records'][0]["Name"] == "Updated with Multiple Options"
 
 
 def test_save_error_on_update_only_without_id_or_external_id(

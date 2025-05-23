@@ -1111,7 +1111,10 @@ class SObjectList(list[_sObject]):
             else:
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(),
-                    json=records,
+                    json={
+                        "allOrNone": False,
+                        "records": records
+                    },
                     headers=headers,
                     **callout_options,
                 )
@@ -1187,7 +1190,10 @@ class SObjectList(list[_sObject]):
                 )
         return await sf_client.post(
             sf_client.composite_sobjects_url(),
-            json=records,
+            json={
+                "allOrNone": False,
+                "records": records
+            },
             headers=headers,
             **callout_options,
         )
@@ -1255,9 +1261,12 @@ class SObjectList(list[_sObject]):
         results: list[SObjectSaveResult] = []
         for records, blobs in record_chunks:
             assert not blobs, "Cannot update collections with files"
-            response = sf_client.post(
+            response = sf_client.patch(
                 sf_client.composite_sobjects_url(),
-                json=records,
+                json={
+                    "allOrNone": False,
+                    "records": records
+                },
                 headers=headers,
                 **callout_options,
             )
@@ -1280,7 +1289,10 @@ class SObjectList(list[_sObject]):
             tasks = [
                 a_client.post(
                     sf_client.composite_sobjects_url(),
-                    json=chunk,
+                    json={
+                        "allOrNone": False,
+                        "records": chunk
+                    },
                     headers=headers,
                     **callout_options,
                 )
