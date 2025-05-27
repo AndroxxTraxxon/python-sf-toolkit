@@ -16,6 +16,7 @@ It provides a clean, object-oriented interface for connecting to Salesforce inst
    query
    file_upload
    blobfield
+   bulk_api
    advanced
    api_reference
 

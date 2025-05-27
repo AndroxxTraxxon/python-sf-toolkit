@@ -1,5 +1,4 @@
 import asyncio
-from collections import defaultdict
 from contextlib import ExitStack
 import json
 from pathlib import Path
@@ -32,6 +31,7 @@ from .fields import (
     FieldFlag,
     SObjectFieldDescribe,
 )
+from .transformers import flatten, unflatten
 
 _sObject = TypeVar("_sObject", bound=("SObject"))
 
@@ -122,40 +122,6 @@ class SObjectDescribe:
     def get_raw_data(self) -> dict:
         """Get the raw JSON data from the describe call"""
         return self._raw_data
-
-
-@staticmethod
-def unflatten(flattened_data: dict[str, Any]) -> dict[str, Any]:
-    inflated_data = {}
-    nested_objects = defaultdict(dict)
-    for fieldname in flattened_data.keys():
-        if "." in fieldname:
-            parent, child = fieldname.split(".", maxsplit=1)
-            nested_objects[parent][child] = flattened_data[fieldname]
-        else:
-            inflated_data[fieldname] = flattened_data[fieldname]
-    for name, nested_object in nested_objects.items():
-        inflated_data[name] = unflatten(nested_object)
-
-    return inflated_data
-
-
-@staticmethod
-def flatten(data: dict[str, Any]) -> dict[str, Any]:
-    flattened_data = {}
-    for fieldname in data.keys():
-        if isinstance(fieldname, dict):
-            flat_nested_data = flatten(data[fieldname])
-            flattened_data.update(
-                {
-                    f"{fieldname}.{nested_field}": nested_value
-                    for nested_field, nested_value in flat_nested_data.items()
-                }
-            )
-        else:
-            flattened_data[fieldname] = data[fieldname]
-
-    return flattened_data
 
 
 class SObject(FieldConfigurableObject, I_SObject):
@@ -1035,6 +1001,128 @@ class SObjectList(list[_sObject]):
             writer.writeheader()
             writer.writerows(flatten(row.serialize()) for row in self)
 
+
+    def save_upsert_bulk(
+        self,
+        external_id_field: str,
+        timeout: int = 600,
+        connection: I_SalesforceClient | str | None = None
+    ) -> "BulkApiIngestJob":
+        """Upsert records in bulk using Salesforce Bulk API 2.0
+
+        This method uses the Bulk API 2.0 to upsert records based on an external ID field.
+        The external ID field must exist on the object and be marked as an external ID.
+
+        Args:
+            external_id_field: The API name of the external ID field to use for the upsert
+            timeout: Maximum time in seconds to wait for the job to complete
+
+        Returns:
+            Dict[str, Any]: Job result information
+
+        Raises:
+            SalesforceBulkV2LoadError: If the job fails or times out
+            ValueError: If the list is empty or the external ID field doesn't exist
+        """
+        assert self, "Cannot upsert empty SObjectList"
+        global BulkApiIngestJob
+        try:
+            _ = BulkApiIngestJob
+        except NameError:
+            from .bulk import BulkApiIngestJob
+
+        if not connection:
+            connection = self[0].attributes.connection
+
+        job = BulkApiIngestJob.init_job(
+            self[0].attributes.type,
+            "upsert",
+            external_id_field = external_id_field,
+            connection=connection
+        )
+
+        job.upload_batches(self)
+
+        return job
+
+    def save_insert_bulk(
+        self,
+        connection: I_SalesforceClient | str | None = None,
+        **callout_options
+    ) -> "BulkApiIngestJob":
+        """Insert records in bulk using Salesforce Bulk API 2.0
+
+        This method uses the Bulk API 2.0 to insert records.
+
+        Args:
+            timeout: Maximum time in seconds to wait for the job to complete
+
+        Returns:
+            Dict[str, Any]: Job result information
+
+        Raises:
+            SalesforceBulkV2LoadError: If the job fails or times out
+            ValueError: If the list is empty or the external ID field doesn't exist
+        """
+        assert self, "Cannot upsert empty SObjectList"
+        global BulkApiIngestJob
+        try:
+            _ = BulkApiIngestJob
+        except NameError:
+            from .bulk import BulkApiIngestJob
+
+        if not connection:
+            connection = self[0].attributes.connection
+
+        job = BulkApiIngestJob.init_job(
+            self[0].attributes.type,
+            "insert",
+            connection=connection,
+            **callout_options
+        )
+
+        job.upload_batches(self, **callout_options)
+
+        return job
+
+    def save_update_bulk(
+        self,
+        connection: I_SalesforceClient | str | None = None,
+        **callout_options
+    ) -> "BulkApiIngestJob":
+        """Update records in bulk using Salesforce Bulk API 2.0
+
+        This method uses the Bulk API 2.0 to update records.
+
+        Returns:
+            Dict[str, Any]: Job result information
+
+        Raises:
+            SalesforceBulkV2LoadError: If the job fails or times out
+            ValueError: If the list is empty or the external ID field doesn't exist
+        """
+        assert self, "Cannot upsert empty SObjectList"
+        global BulkApiIngestJob
+        try:
+            _ = BulkApiIngestJob
+        except NameError:
+            from .bulk import BulkApiIngestJob
+
+        if not connection:
+            connection = self[0].attributes.connection
+
+        job = BulkApiIngestJob.init_job(
+            self[0].attributes.type,
+            "update",
+            connection=connection,
+            **callout_options
+        )
+
+        job.upload_batches(self, **callout_options)
+
+        return job
+
+
     def save_json(self, filepath: Path | str, encoding="utf-8", **json_options) -> None:
         if isinstance(filepath, str):
             filepath = Path(filepath).resolve()
@@ -1042,7 +1130,11 @@ class SObjectList(list[_sObject]):
             json.dump([record.serialize() for record in self], outfile, **json_options)
 
     def save_insert(
-        self, concurrency: int = 1, batch_size: int = 200, **callout_options
+        self,
+        concurrency: int = 1,
+        batch_size: int = 200,
+        all_or_none: bool = False,
+        **callout_options
     ) -> list[SObjectSaveResult]:
         """
         Insert all SObjects in the list.
@@ -1074,7 +1166,7 @@ class SObjectList(list[_sObject]):
             # execute async
             return asyncio.run(
                 self.save_insert_async(
-                    sf_client, record_chunks, headers, concurrency, **callout_options
+                    sf_client, record_chunks, headers, concurrency, all_or_none, **callout_options
                 )
             )
 
@@ -1112,7 +1204,7 @@ class SObjectList(list[_sObject]):
                 response = sf_client.post(
                     sf_client.composite_sobjects_url(),
                     json={
-                        "allOrNone": False,
+                        "allOrNone": all_or_none,
                         "records": records
                     },
                     headers=headers,
@@ -1133,7 +1225,8 @@ class SObjectList(list[_sObject]):
         record_chunks: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]],
         headers: dict[str, str],
         concurrency: int,
-        **callout_options,
+        all_or_none: bool,
+        **callout_options
     ):
         if header_options := callout_options.pop("headers", None):
             headers.update(header_options)
@@ -1144,6 +1237,7 @@ class SObjectList(list[_sObject]):
                     sf_client.composite_sobjects_url(),
                     records,
                     blobs,
+                    all_or_none,
                     headers,
                     **callout_options,
                 )
@@ -1163,6 +1257,7 @@ class SObjectList(list[_sObject]):
         url: str,
         records: list[dict[str, Any]],
         blobs: list[tuple[str, BlobData]] | None,
+        all_or_none: bool,
         headers: dict[str, str],
         **callout_options,
     ):
@@ -1173,7 +1268,10 @@ class SObjectList(list[_sObject]):
                     files=[
                         (
                             "entity_content",
-                            (None, json.dumps(records), "application/json"),
+                            (None, json.dumps({
+                                "allOrNone": all_or_none,
+                                "records": records
+                            }), "application/json"),
                         ),
                         *(
                             (
@@ -1191,7 +1289,7 @@ class SObjectList(list[_sObject]):
         return await sf_client.post(
             sf_client.composite_sobjects_url(),
             json={
-                "allOrNone": False,
+                "allOrNone": all_or_none,
                 "records": records
             },
             headers=headers,
@@ -1201,12 +1299,14 @@ class SObjectList(list[_sObject]):
     def save_update(
         self,
         only_changes: bool = False,
+        all_or_none: bool = False,
         concurrency: int = 1,
         batch_size: int = 200,
         **callout_options,
     ) -> list[SObjectSaveResult]:
         """
         Update all SObjects in the list.
+        https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_update.htm
 
         Args:
             only_changes: If True, only send changed fields
@@ -1251,6 +1351,7 @@ class SObjectList(list[_sObject]):
             return asyncio.run(
                 self.save_update_async(
                     [chunk[0] for chunk in record_chunks],
+                    all_or_none,
                     headers,
                     sf_client,
                     **callout_options,
@@ -1264,7 +1365,7 @@ class SObjectList(list[_sObject]):
             response = sf_client.patch(
                 sf_client.composite_sobjects_url(),
                 json={
-                    "allOrNone": False,
+                    "allOrNone": all_or_none,
                     "records": records
                 },
                 headers=headers,
@@ -1281,6 +1382,7 @@ class SObjectList(list[_sObject]):
     @staticmethod
     async def save_update_async(
         record_chunks: list[list[dict[str, Any]]],
+        all_or_none: bool,
         headers: dict[str, str],
         sf_client: I_SalesforceClient,
         **callout_options,
@@ -1290,7 +1392,7 @@ class SObjectList(list[_sObject]):
                 a_client.post(
                     sf_client.composite_sobjects_url(),
                     json={
-                        "allOrNone": False,
+                        "allOrNone": all_or_none,
                         "records": chunk
                     },
                     headers=headers,
@@ -1540,3 +1642,10 @@ class SObjectList(list[_sObject]):
             ]
 
         return results
+
+    def assert_single_type(self):
+        """Assert there is exactly one type of record in the list"""
+        assert len(self) > 0, "There must be at least one record."
+        record_type = type(self[0])
+        assert all(isinstance(record, record_type) for record in self),\
+            "Records must be of the same type."
