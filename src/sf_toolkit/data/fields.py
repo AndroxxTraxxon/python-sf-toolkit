@@ -136,8 +136,10 @@ class FieldConfigurableObject:
         )
         fields = list()
         for field, fieldtype in cls._fields.items():
-            if isinstance(fieldtype, ReferenceField) and isinstance(
-                fieldtype.meta_py_type, FieldConfigurableObject
+            if (
+                isinstance(fieldtype, ReferenceField)
+                and fieldtype.meta_py_type is not None
+                and issubclass(fieldtype.meta_py_type, FieldConfigurableObject)
             ):
                 fields.extend(
                     [
