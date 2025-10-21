@@ -2,21 +2,23 @@ import pytest
 import datetime
 from time import sleep
 
+from sf_toolkit.client import SalesforceClient
 from sf_toolkit.data.fields import dirty_fields
-from sf_toolkit.data.sf_io import (
+from sf_toolkit.interfaces import OrgType
+from sf_toolkit.io.api import (
     delete,
-    read,
+    fetch,
     save,
     save_insert,
     save_update,
     save_upsert,
-    sobject_list,
+    fetch_list,
 )
 
 from ..unit_test_models import Product, Account
 
 
-def test_insert_and_delete(sf_client):
+def test_insert_and_delete(sf_client: SalesforceClient):
     """Test inserting and then deleting an SObject"""
     # Create unique name to avoid conflicts
     unique_name = (
@@ -26,6 +28,9 @@ def test_insert_and_delete(sf_client):
     # Create new account
     account = Account(
         Name=unique_name, Industry="Technology", Description="Test insert account"
+    )
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
     )
 
     try:
@@ -38,7 +43,7 @@ def test_insert_and_delete(sf_client):
         assert isinstance(account.Id, str)
 
         # Retrieve the account to verify it exists
-        retrieved = read(Account, account.Id)
+        retrieved = fetch(Account, account.Id)
         assert retrieved.Name == unique_name
         assert retrieved.Industry == "Technology"
         assert retrieved.Description == "Test insert account"
@@ -49,7 +54,7 @@ def test_insert_and_delete(sf_client):
             delete(account)
 
 
-def test_update(sf_client):
+def test_update(sf_client: SalesforceClient):
     """Test updating an existing SObject"""
     # Create unique name to avoid conflicts
     unique_name = (
@@ -59,6 +64,9 @@ def test_update(sf_client):
     # Create new account first
     account = Account(
         Name=unique_name, Industry="Healthcare", Description="Original description"
+    )
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
     )
     save(account)
 
@@ -72,7 +80,7 @@ def test_update(sf_client):
         save_update(account)
 
         # Retrieve the account to verify changes
-        retrieved = read(Account, account.Id)
+        retrieved = fetch(Account, account.Id)
         assert retrieved.Name == unique_name  # Unchanged
         assert retrieved.Industry == "Financial Services"  # Changed
         assert retrieved.Description == "Updated description"  # Changed
@@ -84,7 +92,7 @@ def test_update(sf_client):
             delete(account)
 
 
-def test_only_changes_flag(sf_client):
+def test_only_changes_flag(sf_client: SalesforceClient):
     """Test that only_changes flag only updates dirty fields"""
     # Create unique name to avoid conflicts
     unique_name = (
@@ -98,11 +106,14 @@ def test_only_changes_flag(sf_client):
         Description="Original description",
         NumberOfEmployees=500,
     )
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
     save(account)
 
     try:
         # Get a fresh copy to manipulate
-        account = read(Account, account.Id)
+        account = fetch(Account, account.Id)
 
         # Only change one field
         account.Description = "Modified description"
@@ -111,7 +122,7 @@ def test_only_changes_flag(sf_client):
         save_update(account)
 
         # Retrieve a fresh copy
-        retrieved = read(Account, account.Id)
+        retrieved = fetch(Account, account.Id)
         assert retrieved.Description == "Modified description"
 
         # Check if the client calls match the expected behavior by making another change
@@ -123,7 +134,7 @@ def test_only_changes_flag(sf_client):
         save_update(retrieved)
 
         # Get a final copy to verify
-        final = read(Account, account.Id)
+        final = fetch(Account, account.Id)
         assert final.Industry == "Education"
         assert final.NumberOfEmployees is None
 
@@ -133,14 +144,16 @@ def test_only_changes_flag(sf_client):
             delete(account)
 
 
-def test_save_with_reload(sf_client):
+def test_save_with_reload(sf_client: SalesforceClient):
     """Test saving with reload_after_success to see fields updated by triggers"""
     # Create unique name to avoid conflicts
     unique_name = f"Test Reload {datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
     # Create new account
     account = Account(Name=unique_name, Industry="Construction")
-
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
     try:
         # Save with reload_after_success=True
         save(account, reload_after_success=True)
@@ -168,7 +181,7 @@ def test_save_with_reload(sf_client):
             delete(account)
 
 
-def test_upsert_existing(sf_client):
+def test_upsert_existing(sf_client: SalesforceClient):
     """Test upserting an existing record using an external ID"""
     # Generate unique external ID
     unique_external_id = f"EXT-{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
@@ -178,6 +191,9 @@ def test_upsert_existing(sf_client):
         Name="Test Product",
         Description="Original product description",
         ExternalId__c=unique_external_id,
+    )
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
     )
     save(product)
 
@@ -203,7 +219,7 @@ def test_upsert_existing(sf_client):
         assert updated_product.Description == "Updated product description"
 
         # Retrieve to double-check
-        retrieved = read(Product, product.Id)
+        retrieved = fetch(Product, product.Id)
         assert retrieved.Name == "Updated Product Name"
 
     finally:
@@ -212,7 +228,7 @@ def test_upsert_existing(sf_client):
             delete(product)
 
 
-def test_upsert_new(sf_client):
+def test_upsert_new(sf_client: SalesforceClient):
     """Test upserting a new record using an external ID"""
     # Generate unique external ID
     unique_external_id = f"EXT-NEW-{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
@@ -222,6 +238,9 @@ def test_upsert_new(sf_client):
         Name="Test Product",
         Description="A test product for upsert",
         ExternalId__c=unique_external_id,
+    )
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
     )
 
     try:
@@ -233,7 +252,7 @@ def test_upsert_new(sf_client):
         assert product.Id is not None
 
         # Retrieve to confirm
-        retrieved = read(Product, product.Id)
+        retrieved = fetch(Product, product.Id)
         assert retrieved.Name == "Test Product"
         assert retrieved.Description == "A test product for upsert"
         assert retrieved.ExternalId__c == unique_external_id
@@ -244,7 +263,7 @@ def test_upsert_new(sf_client):
             delete(product)
 
 
-def test_update_only_flag(sf_client):
+def test_update_only_flag(sf_client: SalesforceClient):
     """Test that update_only flag prevents creation of new records"""
     # Generate unique name
     unique_name = (
@@ -254,6 +273,9 @@ def test_update_only_flag(sf_client):
     # Create account but don't save it
     account = Account(Name=unique_name, Industry="Technology")
 
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
     # Attempt to save with update_only=True should fail
     with pytest.raises(
         ValueError, match="Cannot update record without an ID or external ID"
@@ -269,7 +291,7 @@ def test_update_only_flag(sf_client):
         save(account, update_only=True)
 
         # Verify update worked
-        retrieved = read(Account, account.Id)
+        retrieved = fetch(Account, account.Id)
         assert retrieved.Name == f"{unique_name} - Updated"
 
     finally:
@@ -278,12 +300,14 @@ def test_update_only_flag(sf_client):
             delete(account)
 
 
-def test_batch_modify_and_save(sf_client):
+def test_batch_modify_and_save(sf_client: SalesforceClient):
     """Test creating multiple records, modifying them, and saving the changes"""
     # Number of records to create
     num_records = 5
     base_name = f"Batch Test {datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
     # Create accounts
     accounts = []
     for i in range(num_records):
@@ -308,7 +332,7 @@ def test_batch_modify_and_save(sf_client):
             save(account)
 
         # Retrieve all accounts to verify changes
-        retrieved_accounts = sobject_list(Account, *ids)
+        retrieved_accounts = fetch_list(Account, *ids)
 
         # Verify all changes were saved
         for i, account in enumerate(retrieved_accounts):
@@ -323,7 +347,7 @@ def test_batch_modify_and_save(sf_client):
                 delete(account)
 
 
-def test_dirty_fields_tracking(sf_client):
+def test_dirty_fields_tracking(sf_client: SalesforceClient):
     """Test that dirty fields are properly tracked and reset after save"""
     # Create unique name
     unique_name = (
@@ -337,6 +361,9 @@ def test_dirty_fields_tracking(sf_client):
     assert dirty_fields(account) is not None
     assert not dirty_fields(account)
 
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
     # Save the account
     save(account)
 
@@ -366,7 +393,7 @@ def test_dirty_fields_tracking(sf_client):
         assert len(dirty_fields(account)) == 0
 
         # Retrieve the account to verify changes
-        retrieved = read(Account, account.Id)
+        retrieved = fetch(Account, account.Id)
         assert retrieved.Description == "New description"
         assert retrieved.Industry == "Education"
 

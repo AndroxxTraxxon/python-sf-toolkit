@@ -1766,6 +1766,21 @@ docs = ["myst-parser", "pydata-sphinx-theme", "sphinx"]
 test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,<8.2)", "pytest-mock", "pytest-mypy-testing"]
 
 [[package]]
+name = "type-extensions"
+version = "0.1.2"
+description = "Importable mixin methods for Python."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "type_extensions-0.1.2-py2.py3-none-any.whl", hash = "sha256:fc9c8506f87b6227eeb43795061d61571b66a07df6fbcacf31a17d2cb2050153"},
+    {file = "type_extensions-0.1.2.tar.gz", hash = "sha256:7c7b54eba6d7401ad5e69ecec6b7c767d7d7aae9b2b7e56249bc7bcaf833161f"},
+]
+
+[package.extras]
+testing = ["pytest", "pytest-cov"]
+
+[[package]]
 name = "typing-extensions"
 version = "4.12.2"
 description = "Backported and Experimental Type Hints for Python 3.8+"
@@ -1811,4 +1826,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "51b19cd91bba9ace7a1f17cfdd94c8c8661773599d0945cad7d1d851da9301e7"
+content-hash = "9a9682dcddedb2e6e2a4e063d560d3a8ae1890f19ba4e283939d628cbd9907bc"

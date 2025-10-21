@@ -1,15 +1,15 @@
 import pytest
 from unittest.mock import MagicMock, Mock
 import datetime
-from sf_toolkit.data.sf_io import (
-    read,
+from sf_toolkit.io.api import (
+    fetch,
     save,
     save_insert,
     save_update,
     save_upsert,
     sobject_describe,
     sobject_from_description,
-    sobject_list,
+    fetch_list,
 )
 from sf_toolkit.data.sobject import SObject
 from sf_toolkit.data.fields import (
@@ -90,7 +90,7 @@ def test_sobject_get(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Call get method
-    contact = read(Contact, "003XX000004UINIAA4")
+    contact = fetch(Contact, "003XX000004UINIAA4")
     # Verify the result
     assert contact.Id == "003XX000004UINIAA4"
     assert contact.FirstName == "John"
@@ -126,9 +126,7 @@ def test_sobject_fetch(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Call fetch method
-    opportunities = sobject_list(
-        Opportunity, "006XX000004UvVtIAK", "006XX000004UvVuIAK"
-    )
+    opportunities = fetch_list(Opportunity, "006XX000004UvVtIAK", "006XX000004UvVuIAK")
 
     # Verify the results
     assert len(opportunities) == 2

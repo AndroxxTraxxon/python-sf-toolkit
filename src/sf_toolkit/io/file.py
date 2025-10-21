@@ -1,28 +1,18 @@
 from collections.abc import Callable
 import json
+import csv
 from pathlib import Path
 from typing import Any, TypeVar
 
-from .fields import query_fields
 
-from .transformers import unflatten
-from .sobject import SObject, SObjectList
+from ..data.fields import query_fields, serialize_object
+
+from ..data.transformers import flatten, unflatten
+from ..data.sobject import SObject, SObjectList
 
 _SO = TypeVar("_SO", bound=SObject)
 
-LoaderFunc = Callable[[type[_SO], Path, str], SObjectList[_SO]]
-loaders: dict[str, LoaderFunc[Any]] = {}
 
-
-def register(extension: str):
-    def decorator(func: Callable[[type[SObject], Path, str], SObjectList[SObject]]):
-        loaders[extension.lower()] = func
-        return func
-
-    return decorator
-
-
-@register(".csv")
 def from_csv_file(
     cls: type[_SO],
     filepath: Path | str,
@@ -52,7 +42,6 @@ def from_csv_file(
         )  # type: ignore
 
 
-@register(".json")
 def from_json_file(cls: type[_SO], filepath: Path | str, file_encoding: str = "utf-8"):
     """
     Loads SObject records from a JSON file. The file can contain either a single
@@ -89,7 +78,66 @@ def from_file(
     if isinstance(filepath, str):
         filepath = Path(filepath).resolve()
     file_extension = filepath.suffix.lower()
-    loader: LoaderFunc[_SO] | None = loaders.get(file_extension, None)
-    if loader is not None:
-        return loader(cls, filepath, file_encoding)
-    raise ValueError(f"Unknown file extension {file_extension}")
+    if file_extension == ".csv":
+        return from_csv_file(cls, filepath, file_encoding=file_encoding)
+    elif file_extension == ".json":
+        return from_json_file(cls, filepath, file_encoding=file_encoding)
+    else:
+        raise ValueError(f"Unknown file extension {file_extension}")
+
+
+def to_json_file(
+    records: SObjectList[_SO],
+    filepath: Path | str,
+    encoding="utf-8",
+    as_lines: bool = False,
+    **json_options,
+) -> None:
+    if isinstance(filepath, str):
+        filepath = Path(filepath).resolve()
+    with filepath.open("w+", encoding=encoding) as outfile:
+        if as_lines:
+            assert "indent" not in json_options, (
+                "indent option not supported with as_lines=True"
+            )
+            for record in records:
+                json.dump(serialize_object(record), outfile, **json_options)
+                outfile.write("\n")
+        else:
+            json.dump(
+                [serialize_object(record) for record in records],
+                outfile,
+                **json_options,
+            )
+
+
+def to_csv_file(self: SObjectList[_SO], filepath: Path | str, encoding="utf-8") -> None:
+    if isinstance(filepath, str):
+        filepath = Path(filepath).resolve()
+    assert self, "Cannot save an empty list"
+    fieldnames = query_fields(type(self[0]))
+    with filepath.open("w+", encoding=encoding) as outfile:
+        writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(flatten(serialize_object(row)) for row in self)
+
+
+def to_file(
+    records: SObjectList[_SO],
+    filepath: Path | str,
+    file_encoding: str = "utf-8",
+    **options,
+) -> None:
+    """
+    Saves SObject records to a file. The file format is determined by the file extension.
+    Supported file formats are CSV (.csv) and JSON (.json).
+    """
+    if isinstance(filepath, str):
+        filepath = Path(filepath).resolve()
+    file_extension = filepath.suffix.lower()
+    if file_extension == ".csv":
+        to_csv_file(records, filepath, encoding=file_encoding)
+    elif file_extension == ".json":
+        to_json_file(records, filepath, encoding=file_encoding, **options)
+    else:
+        raise ValueError(f"Unknown file extension {file_extension}")

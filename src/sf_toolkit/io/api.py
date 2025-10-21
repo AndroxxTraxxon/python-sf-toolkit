@@ -9,10 +9,11 @@ from httpx import Response
 from sf_toolkit.async_utils import run_concurrently
 from sf_toolkit.data.transformers import chunked, flatten
 
-from .fields import (
+from ..data.fields import (
     FIELD_TYPE_LOOKUP,
     BlobData,
     Field,
+    FieldConfigurableObject,
     FieldFlag,
     IdField,
     dirty_fields,
@@ -22,7 +23,7 @@ from .fields import (
 )
 
 from ..logger import getLogger
-from .sobject import SObject, SObjectDescribe, SObjectList
+from ..data.sobject import SObject, SObjectDescribe, SObjectList
 from ..interfaces import I_AsyncSalesforceClient, I_SalesforceClient
 from ..client import SalesforceClient as sftk_client
 
@@ -46,7 +47,7 @@ def resolve_async_client(
     return sftk_client.get_connection(cls.attributes.connection).as_async
 
 
-def read(
+def fetch(
     cls: type[_sObject],
     record_id: str,
     sf_client: I_SalesforceClient | None = None,
@@ -308,7 +309,7 @@ def save(
 
 
 def delete(
-    record: SObject,
+    record: _sObject,
     sf_client: I_SalesforceClient | None = None,
     clear_id_field: bool = True,
 ):
@@ -364,18 +365,18 @@ def download_file(
 def reload(record: SObject, sf_client: I_SalesforceClient | None = None):
     record_id: str = getattr(record, record.attributes.id_field)
     sf_client = resolve_client(type(record), sf_client)
-    reloaded = read(type(record), record_id, sf_client)
+    reloaded = fetch(type(record), record_id, sf_client)
     record._values.update(reloaded._values)
 
 
-def update_values(self, /, **kwargs):
-    _fields = object_fields(type(self))
-    for key, value in kwargs.items():
+def update_record(record: FieldConfigurableObject, /, **props):
+    _fields = object_fields(type(record))
+    for key, value in props.items():
         if key in _fields:
-            self[key] = value
+            setattr(record, key, value)
 
 
-def sobject_list(
+def fetch_list(
     cls: type[_sObject],
     *ids: str,
     sf_client: I_SalesforceClient | None = None,
@@ -386,7 +387,7 @@ def sobject_list(
 
     if len(ids) == 1:
         return SObjectList(
-            [read(cls, ids[0], sf_client)], connection=cls.attributes.connection
+            [fetch(cls, ids[0], sf_client)], connection=cls.attributes.connection
         )
 
     # pull in batches with composite API

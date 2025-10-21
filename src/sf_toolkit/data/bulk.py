@@ -6,9 +6,10 @@ from ..interfaces import I_SalesforceClient
 from . import fields
 from .transformers import flatten
 
-from .sobject import SObjectList
+from .sobject import SObject, SObjectList
 
 T = TypeVar("T")
+_SO = TypeVar("_SO", bound=SObject)
 
 
 class BulkApiIngestJob(fields.FieldConfigurableObject):
@@ -91,7 +92,7 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
         self._connection = connection
         super().__init__(**fields)
 
-    def upload_batches(self, data: SObjectList[T], **callout_options):
+    def upload_batches(self, data: SObjectList[_SO], **callout_options):
         """
         Upload data batches to be processed by the Salesforce bulk API.
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm
@@ -117,14 +118,14 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
                     # > converted to base64. This conversion can increase the data size by
                     # > approximately 50%. To account for the base64 conversion increase,
                     # > upload data that does not exceed 100 MB.
-                    buffer.seek(0)
-                    self._connection.put(
+                    _ = buffer.seek(0)
+                    _ = self._connection.put(
                         self.contentUrl,
                         files=[("content", ("content", buffer.getvalue(), "text/csv"))],
                         **callout_options,
                     )
-                    buffer.seek(0)
-                    buffer.truncate()
+                    _ = buffer.seek(0)
+                    _ = buffer.truncate()
                     writer.writeheader()
                     buffer_has_data = False
             if buffer_has_data:

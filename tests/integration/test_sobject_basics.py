@@ -1,12 +1,14 @@
 import pytest
 from datetime import datetime, timedelta
-from sf_toolkit.data.sf_io import delete, read, save, update_values
+from sf_toolkit.client import SalesforceClient
+from sf_toolkit.interfaces import OrgType
+from sf_toolkit.io.api import delete, fetch, save, update_record
 from sf_toolkit.exceptions import SalesforceError
 
 from ..unit_test_models import Opportunity, Account, Product
 
 
-def test_opportunity_crud(sf_client):
+def test_opportunity_crud(sf_client: SalesforceClient):
     """Test creating, updating, and deleting an Opportunity"""
     # Generate unique name using timestamp to avoid conflicts
     unique_name = f"Test Opportunity {datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -17,6 +19,10 @@ def test_opportunity_crud(sf_client):
     )
 
     created_opp_id = None
+
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
 
     try:
         _ = save(opp)
@@ -30,13 +36,13 @@ def test_opportunity_crud(sf_client):
 
         # Update opportunity
         updated_name = f"{unique_name} - Updated"
-        update_values(
+        update_record(
             opp, Name=updated_name, StageName="Qualification", Amount=15000.00
         )
         _ = save(opp)
 
         # Verify opportunity was updated
-        retrieved_opp = read(Opportunity, opp.Id)
+        retrieved_opp = fetch(Opportunity, opp.Id)
         assert retrieved_opp.Name == updated_name
         assert retrieved_opp.StageName == "Qualification"
         assert retrieved_opp.Amount == 15000.00
@@ -46,11 +52,11 @@ def test_opportunity_crud(sf_client):
 
         # Verify opportunity was deleted
         with pytest.raises(SalesforceError):
-            _ = read(Opportunity, opp.Id)
+            _ = fetch(Opportunity, opp.Id)
 
     finally:
         # Ensure cleanup happens even if test fails
-        if created_opp_id and hasattr(opp, "Id") and opp.Id is not None:
+        if created_opp_id and opp.Id:
             try:
                 delete(opp, clear_id_field=False)
             except Exception:
@@ -58,17 +64,21 @@ def test_opportunity_crud(sf_client):
                 pass
 
 
-def test_reload_after_success_flag(sf_client):
+def test_reload_after_success_flag(sf_client: SalesforceClient):
     """Test that reload_after_success flag updates multiple references to the same record"""
     # Create a test account
     unique_name = f"Test Account {datetime.now().strftime('%Y%m%d%H%M%S')}"
     account = Account(Name=unique_name, Industry="Technology")
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
+
     _ = save(account)
 
     try:
         # Create two references to the same account
-        account_ref1 = read(Account, account.Id)
-        account_ref2 = read(Account, account.Id)
+        account_ref1 = fetch(Account, account.Id)
+        account_ref2 = fetch(Account, account.Id)
 
         # Verify both references have the same data
         assert account_ref1.Name == unique_name
@@ -95,7 +105,7 @@ def test_reload_after_success_flag(sf_client):
         assert account_ref2.Description == description
 
         # Read again to confirm changes were actually saved to Salesforce
-        account_ref3 = read(Account, account.Id)
+        account_ref3 = fetch(Account, account.Id)
         assert account_ref3.Name == new_name
         assert account_ref3.Description == description
 
@@ -104,7 +114,7 @@ def test_reload_after_success_flag(sf_client):
         delete(account)
 
 
-def test_upsert_with_external_id(sf_client):
+def test_upsert_with_external_id(sf_client: SalesforceClient):
     """Test upserting a record using an external ID field"""
     # Generate unique name and external ID
     unique_name = f"Ext ID Account {datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -113,6 +123,10 @@ def test_upsert_with_external_id(sf_client):
     # Create account with external ID
     product = Product(
         Name=unique_name, ExternalId__c=external_id, Description="Test Description"
+    )
+
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
     )
 
     try:
@@ -148,7 +162,7 @@ def test_upsert_with_external_id(sf_client):
         assert upsert_product.Id == initial_id
 
         # Retrieve to confirm changes
-        retrieved = read(Product, initial_id)
+        retrieved = fetch(Product, initial_id)
         assert retrieved.Name == f"{unique_name} - Upserted"
         assert retrieved.Description == "Manufacturing"
 
@@ -158,7 +172,7 @@ def test_upsert_with_external_id(sf_client):
             delete(product)
 
 
-def test_update_only_flag(sf_client):
+def test_update_only_flag(sf_client: SalesforceClient):
     """Test that update_only flag prevents creation of new records"""
     # Generate unique name
     unique_name = f"Update Only Test {datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -166,6 +180,9 @@ def test_update_only_flag(sf_client):
     # Create account object but don't save it
     account = Account(Name=unique_name, Industry="Technology")
 
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
+    )
     # Attempt to save with update_only=True should fail
     with pytest.raises(
         ValueError, match="Cannot update record without an ID or external ID"
@@ -182,7 +199,7 @@ def test_update_only_flag(sf_client):
         _ = save(account, update_only=True)
 
         # Verify update worked
-        retrieved = read(Account, account_id)
+        retrieved = fetch(Account, account_id)
         assert retrieved.Name == f"{unique_name} - Updated"
 
         # Create another account with an ID but don't save it
@@ -193,7 +210,7 @@ def test_update_only_flag(sf_client):
 
         # This should fail since the ID doesn't exist
         with pytest.raises(SalesforceError):
-            save(nonexistent_account, update_only=True)
+            _ = save(nonexistent_account, update_only=True)
 
     finally:
         # Clean up
@@ -201,7 +218,7 @@ def test_update_only_flag(sf_client):
             delete(account)
 
 
-def test_only_changes_with_upsert(sf_client):
+def test_only_changes_with_upsert(sf_client: SalesforceClient):
     """Test that only_changes flag works correctly with upsert operations"""
     # Generate unique data
     unique_name = f"Only Changes Test {datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -210,6 +227,9 @@ def test_only_changes_with_upsert(sf_client):
     # Create and save account
     product = Product(
         Name=unique_name, ExternalId__c=external_id, Description="Initial description"
+    )
+    assert sf_client.org_type != OrgType.PRODUCTION, (
+        "This test should not run in a production environment."
     )
     _ = save(product)
 
@@ -224,7 +244,7 @@ def test_only_changes_with_upsert(sf_client):
         )
 
         # Retrieve to confirm changes
-        retrieved = read(Product, product.Id)
+        retrieved = fetch(Product, product.Id)
         assert retrieved.Name == unique_name  # Unchanged
         assert retrieved.Description == "Updated description"  # Changed
 
@@ -237,7 +257,7 @@ def test_only_changes_with_upsert(sf_client):
         _ = save(update_product, external_id_field="ExternalId__c")
 
         # Verify only the modified fields were updated
-        retrieved = read(Product, product.Id)
+        retrieved = fetch(Product, product.Id)
         assert retrieved.Name == "New Name"
         assert retrieved.Description == "Updated description"
 

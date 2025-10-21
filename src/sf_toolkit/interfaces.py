@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from types import TracebackType
 from typing import Iterable
 from httpx import AsyncClient, Client
@@ -7,6 +8,13 @@ from httpx._client import BaseClient  # type: ignore
 from .auth.types import TokenRefreshCallback, SalesforceToken
 from .apimodels import ApiVersion, UserInfo
 from ._models import SObjectAttributes
+
+
+class OrgType(Enum):
+    PRODUCTION = "Production"
+    SCRATCH = "Scratch"
+    SANDBOX = "Sandbox"
+    DEVELOPER = "Developer"
 
 
 class TokenRefreshCallbackMixin(BaseClient):
@@ -22,6 +30,16 @@ class TokenRefreshCallbackMixin(BaseClient):
 
     def _derive_base_url(self, session: SalesforceToken):
         self._base_url = self._enforce_trailing_slash(session.instance)
+
+    def org_type(self) -> OrgType:
+        if ".scratch." in self.base_url.host.lower():
+            return OrgType.SCRATCH
+        elif ".sandbox." in self.base_url.host.lower():
+            return OrgType.SANDBOX
+        elif self.base_url.host.lower().split(".", 1)[0].endswith("-dev-ed"):
+            return OrgType.DEVELOPER
+        else:
+            return OrgType.PRODUCTION
 
 
 class SalesforceApiHelpersMixin(BaseClient):
@@ -118,7 +136,7 @@ class I_SalesforceClient(
                 del cls._connections[name]
 
     def __enter__(self):
-        super().__enter__()
+        _ = super().__enter__()
         self.register_connection(self._connection_name, self)
         return self
 

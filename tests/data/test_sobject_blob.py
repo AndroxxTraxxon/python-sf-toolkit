@@ -12,7 +12,7 @@ from sf_toolkit.data.fields import (
     BlobData,
     serialize_object,
 )
-from sf_toolkit.data.sf_io import save_insert
+from sf_toolkit.io.api import save_insert
 from sf_toolkit.data.sobject import SObject
 
 

@@ -608,6 +608,114 @@ class BlobData:
             self._filepointer.close()
 
 
+class GeolocationSerialized(typing.TypedDict):
+    latitude: float
+    longitude: float
+
+
+class Geolocation(typing.NamedTuple):
+    latitude: float
+    longitude: float
+
+
+class GeolocationField(Field[Geolocation]):
+    """Field type for handling geolocation data in Salesforce"""
+
+    def __init__(self, *flags: FieldFlag):
+        super().__init__(*flags, py_type=Geolocation)
+
+    @override
+    def revive(self, value: Geolocation | GeolocationSerialized | None):
+        if value is None:
+            return None
+        if isinstance(value, Geolocation):
+            return value
+        if isinstance(value, dict):
+            return Geolocation(
+                latitude=value.get("latitude"), longitude=value.get("longitude")
+            )
+        raise TypeError(f"Cannot revive value of type {type(value)} to Geolocation")
+
+    @override
+    def format(self, value):
+        if value is None:
+            return None
+        return {"latitude": value.latitude, "longitude": value.longitude}
+
+
+class AddressSerialized(typing.TypedDict):
+    Accuracy: typing.NotRequired[str]
+    City: typing.NotRequired[str]
+    Country: typing.NotRequired[str]
+    CountryCode: typing.NotRequired[str]
+    Latitude: typing.NotRequired[float]
+    Longitude: typing.NotRequired[float]
+    PostalCode: typing.NotRequired[str]
+    State: typing.NotRequired[str]
+    StateCode: typing.NotRequired[str]
+    Street: typing.NotRequired[str]
+
+
+class Address(typing.NamedTuple):
+    Accuracy: str | None = None
+    City: str | None = None
+    Country: str | None = None
+    CountryCode: str | None = None
+    Latitude: float | None = None
+    Longitude: float | None = None
+    PostalCode: str | None = None
+    State: str | None = None
+    StateCode: str | None = None
+    Street: str | None = None
+
+
+class AddressField(Field[Address]):
+    """
+    Field type for handling address data in Salesforce
+    """
+
+    def __init__(self, *flags: FieldFlag):
+        super().__init__(*flags, py_type=Address)
+
+    @override
+    def revive(self, value: Address | AddressSerialized | None):
+        if value is None:
+            return None
+        if isinstance(value, Address):
+            return value
+        if isinstance(value, dict):
+            return Address(
+                Accuracy=value.get("Accuracy"),
+                City=value.get("City"),
+                Country=value.get("Country"),
+                CountryCode=value.get("CountryCode"),
+                Latitude=value.get("Latitude"),
+                Longitude=value.get("Longitude"),
+                PostalCode=value.get("PostalCode"),
+                State=value.get("State"),
+                StateCode=value.get("StateCode"),
+                Street=value.get("Street"),
+            )
+        raise TypeError(f"Cannot revive value of type {type(value)} to Address")
+
+    @override
+    def format(self, value: Address | None):
+        if value is None:
+            return None
+        return {
+            "Accuracy": value.Accuracy,
+            "City": value.City,
+            "Country": value.Country,
+            "CountryCode": value.CountryCode,
+            "Latitude": value.Latitude,
+            "Longitude": value.Longitude,
+            "PostalCode": value.PostalCode,
+            "State": value.State,
+            "StateCode": value.StateCode,
+            "Street": value.Street,
+        }
+
+
 class BlobField(Field[BlobData]):
     """Field type for handling blob data in Salesforce"""
 
@@ -664,4 +772,5 @@ FIELD_TYPE_LOOKUP: dict[str, type[Field[typing.Any]]] = {
     "time": TimeField,
     "blob": BlobField,
     "base64": BlobField,
+    "location": GeolocationField,
 }
