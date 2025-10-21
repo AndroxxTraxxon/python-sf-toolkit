@@ -62,9 +62,9 @@ Creating Records
        Industry="Technology",
        Rating="Hot"
    )
-   
+
    # Insert into Salesforce
-   account.save_insert()
+   save_insert(account)
 
 Reading Records
 ^^^^^^^^^^^^^
@@ -72,8 +72,8 @@ Reading Records
 .. code-block:: python
 
    # Retrieve by ID
-   account = Account.read("001xxxxxxxxxxxxxxx")
-   
+   account = read(Account, "001xxxxxxxxxxxxxxx")
+
    # Fetch multiple records
    accounts = Account.list("001xxxxxxxxxxxxxxx", "001yyyyyyyyyyyyyyy")
 
@@ -82,13 +82,13 @@ Updating Records
 
 .. code-block:: python
 
-   account = Account.read("001xxxxxxxxxxxxxxx")
+   account = read(Account, "001xxxxxxxxxxxxxxx")
    account.Name = "Updated Name"
    account.Rating = "Warm"
-   
+
    # Update in Salesforce
    account.save_update()
-   
+
    # Only send modified fields
    account.save_update(only_changes=True)
 
@@ -97,7 +97,7 @@ Deleting Records
 
 .. code-block:: python
 
-   account = Account.read("001xxxxxxxxxxxxxxx")
+   account = read(Account, "001xxxxxxxxxxxxxxx")
    account.delete()
 
 Upsert with External ID
@@ -109,7 +109,7 @@ Upsert with External ID
        ExternalId__c="EXT123",
        Name="New Account"
    )
-   
+
    # Upsert based on external ID
    account.save_upsert(external_id_field="ExternalId__c")
 
@@ -122,7 +122,7 @@ You can also create SObject classes dynamically from Salesforce metadata:
 
    # Generate SObject class from describe metadata
    Contact = SObject.from_description("Contact")
-   
+
    # Use the dynamically created class
    contact = Contact(FirstName="John", LastName="Doe")
    contact.save()

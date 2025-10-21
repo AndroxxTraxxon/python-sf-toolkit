@@ -23,17 +23,21 @@ from sf_toolkit.data.fields import IntField, ListField, TextField
 class WorkOrderLineItem(SObject):
     LineItemNumber = TextField()
 
+
 class WorkOrder(SObject):
     Description = TextField()
     WorkOrderLineItems = ListField(WorkOrderLineItem)
+
 
 class Asset(SObject):
     AssetLevel = IntField()
     WorkOrders = ListField(WorkOrder)
 
+
 class Contact(SObject):
     LastName = TextField()
     Assets = ListField(Asset)
+
 
 class Account(SObject):
     Name = TextField()
@@ -42,9 +46,9 @@ class Account(SObject):
 
 with SalesforceClient(login=lazy_login(sf_cli_alias=True)):
     # The query object will be automatically converted to SOQL syntax
-    query = Account.query().where(Id__in="SELECT AccountId FROM Contact")
+    query = select(Account).where(Id__in="SELECT AccountId FROM Contact")
     print(query)
 
     results = query.execute()
     for record in results:
-        print(record.Name, [contact.LastName for contact in record.Contacts], sep=' | ')
+        print(record.Name, [contact.LastName for contact in record.Contacts], sep=" | ")

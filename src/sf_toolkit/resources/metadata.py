@@ -148,8 +148,8 @@ class RunTestsResult(fields.FieldConfigurableObject):
 class DeployDetails(fields.FieldConfigurableObject):
     componentFailures = fields.ListField(DeployMessage)
     componentSuccesses = fields.ListField(DeployMessage)
-    retrieveResult = fields.ReferenceField(RetrieveResult)
-    runTestResult = fields.ReferenceField(RunTestsResult)
+    retrieveResult = fields.ReferenceField(py_type=RetrieveResult)
+    runTestResult = fields.ReferenceField(py_type=RunTestsResult)
 
 
 class DeployResult(fields.FieldConfigurableObject):
@@ -161,7 +161,7 @@ class DeployResult(fields.FieldConfigurableObject):
     createdBy = fields.IdField()
     createdByName = fields.TextField()
     createdDate = fields.DateTimeField()
-    details = fields.ReferenceField(DeployDetails)
+    details = fields.ReferenceField(py_type=DeployDetails)
     done = fields.CheckboxField()
     errorMessage = fields.TextField()
     errorStatusCode = fields.TextField()
@@ -247,8 +247,8 @@ class DeployRequest(fields.FieldConfigurableObject):
     id = fields.IdField()
     validatedDeployRequestId = fields.IdField()
     url = fields.TextField()
-    deployResult = fields.ReferenceField(DeployResult)
-    deployOptions = fields.ReferenceField(DeployOptions)
+    deployResult = fields.ReferenceField(py_type=DeployResult)
+    deployOptions = fields.ReferenceField(py_type=DeployOptions)
 
     def __init__(self, _connection: I_SalesforceClient | None = None, **fields):
         super().__init__(**fields)
@@ -340,7 +340,9 @@ class MetadataResource(ApiResource):
                         (
                             None,
                             json.dumps(
-                                DeployRequest(deployOptions=deploy_options).serialize()
+                                fields.serialize_object(
+                                    DeployRequest(deployOptions=deploy_options)
+                                )
                             ),
                             "application/json",
                         ),

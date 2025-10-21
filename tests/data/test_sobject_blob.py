@@ -5,7 +5,14 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from sf_toolkit.data.fields import BlobField, TextField, IdField, BlobData
+from sf_toolkit.data.fields import (
+    BlobField,
+    TextField,
+    IdField,
+    BlobData,
+    serialize_object,
+)
+from sf_toolkit.data.sf_io import save_insert
 from sf_toolkit.data.sobject import SObject
 
 
@@ -74,7 +81,7 @@ def test_save_insert_with_text_blob(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Call save_insert
-    doc.save_insert()
+    save_insert(doc)
 
     # Verify the API call was made with the correct parameters
     mock_sf_client.post.assert_called_once()
@@ -124,7 +131,7 @@ def test_save_insert_with_binary_blob(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Call save_insert
-    doc.save_insert()
+    save_insert(doc)
 
     # Verify the API call was made with the correct parameters
     mock_sf_client.post.assert_called_once()
@@ -167,7 +174,7 @@ def test_save_insert_with_file_blob(mock_sf_client):
         mock_sf_client.post.return_value = mock_response
 
         # Call save_insert
-        doc.save_insert()
+        save_insert(doc)
 
         # Verify the API call was made with the correct parameters
         mock_sf_client.post.assert_called_once()
@@ -210,7 +217,7 @@ def test_save_insert_with_stream_blob(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Call save_insert
-    doc.save_insert()
+    save_insert(doc)
 
     # Verify the API call was made with the correct parameters
     mock_sf_client.post.assert_called_once()
@@ -259,7 +266,7 @@ def test_save_insert_with_blob_and_reload(mock_sf_client):
     mock_sf_client.get.return_value = get_response
 
     # Call save_insert with reload
-    doc.save_insert(reload_after_success=True)
+    save_insert(doc, reload_after_success=True)
 
     # Verify both API calls were made
     mock_sf_client.post.assert_called_once()
@@ -286,7 +293,7 @@ def test_blob_field_not_included_in_serialization():
     )
 
     # Serialize the document
-    serialized = doc.serialize()
+    serialized = serialize_object(doc)
 
     # Check that Body is not included in the serialized data
     assert "Name" in serialized

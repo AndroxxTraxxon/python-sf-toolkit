@@ -37,7 +37,7 @@ with SalesforceClient(login=cli_login()) as sf:
     account.save()
 
     # Query accounts
-    result = Account.query().execute()
+    result = select(Account).execute()
 
     for acc in result:
         print(f"{acc.Name} ({acc.Industry}) {acc.Description}")

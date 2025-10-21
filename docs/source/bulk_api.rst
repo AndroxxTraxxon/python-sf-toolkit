@@ -83,7 +83,7 @@ To update large sets of records:
 .. code-block:: python
 
    # Get existing records
-   contacts = Contact.query().where(LastName="Bulk").execute()
+   contacts = select(Contact).where(LastName="Bulk").execute()
 
    # Convert to SObjectList
    contact_list = SObjectList(contacts)

@@ -3,51 +3,25 @@ Module for basic field and field-configurable object scaffolding
 """
 
 from collections import defaultdict
+from collections.abc import Mapping
 import datetime
 from enum import Flag, auto
 import typing
 import io
 from pathlib import Path
+from sf_toolkit.logger import getLogger
+from typing_extensions import override
 import warnings
 
 from httpx._types import FileContent  # type: ignore
 
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
+_LOGGER = getLogger("data")
 
 
 class ReadOnlyAssignmentException(TypeError):
     """Exception for when value assignments are performed on readonly fields"""
-
-
-class SObjectFieldDescribe(typing.NamedTuple):
-    """Represents metadata about a Salesforce SObject field"""
-
-    name: str
-    label: str
-    type: str
-    length: int = 0
-    nillable: bool = False
-    picklistValues: list[dict] = []
-    referenceTo: list[str] = []
-    relationshipName: str | None = None
-    unique: bool = False
-    updateable: bool = False
-    createable: bool = False
-    defaultValue: typing.Any = None
-    externalId: bool = False
-    autoNumber: bool = False
-    calculated: bool = False
-    caseSensitive: bool = False
-    dependentPicklist: bool = False
-    deprecatedAndHidden: bool = False
-    displayLocationInDecimal: bool = False
-    filterable: bool = False
-    groupable: bool = False
-    permissionable: bool = False
-    restrictedPicklist: bool = False
-    sortable: bool = False
-    writeRequiresMasterRead: bool = False
 
 
 class MultiPicklistValue(str):
@@ -56,8 +30,9 @@ class MultiPicklistValue(str):
     values: list[str]
 
     def __init__(self, source: str):
-        self.values = source.split(";")
+        self.values = (source and source.split(";")) or []
 
+    @override
     def __str__(self):
         return ";".join(self.values)
 
@@ -86,122 +61,146 @@ class FieldConfigurableObject:
     Base object to be extended with Field definitions.
     """
 
+    _fields: typing.ClassVar[dict[str, "Field[type[typing.Any]]"]]
+    _strict_fields: typing.ClassVar[bool] = False
+
     _values: dict[str, typing.Any]
     _dirty_fields: set[str]
-    _fields: typing.ClassVar[dict[str, "Field"]]
-    _type_field_registry: typing.ClassVar[
-        dict[type["FieldConfigurableObject"], dict[str, "Field"]]
-    ] = defaultdict(dict)
 
-    def __init__(self, _strict_fields: bool = False, **field_values):
+    def __init__(
+        self,
+        **field_values,
+    ):
         self._values = {}
+        _fields = object_fields(type(self))
         self._dirty_fields = set()
         for field, value in field_values.items():
-            if field not in self._fields:
+            if field not in _fields:
                 message = f"Field {field} not defined for {type(self).__qualname__}"
-                if _strict_fields:
+                if type(self)._strict_fields:
                     raise KeyError(message)
                 else:
                     warnings.warn(message)
             setattr(self, field, value)
-        self._dirty_fields.clear()
+        dirty_fields(self).clear()
 
-    def __init_subclass__(cls) -> None:
-        cls._fields = cls._type_field_registry[cls]
+    def __init_subclass__(cls, strict_fields: bool = False) -> None:
+        cls_fields = object_fields(cls)
         for parent in cls.__mro__:
-            if parent_fields := getattr(parent, "_fields", None):
-                for field, fieldtype in parent_fields.items():
-                    if field not in cls._fields:
-                        cls._fields[field] = fieldtype
-
-    @classmethod
-    def keys(cls) -> typing.Iterable[str]:
-        """
-        Returns the field names for the fields configured on the class
-        This is most frequently used with the **operator
-        """
-        assert hasattr(cls, "_fields"), (
-            f"No Field definitions found for class {cls.__name__}"
-        )
-        return cls._fields.keys()
-
-    @classmethod
-    def query_fields(cls) -> list[str]:
-        """
-        returns the list of fully qualified fields as they would
-        need to appear in a SOQL query
-        """
-        assert hasattr(cls, "_fields"), (
-            f"No Field definitions found for class {cls.__name__}"
-        )
-        fields = list()
-        for field, fieldtype in cls._fields.items():
             if (
-                isinstance(fieldtype, ReferenceField)
-                and fieldtype.meta_py_type is not None
-                and issubclass(fieldtype.meta_py_type, FieldConfigurableObject)
+                issubclass(parent, FieldConfigurableObject)
+                and parent is not FieldConfigurableObject
             ):
-                fields.extend(
-                    [
-                        field + "." + subfield
-                        for subfield in fieldtype.meta_py_type.query_fields()
-                    ]
-                )
-            else:
-                fields.append(field)
-        return fields
+                parent_fields = object_fields(parent)
+                for field, fieldtype in parent_fields.items():
+                    if field not in cls_fields:
+                        cls_fields[field] = fieldtype
+        cls._strict_fields = strict_fields
 
-    @property
-    def dirty_fields(self) -> set[str]:
-        """
-        Returns the set of fields that have been modified since the last
-        time this object was `.save()`-d to Salesforce
-        """
-        return self._dirty_fields
-
-    @dirty_fields.deleter
-    def dirty_fields(self):
-        self._dirty_fields = set()
-
-    def serialize(self, only_changes: bool = False, all_fields: bool = False):
-        """
-        Serialize this record to standard python types (dict, list, str, etc.)
-        for easier transport
-        with file formats like JSON, YAML
-        """
-        assert not (only_changes and all_fields), (
-            "Cannot serialize both only changes and all fields."
-        )
-        if all_fields:
-            return {
-                name: field.format(self._values.get(name, None))
-                for name, field in self._fields.items()
-            }
-
-        if only_changes:
-            return {
-                name: field.format(value)
-                for name, value in self._values.items()
-                if (field := self._fields[name])
-                and name in self.dirty_fields
-                and FieldFlag.readonly not in field.flags
-            }
-
-        return {
-            name: field.format(value)
-            for name, value in self._values.items()
-            if (field := self._fields[name]) and FieldFlag.readonly not in field.flags
-        }
-
-    def __getitem__(self, name):
-        if name not in self.keys():
+    def __getitem__(self, name: str):
+        value = getattr(self, name, None)
+        if value is None and name not in object_fields(type(self)):
             raise KeyError(f"Undefined field {name} on object {type(self)}")
-        return getattr(self, name, None)
+        return value
 
-    def __setitem__(self, name, value):
-        if name not in self.keys():
+    def __setitem__(self, name: str, value: typing.Any):
+        if name not in object_fields(type(self)):
             raise KeyError(f"Undefined field {name} on object {type(self)}")
         setattr(self, name, value)
+
+
+_field_map: dict[type[FieldConfigurableObject], dict[str, "Field[typing.Any]"]] = (
+    defaultdict(dict)
+)
+
+
+def object_fields(
+    cls: type[FieldConfigurableObject],
+) -> dict[str, "Field[typing.Any]"]:
+    """
+    returns the dictionary of field name to Field instances
+    configured on this class
+    """
+    return _field_map[cls]
+
+
+def object_values(rec: FieldConfigurableObject) -> Mapping[str, typing.Any]:
+    """
+    returns the dictionary of field name to current value
+    configured on this object instance
+    """
+    return {name: getattr(rec, name, None) for name in object_fields(type(rec))}
+
+
+def query_fields(cls: type[FieldConfigurableObject]) -> list[str]:
+    """
+    returns the list of fully qualified fields as they would
+    need to appear in a SOQL query
+    """
+    fields: list[str] = list()
+    for field, fieldtype in object_fields(cls).items():
+        if (
+            isinstance(fieldtype, ReferenceField)
+            and fieldtype.meta_py_type is not None
+            and issubclass(fieldtype.meta_py_type, FieldConfigurableObject)
+        ):
+            fields.extend(
+                [
+                    field + "." + subfield
+                    for subfield in query_fields(fieldtype.meta_py_type)
+                ]
+            )
+        else:
+            fields.append(field)
+    return fields
+
+
+def dirty_fields(rec: FieldConfigurableObject) -> set[str]:
+    """
+    Returns the set of fields that have been modified since the last
+    time this object was `.save()`-d to Salesforce
+    """
+    _dirty: set[str] | None = getattr(rec, "_dirty_fields", None)
+    if _dirty is None:
+        _dirty = set()
+        setattr(rec, "_dirty_fields", _dirty)
+    return _dirty
+
+
+def serialize_object(
+    record: FieldConfigurableObject,
+    only_changes: bool = False,
+    all_fields: bool = False,
+):
+    """
+    Serialize this record to standard python types (dict, list, str, etc.)
+    for easier transport
+    with file formats like JSON, YAML
+    """
+    assert not (only_changes and all_fields), (
+        "Cannot serialize both only changes and all fields."
+    )
+    values = object_values(record)
+    fields = object_fields(type(record))
+    if all_fields:
+        return {
+            name: field.format(values.get(name, None)) for name, field in fields.items()
+        }
+
+    if only_changes:
+        return {
+            name: field.format(value)
+            for name, value in values.items()
+            if (field := fields[name])
+            and name in dirty_fields(record)
+            and FieldFlag.readonly not in field.flags
+        }
+
+    return {
+        name: field.format(value)
+        for name, value in record._values.items()
+        if (field := fields[name]) and FieldFlag.readonly not in field.flags
+    }
 
 
 _FCO_Type = typing.TypeVar("_FCO_Type", bound=FieldConfigurableObject)
@@ -214,9 +213,10 @@ class Field(typing.Generic[T]):
 
     _owner: type
     _py_type: type[T] | None = None
+    _name: str
     flags: set[FieldFlag]
 
-    def __init__(self, py_type: type[T], *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, py_type: type[T]):
         self._py_type = py_type
         self.flags = set(flags)
         self._owner = type(None)
@@ -224,9 +224,7 @@ class Field(typing.Generic[T]):
 
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> T:
-        if obj is None:
-            return self
-        return obj._values.get(self._name)  # type: ignore
+        return getattr(obj, "_values").get(self._name)  # type: ignore
 
     def __set__(self, obj: FieldConfigurableObject, value: typing.Any):
         value = self.revive(value)
@@ -236,7 +234,10 @@ class Field(typing.Generic[T]):
                 f"Field {self._name} is readonly on object {self._owner.__name__}"
             )
         obj._values[self._name] = value
-        obj.dirty_fields.add(self._name)
+        dirty_fields(obj).add(self._name)
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self._owner.__name__}.{self._name}>"
 
     @property
     def meta_py_type(self) -> type[T] | None:
@@ -261,12 +262,12 @@ class Field(typing.Generic[T]):
         """Lifecycle hook implicitly called"""
         self._owner = cls
         self._name = name
-        cls._type_field_registry[cls][name] = self
+        object_fields(cls)[name] = self
 
     def __delete__(self, obj: FieldConfigurableObject):
         del obj._values[self._name]
         if hasattr(obj, "_dirty_fields"):
-            obj._dirty_fields.discard(self._name)
+            dirty_fields(obj).discard(self._name)
 
     def validate(self, value):
         """Validates the revived value passed to the field"""
@@ -285,8 +286,9 @@ class RawField(Field[typing.Any]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(type(None), *flags)
+        super().__init__(*flags, py_type=object)
 
+    @override
     def validate(self, value):
         return
 
@@ -297,7 +299,7 @@ class TextField(Field[str]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(str, *flags)
+        super().__init__(*flags, py_type=str)
 
 
 class IdField(TextField):
@@ -306,7 +308,8 @@ class IdField(TextField):
     Strings used by Salesforce
     """
 
-    def validate(self, value):
+    @override
+    def validate(self, value: str):
         if value is None:
             return
         message = f" '{value}' is not a valid Salesforce Id. "
@@ -329,11 +332,14 @@ class PicklistField(TextField):
         super().__init__(*flags)
         self._options_ = options or []
 
+    @override
     def validate(self, value: str):
         if self._options_ and value not in self._options_:
             raise ValueError(
-                f"Selection '{value}' is not in "
-                f"configured values for field {self._name}"
+                (
+                    f"Selection '{value}' is not in "
+                    f"configured values for field {self._name}"
+                )
             )
 
 
@@ -346,12 +352,14 @@ class MultiPicklistField(Field[MultiPicklistValue]):
     _options_: list[str]
 
     def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
-        super().__init__(MultiPicklistValue, *flags)
+        super().__init__(*flags, py_type=MultiPicklistValue)
         self._options_ = options or []
 
+    @override
     def revive(self, value: str):
         return MultiPicklistValue(value)
 
+    @override
     def validate(self, value: MultiPicklistValue):
         for item in value.values:
             if self._options_ and item not in self._options_:
@@ -366,8 +374,9 @@ class NumberField(Field[float]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(float, *flags)
+        super().__init__(*flags, py_type=float)
 
+    @override
     def revive(self, value: typing.Any):
         return None if value is None else float(value)
 
@@ -378,8 +387,9 @@ class IntField(Field[int]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(int, *flags)
+        super().__init__(*flags, py_type=int)
 
+    @override
     def revive(self, value: typing.Any):
         return None if value is None else int(value)
 
@@ -390,8 +400,9 @@ class CheckboxField(Field[bool]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(bool, *flags)
+        super().__init__(*flags, py_type=bool)
 
+    @override
     def revive(self, value: typing.Any):
         return None if value is None else bool(value)
 
@@ -402,17 +413,19 @@ class DateField(Field[datetime.date]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(datetime.date, *flags)
+        super().__init__(*flags, py_type=datetime.date)
 
-    def revive(self, value: datetime.date | str):
-        if value is None:
-            return None
-        if isinstance(value, datetime.date):
+    @override
+    def revive(self, value: typing.Any):
+        if value is None or isinstance(value, datetime.date):
             return value
         return datetime.date.fromisoformat(value)
 
-    def format(self, value: datetime.date):
-        return value.isoformat()
+    @override
+    def format(self, value: datetime.date | None):
+        if value:
+            return value.isoformat()
+        return None
 
 
 class TimeField(Field[datetime.time]):
@@ -421,15 +434,19 @@ class TimeField(Field[datetime.time]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(datetime.time, *flags)
+        super().__init__(*flags, py_type=datetime.time)
 
-    def format(self, value):
+    @override
+    def format(self, value: datetime.time | None):
         if value is None:
             return None
         return value.isoformat(timespec="milliseconds")
 
-    def revive(self, value):
-        return datetime.time.fromisoformat(str(value))
+    @override
+    def revive(self, value: typing.Any):
+        if value:
+            return datetime.time.fromisoformat(str(value))
+        return None
 
 
 class DateTimeField(Field[datetime.datetime]):
@@ -438,13 +455,15 @@ class DateTimeField(Field[datetime.datetime]):
     """
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(datetime.datetime, *flags)
+        super().__init__(*flags, py_type=datetime.datetime)
 
+    @override
     def revive(self, value: str | None):
         if value is None:
             return None
         return datetime.datetime.fromisoformat(str(value))
 
+    @override
     def format(self, value: datetime.datetime) -> str:
         if value.tzinfo is None:
             value = value.astimezone()
@@ -457,7 +476,8 @@ class ReferenceField(Field[_FCO_Type]):
     typically represented in Salesforce as a lookup or master-detail relationship
     """
 
-    def revive(self, value):
+    @override
+    def revive(self, value: typing.Any):  # pyright: ignore[reportIncompatibleMethodOverride]
         if value is None:
             return None
         assert self._py_type is not None
@@ -466,10 +486,14 @@ class ReferenceField(Field[_FCO_Type]):
         if isinstance(value, dict):
             return self._py_type(**value)
 
-    def format(self, value: _FCO_Type):
+    @override
+    def format(self, value: _FCO_Type) -> dict[str, typing.Any] | _FCO_Type:
         try:
-            return value.serialize()
+            return serialize_object(value)
         except AttributeError:
+            _LOGGER.warning(
+                f"Unable to format value for field {self._owner.__qualname__}.{self._name}: {str(value)}"
+            )
             return value
 
 
@@ -479,32 +503,44 @@ class ListField(Field[list[_FCO_Type]]):
     typically represented in Salesforce as a lookup or master-detail relationship
     """
 
-    _nested_type: type[_FCO_Type]
+    _nested_type: type[_FCO_Type | typing.Any]
 
-    def __init__(self, item_type: type[_FCO_Type], *flags: FieldFlag):
+    def __init__(self, item_type: type[_FCO_Type | typing.Any], *flags: FieldFlag):
         self._nested_type = item_type
-        super().__init__(list, *flags)
+        super().__init__(*flags, py_type=list)
 
         try:
-            global SObjectList
+            global SObjectList, SObject
             # ensure SObjectList is imported
             # at the time of SObject type/class definition
-            SObjectList  # type: ignore
+            _ = SObjectList
         except NameError:
-            from .sobject import SObjectList
+            from .sobject import SObjectList, SObject
 
-    def revive(self, value: list[dict | _FCO_Type] | None):  # type: ignore
+    def revive(
+        self,
+        value: list[dict[str, typing.Any] | _FCO_Type] | dict[str, typing.Any] | None,
+    ):  # type: ignore
         if value is None:
             return None
         if isinstance(value, SObjectList):
             return value
         if isinstance(value, list):
-            if issubclass(self._nested_type, FieldConfigurableObject):
-                return SObjectList([self._nested_type(**item) for item in value])  # type: ignore
-            return value
+            if issubclass(self._nested_type, SObject):
+                return SObjectList(  # type: ignore
+                    (
+                        self._nested_type(**object_values(item))
+                        if isinstance(item, SObject)
+                        else self._nested_type(**item)
+                        for item in value
+                    )
+                )  # type: ignore
+            else:
+                return value
         if isinstance(value, dict):
             # assume the dict is a QueryResult-formatted dictionary
-            if issubclass(self._nested_type, FieldConfigurableObject):
+
+            if issubclass(self._nested_type, SObject):
                 return SObjectList(
                     [self._nested_type(**item) for item in value["records"]]
                 )  # type: ignore
@@ -557,7 +593,7 @@ class BlobData:
             self._filepointer = self.data.open()
             with open(self.data, "rb") as f:
                 return f.read()
-        elif isinstance(self.data, io.IOBase):
+        elif isinstance(self.data, io.IOBase):  #  pyright: ignore[reportUnnecessaryIsInstance]
             # Reset the file pointer if it's a file object
             if hasattr(self.data, "seek"):
                 self.data.seek(0)
@@ -565,7 +601,9 @@ class BlobData:
         else:
             raise TypeError(f"Unsupported data type: {type(self.data)}")
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(
+        self, exc_type: type[Exception], exc_value: Exception, traceback: typing.Any
+    ):
         if self._filepointer:
             self._filepointer.close()
 
@@ -574,7 +612,7 @@ class BlobField(Field[BlobData]):
     """Field type for handling blob data in Salesforce"""
 
     def __init__(self, *flags: FieldFlag):
-        super().__init__(BlobData, *flags)
+        super().__init__(*flags, py_type=BlobData)
 
     def revive(self, value):
         if value is None:
@@ -603,10 +641,10 @@ class BlobField(Field[BlobData]):
                 f"Field {self._name} is readonly on object {self._owner.__name__}"
             )
         setattr(obj, self._name + "_BlobData", value)
-        obj.dirty_fields.add(self._name)
+        dirty_fields(obj).add(self._name)
 
 
-FIELD_TYPE_LOOKUP: dict[str, type[Field]] = {
+FIELD_TYPE_LOOKUP: dict[str, type[Field[typing.Any]]] = {
     "boolean": CheckboxField,
     "id": IdField,
     "string": TextField,

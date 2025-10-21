@@ -24,7 +24,7 @@ class User(SObject):
         elif isinstance(connection, SalesforceClient):
             client = connection
         else:
-            client = self._client_connection()
+            client = SalesforceClient.get_connection(self.attributes.connection)
 
         url = f"{client.sobjects_url}/{self.attributes.type}/{self.Id}/password"
         response = client.get(url, headers={"Accept": "application/json"})
@@ -39,7 +39,7 @@ class User(SObject):
         elif isinstance(connection, SalesforceClient):
             client = connection
         else:
-            client = self._client_connection()
+            client = SalesforceClient.get_connection(self.attributes.connection)
 
         url = f"{client.sobjects_url}/{self.attributes.type}/{self.Id}/password"
         client.post(url, json={"NewPassword": password})
@@ -52,7 +52,7 @@ class User(SObject):
         elif isinstance(connection, SalesforceClient):
             client = connection
         else:
-            client = self._client_connection()
+            client = SalesforceClient.get_connection(self.attributes.connection)
 
         url = f"{client.sobjects_url}/{self.attributes.type}/{self.Id}/password"
         response = client.delete(url, headers={"Accept": "application/json"})

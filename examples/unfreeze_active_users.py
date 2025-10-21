@@ -7,16 +7,17 @@ import logging
 LOGGER = logging.getLogger()
 logging.basicConfig(level=logging.INFO)
 
+
 class UserLogin(SObject):
     Id = IdField()
     IsFrozen = CheckboxField()
 
-async def unfreeze_active_users():
 
+async def unfreeze_active_users():
     users_to_unfreeze = (
-        UserLogin.query()
-        .where(IsFrozen = True)
-        .and_where(UserId__in = "SELECT Id FROM User WHERE IsActive = TRUE")
+        select(UserLogin)
+        .where(IsFrozen=True)
+        .and_where(UserId__in="SELECT Id FROM User WHERE IsActive = TRUE")
         .execute(timeout=900)
     )
     LOGGER.info("Pulling %d users to unfreeze", len(users_to_unfreeze))

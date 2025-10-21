@@ -135,15 +135,3 @@ class I_SalesforceClient(
 
 class I_SObject(ABC):
     attributes: SObjectAttributes
-
-    @classmethod
-    @abstractmethod
-    def _client_connection(cls) -> I_SalesforceClient: ...
-
-    @classmethod
-    @abstractmethod
-    def keys(cls) -> Iterable[str]: ...
-
-    @classmethod
-    @abstractmethod
-    def query_fields(cls) -> Iterable[str]: ...

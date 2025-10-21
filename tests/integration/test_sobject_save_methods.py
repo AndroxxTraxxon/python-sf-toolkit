@@ -2,6 +2,17 @@ import pytest
 import datetime
 from time import sleep
 
+from sf_toolkit.data.fields import dirty_fields
+from sf_toolkit.data.sf_io import (
+    delete,
+    read,
+    save,
+    save_insert,
+    save_update,
+    save_upsert,
+    sobject_list,
+)
+
 from ..unit_test_models import Product, Account
 
 
@@ -19,7 +30,7 @@ def test_insert_and_delete(sf_client):
 
     try:
         # Directly test save_insert method
-        account.save_insert()
+        save_insert(account)
 
         # Verify the account was created and has an ID
         assert hasattr(account, "Id")
@@ -27,7 +38,7 @@ def test_insert_and_delete(sf_client):
         assert isinstance(account.Id, str)
 
         # Retrieve the account to verify it exists
-        retrieved = Account.read(account.Id)
+        retrieved = read(Account, account.Id)
         assert retrieved.Name == unique_name
         assert retrieved.Industry == "Technology"
         assert retrieved.Description == "Test insert account"
@@ -35,7 +46,7 @@ def test_insert_and_delete(sf_client):
     finally:
         # Clean up - delete the account if it was created
         if hasattr(account, "Id") and account.Id:
-            account.delete()
+            delete(account)
 
 
 def test_update(sf_client):
@@ -49,7 +60,7 @@ def test_update(sf_client):
     account = Account(
         Name=unique_name, Industry="Healthcare", Description="Original description"
     )
-    account.save()
+    save(account)
 
     try:
         # Now update the account
@@ -58,10 +69,10 @@ def test_update(sf_client):
         account.AnnualRevenue = 5000000.0
 
         # Use save_update to update the account
-        account.save_update()
+        save_update(account)
 
         # Retrieve the account to verify changes
-        retrieved = Account.read(account.Id)
+        retrieved = read(Account, account.Id)
         assert retrieved.Name == unique_name  # Unchanged
         assert retrieved.Industry == "Financial Services"  # Changed
         assert retrieved.Description == "Updated description"  # Changed
@@ -70,7 +81,7 @@ def test_update(sf_client):
     finally:
         # Clean up
         if hasattr(account, "Id") and account.Id:
-            account.delete()
+            delete(account)
 
 
 def test_only_changes_flag(sf_client):
@@ -87,20 +98,20 @@ def test_only_changes_flag(sf_client):
         Description="Original description",
         NumberOfEmployees=500,
     )
-    account.save()
+    save(account)
 
     try:
         # Get a fresh copy to manipulate
-        account = Account.read(account.Id)
+        account = read(Account, account.Id)
 
         # Only change one field
         account.Description = "Modified description"
 
         # Update with only_changes=True (default)
-        account.save_update()
+        save_update(account)
 
         # Retrieve a fresh copy
-        retrieved = Account.read(account.Id)
+        retrieved = read(Account, account.Id)
         assert retrieved.Description == "Modified description"
 
         # Check if the client calls match the expected behavior by making another change
@@ -109,17 +120,17 @@ def test_only_changes_flag(sf_client):
         retrieved.Industry = "Education"
 
         # Update again
-        retrieved.save_update()
+        save_update(retrieved)
 
         # Get a final copy to verify
-        final = Account.read(account.Id)
+        final = read(Account, account.Id)
         assert final.Industry == "Education"
         assert final.NumberOfEmployees is None
 
     finally:
         # Clean up
         if hasattr(account, "Id") and account.Id:
-            account.delete()
+            delete(account)
 
 
 def test_save_with_reload(sf_client):
@@ -132,7 +143,7 @@ def test_save_with_reload(sf_client):
 
     try:
         # Save with reload_after_success=True
-        account.save(reload_after_success=True)
+        save(account, reload_after_success=True)
 
         # Verify system fields were populated (these come from the reload)
         assert hasattr(account, "CreatedDate")
@@ -146,7 +157,7 @@ def test_save_with_reload(sf_client):
         sleep(1)
 
         # Save with reload again
-        account.save(reload_after_success=True)
+        save(account, reload_after_success=True)
 
         # Verify LastModifiedDate was updated
         assert account.LastModifiedDate > original_modified_date
@@ -154,7 +165,7 @@ def test_save_with_reload(sf_client):
     finally:
         # Clean up
         if hasattr(account, "Id") and account.Id:
-            account.delete()
+            delete(account)
 
 
 def test_upsert_existing(sf_client):
@@ -168,7 +179,7 @@ def test_upsert_existing(sf_client):
         Description="Original product description",
         ExternalId__c=unique_external_id,
     )
-    product.save()
+    save(product)
 
     try:
         # Create a new instance with the same external ID but different data
@@ -179,8 +190,10 @@ def test_upsert_existing(sf_client):
         )
 
         # Use upsert to update the existing record
-        updated_product.save_upsert(
-            external_id_field="ExternalId__c", reload_after_success=True
+        save_upsert(
+            updated_product,
+            external_id_field="ExternalId__c",
+            reload_after_success=True,
         )
 
         # Verify the record was updated
@@ -190,13 +203,13 @@ def test_upsert_existing(sf_client):
         assert updated_product.Description == "Updated product description"
 
         # Retrieve to double-check
-        retrieved = Product.read(product.Id)
+        retrieved = read(Product, product.Id)
         assert retrieved.Name == "Updated Product Name"
 
     finally:
         # Clean up
         if hasattr(product, "Id") and product.Id:
-            product.delete()
+            delete(product)
 
 
 def test_upsert_new(sf_client):
@@ -213,14 +226,14 @@ def test_upsert_new(sf_client):
 
     try:
         # Use upsert to create a new record
-        product.save_upsert(external_id_field="ExternalId__c")
+        save_upsert(product, external_id_field="ExternalId__c")
 
         # Verify the record was created with a new ID
         assert hasattr(product, "Id")
         assert product.Id is not None
 
         # Retrieve to confirm
-        retrieved = Product.read(product.Id)
+        retrieved = read(Product, product.Id)
         assert retrieved.Name == "Test Product"
         assert retrieved.Description == "A test product for upsert"
         assert retrieved.ExternalId__c == unique_external_id
@@ -228,7 +241,7 @@ def test_upsert_new(sf_client):
     finally:
         # Clean up
         if hasattr(product, "Id") and product.Id:
-            product.delete()
+            delete(product)
 
 
 def test_update_only_flag(sf_client):
@@ -245,24 +258,24 @@ def test_update_only_flag(sf_client):
     with pytest.raises(
         ValueError, match="Cannot update record without an ID or external ID"
     ):
-        account.save(update_only=True)
+        save(account, update_only=True)
 
     # Now save it normally to create it
-    account.save()
+    save(account)
 
     try:
         # Modify and update with update_only=True should succeed
         account.Name = f"{unique_name} - Updated"
-        account.save(update_only=True)
+        save(account, update_only=True)
 
         # Verify update worked
-        retrieved = Account.read(account.Id)
+        retrieved = read(Account, account.Id)
         assert retrieved.Name == f"{unique_name} - Updated"
 
     finally:
         # Clean up
         if hasattr(account, "Id") and account.Id:
-            account.delete()
+            delete(account)
 
 
 def test_batch_modify_and_save(sf_client):
@@ -279,7 +292,7 @@ def test_batch_modify_and_save(sf_client):
             Industry="Technology",
             Description=f"Initial description #{i}",
         )
-        account.save()
+        save(account)
         accounts.append(account)
 
     ids = [account.Id for account in accounts]
@@ -292,10 +305,10 @@ def test_batch_modify_and_save(sf_client):
 
         # Save all modifications
         for account in accounts:
-            account.save()
+            save(account)
 
         # Retrieve all accounts to verify changes
-        retrieved_accounts = Account.list(*ids)
+        retrieved_accounts = sobject_list(Account, *ids)
 
         # Verify all changes were saved
         for i, account in enumerate(retrieved_accounts):
@@ -307,7 +320,7 @@ def test_batch_modify_and_save(sf_client):
         # Clean up
         for account in accounts:
             if hasattr(account, "Id") and account.Id:
-                account.delete()
+                delete(account)
 
 
 def test_dirty_fields_tracking(sf_client):
@@ -321,44 +334,43 @@ def test_dirty_fields_tracking(sf_client):
     account = Account(Name=unique_name, Industry="Consulting")
 
     # After initialization, no fields should be dirty
-    assert hasattr(account, "dirty_fields")
-    assert account.dirty_fields is not None
-    assert not account.dirty_fields
+    assert dirty_fields(account) is not None
+    assert not dirty_fields(account)
 
     # Save the account
-    account.save()
+    save(account)
 
     # After saving, no fields should be dirty
-    assert len(account._dirty_fields) == 0
+    assert len(dirty_fields(account)) == 0
 
     try:
         # Modify a field
         account.Description = "New description"
 
         # Only the modified field should be dirty
-        assert len(account._dirty_fields) == 1
-        assert "Description" in account._dirty_fields
+        assert len(dirty_fields(account)) == 1
+        assert "Description" in dirty_fields(account)
 
         # Modify another field
         account.Industry = "Education"
 
         # Both modified fields should be dirty
-        assert len(account._dirty_fields) == 2
-        assert "Description" in account._dirty_fields
-        assert "Industry" in account._dirty_fields
+        assert len(dirty_fields(account)) == 2
+        assert "Description" in dirty_fields(account)
+        assert "Industry" in dirty_fields(account)
 
         # Save the changes
-        account.save()
+        save(account)
 
         # After saving, no fields should be dirty again
-        assert len(account._dirty_fields) == 0
+        assert len(dirty_fields(account)) == 0
 
         # Retrieve the account to verify changes
-        retrieved = Account.read(account.Id)
+        retrieved = read(Account, account.Id)
         assert retrieved.Description == "New description"
         assert retrieved.Industry == "Education"
 
     finally:
         # Clean up
         if hasattr(account, "Id") and account.Id:
-            account.delete()
+            delete(account)

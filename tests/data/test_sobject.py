@@ -1,6 +1,16 @@
 import pytest
 from unittest.mock import MagicMock, Mock
 import datetime
+from sf_toolkit.data.sf_io import (
+    read,
+    save,
+    save_insert,
+    save_update,
+    save_upsert,
+    sobject_describe,
+    sobject_from_description,
+    sobject_list,
+)
 from sf_toolkit.data.sobject import SObject
 from sf_toolkit.data.fields import (
     DateField,
@@ -9,6 +19,8 @@ from sf_toolkit.data.fields import (
     MultiPicklistValue,
     TextField,
     ReadOnlyAssignmentException,
+    dirty_fields,
+    object_fields,
 )
 from sf_toolkit.data.query_builder import SoqlQuery
 
@@ -20,7 +32,7 @@ def test_sobject_class_definition():
     # Test basic class properties
 
     assert Account.attributes.type == "Account"
-    assert Account.keys() == frozenset(
+    assert object_fields(Account).keys() == frozenset(
         {
             "Id",
             "Name",
@@ -78,7 +90,7 @@ def test_sobject_get(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Call get method
-    contact = Contact.read("003XX000004UINIAA4")
+    contact = read(Contact, "003XX000004UINIAA4")
     # Verify the result
     assert contact.Id == "003XX000004UINIAA4"
     assert contact.FirstName == "John"
@@ -114,7 +126,9 @@ def test_sobject_fetch(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Call fetch method
-    opportunities = Opportunity.list("006XX000004UvVtIAK", "006XX000004UvVuIAK")
+    opportunities = sobject_list(
+        Opportunity, "006XX000004UvVtIAK", "006XX000004UvVuIAK"
+    )
 
     # Verify the results
     assert len(opportunities) == 2
@@ -152,7 +166,7 @@ def test_sobject_describe(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Call describe method
-    describe_result = Lead.describe()
+    describe_result = sobject_describe(Lead)
 
     # Verify the result
     assert describe_result["name"] == "Lead"
@@ -211,11 +225,11 @@ def test_from_description(mock_sf_client):
     mock_sf_client.get.return_value = mock_response
 
     # Generate SObject class from description
-    CustomObject = SObject.from_description("CustomObject__c")
+    CustomObject = sobject_from_description("CustomObject__c")
 
     # Verify the class was created correctly
     assert CustomObject.attributes.type == "CustomObject__c"
-    assert CustomObject.keys() == frozenset(
+    assert object_fields(CustomObject).keys() == frozenset(
         {
             "Id",
             "Name",
@@ -313,7 +327,7 @@ def test_save_insert(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Save the account
-    account.save_insert()
+    save_insert(account)
 
     # Verify the ID was set on the object
     assert account.Id == "001XX0000003DGTNEW"
@@ -362,7 +376,7 @@ def test_save_insert_with_reload(mock_sf_client):
     mock_sf_client.get.return_value = get_response
 
     # Save the account with reload
-    account.save_insert(reload_after_success=True)
+    save_insert(account, reload_after_success=True)
 
     # Verify the ID was set on the object
     assert account.Id == "001XX0000003DGTREL"
@@ -387,7 +401,7 @@ def test_save_update(mock_sf_client):
     )
 
     # Clear dirty fields set by initialization
-    account.dirty_fields.clear()
+    dirty_fields(account).clear()
 
     # Make changes to the account
     account.Name = "Updated Account Name"
@@ -399,7 +413,7 @@ def test_save_update(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Update the account
-    account.save_update(only_changes=True)
+    save_update(account, only_changes=True)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -416,7 +430,7 @@ def test_save_update(mock_sf_client):
     assert kwargs["json"]["Industry"] == "Financial Services"
 
     # Verify dirty fields were cleared
-    assert len(account.dirty_fields) == 0
+    assert len(dirty_fields(account)) == 0
 
 
 def test_save_update_only_changes(mock_sf_client):
@@ -431,7 +445,7 @@ def test_save_update_only_changes(mock_sf_client):
     )
 
     # ensure no dirty fields after initialization
-    assert not account.dirty_fields
+    assert not dirty_fields(account)
 
     # Make a single change to the account
     account.Description = "Updated description"
@@ -442,7 +456,7 @@ def test_save_update_only_changes(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Update the account with only_changes=False
-    account.save_update()
+    save_update(account)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -475,7 +489,7 @@ def test_save_upsert(mock_sf_client):
     )
 
     # Clear dirty fields set by initialization
-    custom_obj.dirty_fields.clear()
+    dirty_fields(custom_obj).clear()
 
     # Update a field
     custom_obj.Custom_Field__c = "Updated Value"
@@ -487,7 +501,7 @@ def test_save_upsert(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Perform the upsert
-    custom_obj.save_upsert(external_id_field="External_Id__c", only_changes=True)
+    save_upsert(custom_obj, external_id_field="External_Id__c", only_changes=True)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -507,7 +521,7 @@ def test_save_upsert(mock_sf_client):
     assert kwargs["json"]["Custom_Field__c"] == "Updated Value"
 
     # Verify dirty fields were cleared
-    assert len(custom_obj.dirty_fields) == 0
+    assert len(dirty_fields(custom_obj)) == 0
 
 
 def test_save_upsert_insert(mock_sf_client):
@@ -528,7 +542,7 @@ def test_save_upsert_insert(mock_sf_client):
     )
 
     # Clear dirty fields to simulate a clean state before making changes
-    assert not custom_obj.dirty_fields, "No dirty fields should be present after init"
+    assert not dirty_fields(custom_obj), "No dirty fields should be present after init"
 
     # Set a field to make it dirty - this ensures serialization includes this field
     custom_obj.Custom_Field__c = "New Value"
@@ -544,7 +558,7 @@ def test_save_upsert_insert(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Perform the upsert
-    custom_obj.save_upsert(external_id_field="External_Id__c", only_changes=True)
+    save_upsert(custom_obj, external_id_field="External_Id__c", only_changes=True)
 
     # Verify the API call was made correctly
     mock_sf_client.patch.assert_called_once()
@@ -568,7 +582,7 @@ def test_save_method_with_id(mock_sf_client):
     )
 
     # Clear dirty fields set by initialization
-    assert not account.dirty_fields
+    assert not dirty_fields(account), "No dirty fields should be present after init"
 
     # Make a change
     account.Name = "Save Method Updated"
@@ -579,7 +593,7 @@ def test_save_method_with_id(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call the general save method
-    account.save(only_changes=True)
+    save(account, only_changes=True)
 
     # Verify update was called (PATCH request)
     mock_sf_client.patch.assert_called_once()
@@ -607,7 +621,7 @@ def test_save_method_without_id(mock_sf_client):
     mock_sf_client.post.return_value = mock_response
 
     # Call the general save method
-    account.save()
+    save(account)
 
     # Verify insert was called (POST request)
     mock_sf_client.post.assert_called_once()
@@ -644,7 +658,7 @@ def test_save_method_with_external_id(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call the general save method with external_id_field parameter
-    custom_obj.save(external_id_field="External_Id__c")
+    save(custom_obj, external_id_field="External_Id__c")
     # Verify upsert was called (PATCH request to the external ID endpoint)
     mock_sf_client.patch.assert_called_once()
     args, kwargs = mock_sf_client.patch.call_args
@@ -682,12 +696,12 @@ def test_sobject_field_inheritance():
     class SObject_A(SObject):
         field_a = TextField()
 
-    assert SObject_A._fields.keys() == {"field_a"}
+    assert object_fields(SObject_A).keys() == {"field_a"}
 
     class SObject_B(SObject_A):
         field_b = TextField()
 
-    assert SObject_B._fields.keys() == {"field_a", "field_b"}
+    assert object_fields(SObject_B).keys() == {"field_a", "field_b"}
 
     # subclassing an object should not update its parents' fields.
-    assert SObject_A._fields.keys() == {"field_a"}
+    assert object_fields(SObject_A).keys() == {"field_a"}

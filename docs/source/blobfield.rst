@@ -84,7 +84,7 @@ You can also update an existing record with a new file by setting its `BlobField
 
 ```python
 # Get an existing ContentVersion
-cv = ContentVersion.read("068XXXXXXXXXXXX")
+cv = read(ContentVersion, "068XXXXXXXXXXXX")
 
 # Update metadata
 cv.Description = "Updated description"

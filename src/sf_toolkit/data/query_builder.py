@@ -2,8 +2,10 @@ from asyncio import Task, create_task
 from typing import Any, AsyncIterator, Iterator, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
+from sf_toolkit.interfaces import I_SalesforceClient
+
 from ..client import SalesforceClient
-from .fields import ListField
+from .fields import ListField, object_fields, query_fields
 from .sobject import SObject, SObjectList
 
 from ..formatting import quote_soql_value
@@ -11,26 +13,33 @@ from .._models import QueryResultJSON, SObjectRecordJSON
 
 
 BooleanOperator = Literal["AND", "OR", "NOT"]
-Comparator = Literal["=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES", "IN"]
+Comparator = Literal[
+    "=", "!=", "<>", ">", ">=", "<", "<=", "LIKE", "INCLUDES", "IN", "NOT IN"
+]
 AGGREGATE_FUNCTIONS = ["AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "SUM"]
 
 
 class Comparison:
     prop: str
     comparator: Comparator
-    value: "SoqlQuery | str | bool | datetime | date | None"
+    value: "SoqlQuery[Any] | str | bool | datetime | date | None"
 
-    def __init__(self, prop: str, op, value):
+    def __init__(
+        self,
+        prop: str,
+        cmp: Comparator,
+        value: "SoqlQuery[Any] | str | bool | datetime | date | None",
+    ):
         self.prop = prop
-        self.operator = op
+        self.comparator = cmp
         self.value = value
 
     def __str__(self):
         if isinstance(self.value, SoqlQuery):
-            return f"{self.prop} {self.operator} ({str(self.value)})"
-        elif self.operator == "IN" and isinstance(self.value, str):
-            return f"{self.prop} {self.operator} ({self.value})"
-        return f"{self.prop} {self.operator} {quote_soql_value(self.value)}"
+            return f"{self.prop} {self.comparator} ({str(self.value)})"
+        elif self.comparator == "IN" and isinstance(self.value, str):
+            return f"{self.prop} {self.comparator} ({self.value})"
+        return f"{self.prop} {self.comparator} {quote_soql_value(self.value)}"
 
 
 def EQ(prop: str, value):
@@ -125,6 +134,17 @@ _SObject = TypeVar("_SObject", bound=SObject)
 _SObjectJSON = TypeVar("_SObjectJSON", bound=dict[str, Any])
 
 
+def resolve_client(
+    sobject_type: type[_SObject], connection: str | I_SalesforceClient | None
+):
+    if isinstance(connection, str):
+        return SalesforceClient.get_connection(connection)
+    if isinstance(connection, I_SalesforceClient):
+        return connection
+
+    return SalesforceClient.get_connection(sobject_type.attributes.connection)
+
+
 class QueryResultBatch(Generic[_SObject]):
     """
     A generic class to represent results returned by the Salesforce SOQL Query API.
@@ -144,7 +164,7 @@ class QueryResultBatch(Generic[_SObject]):
     "The list of records returned by the query"
     nextRecordsUrl: str | None
     "URL to the next batch of records, if more exist"
-    _connection: SalesforceClient
+    _connection: I_SalesforceClient
     _sobject_type: type[_SObject]
     "The SObject type this QueryResult contains records for"
     query_locator: str | None = None
@@ -158,7 +178,7 @@ class QueryResultBatch(Generic[_SObject]):
         totalSize: int = 0,
         records: list[SObjectRecordJSON] | None = None,
         nextRecordsUrl: str | None = None,
-        connection: SalesforceClient | None = None,
+        connection: I_SalesforceClient | None = None,
     ):
         """
         Initialize a QueryResult object from Salesforce API response data.
@@ -166,9 +186,7 @@ class QueryResultBatch(Generic[_SObject]):
         Args:
             **kwargs: Key-value pairs from the Salesforce API response.
         """
-        self._connection = connection or SalesforceClient.get_connection(
-            sobject_type.attributes.connection
-        )  # type: ignore
+        self._connection = resolve_client(sobject_type, connection)
         self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
@@ -320,7 +338,7 @@ class SoqlQuery(Generic[_SObject]):
     _limit: int | None = None
     _offset: int | None = None
     _order: list[Order | str] | None = None
-    _subqueries: dict[str, "SoqlQuery"]
+    _subqueries: dict[str, "SoqlQuery[Any]"]
     _include_deleted: bool
 
     def __init__(self, sobject_type: type[_SObject], include_deleted: bool = False):
@@ -330,19 +348,20 @@ class SoqlQuery(Generic[_SObject]):
 
     @property
     def fields(self):
-        fields = []
-        for field in self.sobject_type.query_fields():
-            if isinstance(field_def := self.sobject_type._fields.get(field), ListField):
+        fields: list[str] = []
+        obj_fields = object_fields(self.sobject_type)
+        for field in query_fields(self.sobject_type):
+            if isinstance(field_def := obj_fields.get(field), ListField):
                 subquery = self._subqueries.get(field)
                 if not subquery:
-                    subquery = field_def._nested_type.query()
+                    subquery = select(field_def._nested_type)
                     subquery._object_relationship_name = field
                 fields.append(f"({str(subquery)})")
             else:
                 fields.append(field)
         return fields
 
-    def filter_subqueries(self, **subqueries: "SoqlQuery"):
+    def filter_subqueries(self, **subqueries: "SoqlQuery[Any]"):
         """
         Configure Parent-To-Child Relationship queries
 
@@ -357,7 +376,7 @@ class SoqlQuery(Generic[_SObject]):
             self: The current SoqlQuery object.
         """
         for field, subquery in subqueries.items():
-            assert isinstance(self.sobject_type._fields.get(field), ListField), (
+            assert isinstance(object_fields(self.sobject_type).get(field), ListField), (
                 f"Field '{field}' is not a ListField"
             )
             subquery._object_relationship_name = field
@@ -367,9 +386,6 @@ class SoqlQuery(Generic[_SObject]):
     @property
     def sobject_name(self) -> str:
         return self.sobject_type.attributes.type
-
-    def _sf_connection(self):
-        return self.sobject_type._client_connection()
 
     @classmethod
     def build_conditional(cls, arg: str, value) -> Comparison | NOT:
@@ -578,9 +594,10 @@ class SoqlQuery(Generic[_SObject]):
         return len(count_result)
 
     def execute(
-        self, *_fields: str,
+        self,
+        *_fields: str,
         connection: SalesforceClient | str | None = None,
-        **callout_options
+        **callout_options,
     ) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).
@@ -590,12 +607,7 @@ class SoqlQuery(Generic[_SObject]):
         else:
             fields = self.fields
 
-        if isinstance(connection, str):
-            client = SalesforceClient.get_connection(connection)
-        elif isinstance(connection, SalesforceClient):
-            client = connection
-        else:
-            client = self._sf_connection()
+        client = resolve_client(self.sobject_type, connection)
 
         result: QueryResultJSON
         assert not (self.sobject_type.attributes.tooling and self._include_deleted), (
@@ -607,7 +619,9 @@ class SoqlQuery(Generic[_SObject]):
             url = f"{client.data_url}/queryAll/"
         else:
             url = f"{client.data_url}/query/"
-        result = client.get(url, params={"q": self.format(fields)}, **callout_options).json()
+        result = client.get(
+            url, params={"q": self.format(fields)}, **callout_options
+        ).json()
         batch = QueryResultBatch(self.sobject_type, connection=client, **result)  # type: ignore
 
         return QueryResult([batch])
@@ -619,3 +633,9 @@ class SoqlQuery(Generic[_SObject]):
         result = self.execute()
         result.schedule_async_tasks()
         return result
+
+
+def select(
+    sobject_type: type[_SObject], include_deleted: bool = False
+) -> SoqlQuery[_SObject]:
+    return SoqlQuery(sobject_type, include_deleted=include_deleted)

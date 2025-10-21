@@ -9,9 +9,19 @@ from sf_toolkit.data.fields import (
     ListField,
     NumberField,
     TextField,
+    object_fields,
 )
 from sf_toolkit import SalesforceClient
-from sf_toolkit.data.query_builder import AND, EQ, GT, OR, QueryResult, SoqlQuery, Order
+from sf_toolkit.data.query_builder import (
+    AND,
+    EQ,
+    GT,
+    OR,
+    QueryResult,
+    SoqlQuery,
+    Order,
+    select,
+)
 from sf_toolkit.data.sobject import SObject, SObjectList
 from ..unit_test_models import Opportunity, Account
 
@@ -121,7 +131,7 @@ def test_simple_query_construction():
     assert "FROM Account" in query_str
 
     # Should include all fields
-    for field in Account.keys():
+    for field in object_fields(Account):
         assert field in query_str
 
 
@@ -177,7 +187,7 @@ def test_query_execution(mock_sf_client, mock_query_response):
     mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
-    results = Account.query().execute()
+    results = select(Account).execute()
 
     # Verify response handling
     assert isinstance(results, QueryResult)
@@ -199,7 +209,7 @@ def test_query_execution_with_connection(mock_sf_client, mock_query_response):
     mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
-    results = Account.query().execute(connection=mock_sf_client)
+    results = select(Account).execute(connection=mock_sf_client)
 
     # Verify response handling
     assert isinstance(results, QueryResult)
@@ -221,7 +231,7 @@ def test_query_execution_named_connection(mock_sf_client, mock_query_response):
     mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
-    results = Account.query().execute(
+    results = select(Account).execute(
         connection=SalesforceClient.DEFAULT_CONNECTION_NAME
     )
 
@@ -245,7 +255,7 @@ def test_query_result_multiple_iteration(mock_sf_client, mock_query_response):
     mock_sf_client.get.return_value = mock_query_response
 
     # Create and execute query
-    query_result = Account.query().execute()
+    query_result = select(Account).execute()
     result_copy = query_result.copy()
 
     record_list = query_result.as_list()
@@ -266,21 +276,21 @@ def test_query_with_group_by(mock_sf_client):
 def test_query_with_order_by():
     """Test query construction with ORDER BY clause"""
 
-    query_str = str(Account.query().order_by(Order("Name", "DESC"), Id="ASC"))
+    query_str = str(select(Account).order_by(Order("Name", "DESC"), Id="ASC"))
     assert "ORDER BY Name DESC, Id ASC" in query_str
 
 
 def test_query_with_limit():
     """Test query construction with LIMIT clause"""
 
-    query_str = str(Account.query().limit(10))
+    query_str = str(select(Account).limit(10))
     assert "LIMIT 10" in query_str
 
 
 def test_query_with_offset():
     """Test query construction with OFFSET clause"""
 
-    query_str = str(Account.query().offset(20))
+    query_str = str(select(Account).offset(20))
     assert "OFFSET 20" in query_str
 
 
@@ -290,7 +300,7 @@ def test_query_more_results(mock_sf_client, mock_query_result_responses):
     mock_sf_client.get = mock_query_result_responses
 
     # Execute initial query
-    query = Account.query()
+    query = select(Account)
     result = query.execute()
 
     # Verify initial results
@@ -364,7 +374,7 @@ def test_boolean_operations():
 def test_query_with_datetime():
     """Test query construction with datetime values"""
     test_date = datetime(2023, 1, 15, 12, 30, 45).astimezone()
-    query = Account.query().where(CreatedDate__gt=test_date)
+    query = select(Account).where(CreatedDate__gt=test_date)
 
     query_str = str(query)
     assert "WHERE CreatedDate > " in query_str
@@ -375,7 +385,7 @@ def test_query_with_date():
     test_date = date(2023, 1, 15)
 
     # Create a test with Opportunity since it has DateField
-    query = Opportunity.query().where(CloseDate=test_date)
+    query = select(Opportunity).where(CloseDate=test_date)
 
     query_str = str(query)
     assert "WHERE CloseDate = 2023-01-15" in query_str
@@ -384,7 +394,7 @@ def test_query_with_date():
 def test_query_with_raw_where():
     """Test query construction with raw WHERE clause"""
     where_clause = "Name LIKE 'Test%' AND CreatedDate = LAST_N_DAYS:30"
-    query = Account.query().where(where_clause)
+    query = select(Account).where(where_clause)
 
     query_str = str(query)
     assert where_clause in query_str
@@ -392,17 +402,17 @@ def test_query_with_raw_where():
 
 def test_query_with_having(mock_sf_client):
     """Test query with HAVING clause"""
-    query = Account.query().group_by("Industry").having(AnnualRevenue__gt=1000000)
+    query = select(Account).group_by("Industry").having(AnnualRevenue__gt=1000000)
     assert "GROUP BY Industry" in str(query)
     # Should raise error if HAVING is used without GROUP BY
     with pytest.raises(TypeError, match="Cannot use HAVING statement without GROUP BY"):
-        str(Account.query().having(AnnualRevenue__gt=1000000))
+        str(select(Account).having(AnnualRevenue__gt=1000000))
 
 
 def test_query_with_and_having():
     """Test query with multiple HAVING conditions using and_having"""
     query = (
-        Account.query()
+        select(Account)
         .group_by("Industry")
         .having(COUNT__Id__gt=5)
         .and_having(SUM__AnnualRevenue__gt=1000000)
@@ -417,7 +427,7 @@ def test_query_with_and_having():
 def test_query_with_or_having():
     """Test query with OR condition in HAVING clause"""
     query = (
-        Account.query()
+        select(Account)
         .group_by("Industry")
         .having(COUNT__Id__gt=10)
         .or_having(SUM__AnnualRevenue__gt=5000000)
@@ -432,7 +442,7 @@ def test_query_with_or_having():
 def test_query_with_chained_having_conditions():
     """Test query with chained HAVING conditions (AND and OR)"""
     query = (
-        Account.query()
+        select(Account)
         .group_by("Industry")
         .having(COUNT__Id__gt=5)
         .and_having(AVG__AnnualRevenue__gt=100000)
@@ -468,7 +478,7 @@ def test_query_tooling_api(mock_sf_client):
     }
 
     # Execute query
-    results = ToolingObject.query().execute()
+    results = select(ToolingObject).execute()
 
     # Verify tooling API endpoint was used
     mock_sf_client.get.assert_called_once()
@@ -500,8 +510,8 @@ def test_query_with_field_subquery():
         CloseDate = DateField()
         Opportunities = ListField(Opportunity)
 
-    query = Account.query().filter_subqueries(
-        Opportunities=Opportunity.query().where(StageName="Closed Won")
+    query = select(Account).filter_subqueries(
+        Opportunities=select(Opportunity).where(StageName="Closed Won")
     )
 
     query_str = str(query)
@@ -528,10 +538,10 @@ def test_query_with_nested_field_subquery():
         Opportunities = ListField(Opportunity)
         Contacts = ListField(Contact)
 
-    opportunities_subquery = Opportunity.query().where(Amount__gt=10000)
-    query = Account.query().filter_subqueries(
+    opportunities_subquery = select(Opportunity).where(Amount__gt=10000)
+    query = select(Account).filter_subqueries(
         Opportunities=opportunities_subquery,
-        Contacts=Contact.query().where(Email__like="%@example.com"),
+        Contacts=select(Contact).where(Email__like="%@example.com"),
     )
 
     query_str = str(query)
@@ -553,7 +563,7 @@ def test_query_with_where_subquery():
         Id = IdField()
         Name = TextField()
 
-    query = Account.query().where(Id__in=Opportunity.query().where(Amount__gt=50000))
+    query = select(Account).where(Id__in=select(Opportunity).where(Amount__gt=50000))
     query_str = str(query)
     assert (
         "FROM Account WHERE Id IN (SELECT AccountId FROM Opportunity WHERE Amount > 50000)"
@@ -573,14 +583,14 @@ def test_query_with_complex_where_subquery():
         Industry = TextField()
 
     opportunity_subquery = (
-        Opportunity.query()
+        select(Opportunity)
         .where(CloseDate__gt=date(2023, 1, 1))
         .and_where(StageName="Closed Won")
         .group_by("AccountId")
         .having(SUM__Amount__gt=100000)
     )
 
-    query = Account.query().where(
+    query = select(Account).where(
         Industry__in=["Technology", "Healthcare"], Id__in=opportunity_subquery
     )
 
@@ -637,7 +647,7 @@ def test_execution_with_field_subquery(mock_sf_client):
         Opportunities = ListField(Opportunity)
 
     # Execute the query
-    results = Account.query().execute()
+    results = select(Account).execute()
 
     # Verify the results
     assert len(results) == 1
@@ -655,7 +665,7 @@ def test_query_result_iterator(mock_sf_client, mock_query_result_responses):
     mock_sf_client.get = mock_query_result_responses
 
     # Use the iterator to get all records
-    record_list = Account.query().execute().as_list()
+    record_list = select(Account).execute().as_list()
 
     # Verify all 4 records were retrieved through iteration
     assert len(record_list) == 4
@@ -670,7 +680,7 @@ def test_query_result_list_conversion(mock_sf_client, mock_query_result_response
     mock_sf_client.get = mock_query_result_responses
 
     # Convert to list (should handle pagination automatically)
-    all_records = list(Account.query())
+    all_records = list(select(Account))
 
     # Verify all records were included
     assert len(all_records) == 4
@@ -688,7 +698,7 @@ async def test_query_result_async_iterator(
     mock_sf_client.as_async.get = AsyncMock(return_value=mock_next_query_response)
 
     # Use async iterator
-    records = [record async for record in Account.query()]
+    records = [record async for record in select(Account)]
 
     # Verify all records were retrieved
     assert len(records) == 4

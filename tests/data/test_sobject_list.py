@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock, Mock, AsyncMock
 import pytest
 
-from more_itertools import chunked
+from sf_toolkit.data.transformers import chunked
 
 from sf_toolkit.data.sobject import SObject, SObjectList
-from sf_toolkit.data.fields import IdField, TextField, NumberField
+from sf_toolkit.data.fields import IdField, TextField, NumberField, dirty_fields
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.interfaces import I_SalesforceClient
 from sf_toolkit._models import SObjectSaveResult
@@ -91,7 +91,7 @@ def test_accounts_with_ids(test_accounts):
     for i, account in enumerate(test_accounts):
         account.Id = f"001XX000{i}ABCDEFGHI"  # Valid 18-character ID
         # Clear dirty fields from initialization and ID setting
-        account.dirty_fields.clear()
+        dirty_fields(account).clear()
     return test_accounts
 
 
@@ -195,7 +195,7 @@ def test_generate_record_batches(test_accounts):
 
     # Test with only_changes=True
     for account in test_accounts:
-        account.dirty_fields.clear()
+        dirty_fields(account).clear()
 
     # Set a dirty field on one account
     test_accounts[0].Name = "Updated Name"
@@ -371,7 +371,7 @@ def test_save_update(mock_sf_client, test_accounts_with_ids):
 
     # Check if dirty fields were cleared
     for account in account_list:
-        assert not account.dirty_fields
+        assert not dirty_fields(account), "Dirty fields were not cleared after update"
 
     # Verify results
     assert len(results) == len(account_list)
@@ -383,7 +383,7 @@ def test_save_update_only_changes(mock_sf_client, test_accounts_with_ids):
     """Test save_update with only_changes=True"""
     account_list = SObjectList(test_accounts_with_ids)
     for account in account_list:
-        account.dirty_fields.clear()
+        dirty_fields(account).clear()
 
     # Make changes to only some fields
     account_list[0].Name = "Updated Name 1"
@@ -408,15 +408,15 @@ def test_save_update_only_changes(mock_sf_client, test_accounts_with_ids):
     request_data = kwargs.get("json", [])
 
     # Should include only the two modified records
-    assert len(request_data['records']) == 2
+    assert len(request_data["records"]) == 2
 
     # First record should have only Name field
-    assert "Name" in request_data['records'][0]
-    assert "Industry" not in request_data['records'][0]
+    assert "Name" in request_data["records"][0]
+    assert "Industry" not in request_data["records"][0]
 
     # Second record should have only Industry field
-    assert "Industry" in request_data['records'][1]
-    assert "Name" not in request_data['records'][1]
+    assert "Industry" in request_data["records"][1]
+    assert "Name" not in request_data["records"][1]
 
 
 def test_save_update_no_id(test_accounts, mock_sf_client):
@@ -568,7 +568,7 @@ def test_save_upsert_only_changes(mock_sf_client):
         for i in range(3)
     ]
     for obj in custom_objects:
-        obj.dirty_fields.clear()
+        dirty_fields(obj).clear()
 
     # Make changes to specific fields
     custom_objects[0].Name = "Updated Name"
@@ -743,7 +743,7 @@ def test_save_update_existing_records(mock_sf_client, test_accounts_with_ids):
 
     # Check that dirty fields were cleared
     for account in account_list:
-        assert not account.dirty_fields
+        assert not dirty_fields(account)
 
 
 def test_save_upsert_with_external_id(mock_sf_client):
@@ -779,7 +779,7 @@ def test_save_with_only_changes_option(mock_sf_client, test_accounts_with_ids):
 
     # Clear dirty fields from initialization
     for account in account_list:
-        account.dirty_fields.clear()
+        dirty_fields(account).clear()
 
     # Make changes to only some fields
     account_list[0].Name = "Updated Name 1"
@@ -804,12 +804,12 @@ def test_save_with_only_changes_option(mock_sf_client, test_accounts_with_ids):
     request_data = kwargs.get("json", [])
 
     # First record should have only Name field
-    assert "Name" in request_data['records'][0]
-    assert "Industry" not in request_data['records'][0]
+    assert "Name" in request_data["records"][0]
+    assert "Industry" not in request_data["records"][0]
 
     # Second record should have only Industry field
-    assert "Industry" in request_data['records'][1]
-    assert "Name" not in request_data['records'][1]
+    assert "Industry" in request_data["records"][1]
+    assert "Name" not in request_data["records"][1]
 
 
 def test_save_with_update_only_option(mock_sf_client):
@@ -845,7 +845,7 @@ def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
 
     # Clear dirty fields
     for account in account_list:
-        account.dirty_fields.clear()
+        dirty_fields(account).clear()
 
     # Make changes to simulate dirty fields
     account_list[0].Name = "Updated with Multiple Options"
@@ -866,8 +866,8 @@ def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
     # Check that only one record was sent (the one with changes)
     args, kwargs = mock_sf_client.patch.call_args
     request_data = kwargs.get("json", [])
-    assert len(request_data['records']) == 1
-    assert request_data['records'][0]["Name"] == "Updated with Multiple Options"
+    assert len(request_data["records"]) == 1
+    assert request_data["records"][0]["Name"] == "Updated with Multiple Options"
 
 
 def test_save_error_on_update_only_without_id_or_external_id(

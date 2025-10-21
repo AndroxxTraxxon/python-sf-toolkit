@@ -1,8 +1,15 @@
-from typing import Literal
+from typing import Literal, TypeVar
+from io import StringIO
+import csv
+
+from ..interfaces import I_SalesforceClient
 from . import fields
 from .transformers import flatten
 
-from ..interfaces import I_SalesforceClient
+from .sobject import SObjectList
+
+T = TypeVar("T")
+
 
 class BulkApiIngestJob(fields.FieldConfigurableObject):
     """
@@ -15,15 +22,12 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
     apiActiveProcessingTime = fields.IntField()
     apiVersion = fields.TextField()
     assignmentRuleId = fields.IdField()
-    columnDelimiter = fields.PicklistField(options=[
-        "BACKQUOTE",
-        "CARET",
-        "COMMA",
-        "PIPE",
-        "SEMICOLON",
-        "TAB"
-    ])
-    concurrencyMode = fields.TextField() # This should be an enum, but I can't find the spec.
+    columnDelimiter = fields.PicklistField(
+        options=["BACKQUOTE", "CARET", "COMMA", "PIPE", "SEMICOLON", "TAB"]
+    )
+    concurrencyMode = (
+        fields.TextField()
+    )  # This should be an enum, but I can't find the spec.
     contentType = fields.PicklistField(options=["CSV"])
     contentUrl = fields.TextField()
     createdById = fields.IdField()
@@ -31,30 +35,24 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
     errorMessage = fields.TextField()
     externalIdField = fields.TextField()
     id = fields.IdField()
-    jobType = fields.PicklistField(options=[
-        "BigObjectIngest",
-        "Classic",
-        "V2Ingest"
-    ])
+    jobType = fields.PicklistField(options=["BigObjectIngest", "Classic", "V2Ingest"])
     lineEnding = fields.PicklistField(options=["LF", "CRLF"])
     numberRecordsFailed = fields.IntField()
     numberRecordsProcessed = fields.IntField()
     object = fields.TextField()
-    operation = fields.PicklistField(options=[
-        "insert",
-        "delete",
-        "hardDelete",
-        "update",
-        "upsert",
-    ])
+    operation = fields.PicklistField(
+        options=[
+            "insert",
+            "delete",
+            "hardDelete",
+            "update",
+            "upsert",
+        ]
+    )
     retries = fields.IntField()
-    state = fields.PicklistField(options=[
-        "Open",
-        "UploadComplete",
-        "Aborted",
-        "JobComplete",
-        "Failed"
-    ])
+    state = fields.PicklistField(
+        options=["Open", "UploadComplete", "Aborted", "JobComplete", "Failed"]
+    )
     systemModstamp = fields.DateTimeField()
     totalProcessingTime = fields.IntField()
 
@@ -62,19 +60,14 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
     def init_job(
         cls,
         sobject_type: str,
-        operation: Literal["insert", "delete","hardDelete","update","upsert"],
-        column_delimiter:  Literal[
-            "BACKQUOTE",
-            "CARET",
-            "COMMA",
-            "PIPE",
-            "SEMICOLON",
-            "TAB"
+        operation: Literal["insert", "delete", "hardDelete", "update", "upsert"],
+        column_delimiter: Literal[
+            "BACKQUOTE", "CARET", "COMMA", "PIPE", "SEMICOLON", "TAB"
         ] = "COMMA",
         line_ending: Literal["LF", "CRLF"] = "LF",
         external_id_field: str | None = None,
         connection: I_SalesforceClient | str | None = None,
-        **callout_options
+        **callout_options,
     ):
         if not isinstance(connection, I_SalesforceClient):
             connection = I_SalesforceClient.get_connection(connection)  # type: ignore
@@ -98,30 +91,23 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
         self._connection = connection
         super().__init__(**fields)
 
-    def upload_batches(self, data: "SObjectList", **callout_options):
+    def upload_batches(self, data: SObjectList[T], **callout_options):
         """
         Upload data batches to be processed by the Salesforce bulk API.
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm
         """
-        if not "SObjectList" in globals():
-            global SObjectList
-            from .sobject import SObjectList
-        from io import StringIO
 
-        import csv
         assert data, "Cannot upload an empty list"
         data.assert_single_type()
-        fieldnames = type(data[0]).query_fields()
+        fieldnames = fields.query_fields(type(data[0]))
         with StringIO() as buffer:
             writer = csv.DictWriter(
-                buffer,
-                fieldnames,
-                delimiter=self._delimiter_char()
+                buffer, fieldnames, delimiter=self._delimiter_char()
             )
             writer.writeheader()
             buffer_has_data = False
             for row in data:
-                serialized = flatten(row.serialize())
+                serialized = flatten(fields.serialize_object(row))
                 writer.writerow(serialized)
                 buffer_has_data = True
                 if buffer.tell() > 100_000_000:
@@ -132,22 +118,26 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
                     # > approximately 50%. To account for the base64 conversion increase,
                     # > upload data that does not exceed 100 MB.
                     buffer.seek(0)
-                    self._connection.put(self.contentUrl, files=[
-                        ("content", ("content", buffer.getvalue(), "text/csv"))
-                    ], **callout_options)
+                    self._connection.put(
+                        self.contentUrl,
+                        files=[("content", ("content", buffer.getvalue(), "text/csv"))],
+                        **callout_options,
+                    )
                     buffer.seek(0)
                     buffer.truncate()
                     writer.writeheader()
                     buffer_has_data = False
             if buffer_has_data:
-                self._connection.put(self.contentUrl, files=[
-                    ("content", ("content", buffer.getvalue(), "text/csv"))
-                ], **callout_options)
+                self._connection.put(
+                    self.contentUrl,
+                    files=[("content", ("content", buffer.getvalue(), "text/csv"))],
+                    **callout_options,
+                )
 
             updated_values = self._connection.patch(
                 self.contentUrl.removesuffix("/batches"),
                 json={"state": "UploadComplete"},
-                **callout_options
+                **callout_options,
             ).json()
             for field, value in updated_values.items():
                 setattr(self, field, value)
@@ -158,7 +148,9 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
             connection = self._connection
         if not isinstance(connection, I_SalesforceClient):
             connection = I_SalesforceClient.get_connection(connection)  # type: ignore
-        assert isinstance(connection, I_SalesforceClient), "Could not find Salesforce Client connection"
+        assert isinstance(connection, I_SalesforceClient), (
+            "Could not find Salesforce Client connection"
+        )
         response = connection.get(connection.data_url + f"/jobs/ingest/{self.id}")
         for key, value in response.json().items():
             setattr(self, key, value)

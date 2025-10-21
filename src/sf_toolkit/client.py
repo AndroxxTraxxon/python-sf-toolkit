@@ -136,6 +136,14 @@ class SalesforceClient(I_SalesforceClient):
         self.token_refresh_callback = token_refresh_callback
         self._connection_name = connection_name
 
+    def __str__(self):
+        if not (isinstance(self.auth, SalesforceAuth) and self.auth.token is not None):
+            return f"{type(self).__name__} ({self._connection_name})"
+        return (
+            f"{type(self).__name__} ({self._connection_name}) -> "
+            f"{self.auth.token.instance.host} as {self._userinfo.preferred_username}"
+        )
+
     def handle_async_clone_token_refresh(self, token: SalesforceToken):
         self._auth.token = token
 

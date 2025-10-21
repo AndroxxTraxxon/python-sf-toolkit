@@ -74,7 +74,7 @@ Updating Records
 .. code-block:: python
 
    # Update an existing contact
-   contact = Contact.read("003xxxxxxxxxxxx")
+   contact = read(Contact, "003xxxxxxxxxxxx")
    contact.LastName = "Smith"
    contact.save()
 

@@ -1,5 +1,6 @@
 import pytest
 
+from sf_toolkit.client import SalesforceClient
 from sf_toolkit.data.standard_schemas import User
 
 
@@ -9,13 +10,17 @@ def test_user_password_expired(mocker):
     mock_client.sobjects_url = (
         "https://example.salesforce.com/services/data/v50.0/sobjects"
     )
+    # Mock the connection factory
+    mocker.patch(
+        "sf_toolkit.data.standard_schemas.SalesforceClient.get_connection",
+        return_value=mock_client,
+    )
     mock_response = mocker.Mock()
     mock_response.json.return_value = {"IsExpired": True}
     mock_client.get.return_value = mock_response
 
     # Create user and test password_expired method
     user = User(Id="001XXXXXXXXXXXX")
-    user._client_connection = mocker.Mock(return_value=mock_client)
 
     assert user.password_expired() is True
     mock_client.get.assert_called_once_with(
@@ -30,10 +35,14 @@ def test_user_set_password(mocker):
     mock_client.sobjects_url = (
         "https://example.salesforce.com/services/data/v50.0/sobjects"
     )
+    # Mock the connection factory
+    mocker.patch(
+        "sf_toolkit.data.standard_schemas.SalesforceClient.get_connection",
+        return_value=mock_client,
+    )
 
     # Create user and test set_password method
     user = User(Id="001XXXXXXXXXXXX")
-    user._client_connection = mocker.Mock(return_value=mock_client)
 
     user.set_password("NewSecurePassword123!")
 
@@ -49,6 +58,11 @@ def test_user_reset_password(mocker):
     mock_client.sobjects_url = (
         "https://example.salesforce.com/services/data/v50.0/sobjects"
     )
+    # Mock the connection factory
+    mocker.patch(
+        "sf_toolkit.data.standard_schemas.SalesforceClient.get_connection",
+        return_value=mock_client,
+    )
     mock_response = mocker.Mock()
     mock_new_password = "Auto-Generated-Password-123"
     mock_response.json.return_value = {"NewPassword": mock_new_password}
@@ -56,7 +70,6 @@ def test_user_reset_password(mocker):
 
     # Create user and test reset_password method
     user = User(Id="001XXXXXXXXXXXX")
-    user._client_connection = mocker.Mock(return_value=mock_client)
 
     new_password = user.reset_password()
 
@@ -79,7 +92,6 @@ def test_password_operations_with_connection_string(mocker):
         "sf_toolkit.data.standard_schemas.SalesforceClient.get_connection",
         return_value=mock_client,
     )
-
     # Test with connection string
     user = User(Id="001XXXXXXXXXXXX")
 
@@ -109,9 +121,15 @@ def test_password_operations_with_connection_string(mocker):
     assert user.reset_password(connection="test_connection") == reset_password
 
 
-def test_password_operations_without_id():
+def test_password_operations_without_id(mocker):
     # Create user without ID
     user = User()
+    mock_client = mocker.Mock()
+    # Mock the connection factory
+    mocker.patch(
+        "sf_toolkit.data.standard_schemas.SalesforceClient.get_connection",
+        return_value=mock_client,
+    )
 
     # All operations should raise AssertionError when ID is not set
     with pytest.raises(
