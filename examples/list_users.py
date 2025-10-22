@@ -1,8 +1,12 @@
+from typing import final
 from sf_toolkit import SalesforceClient, SObject
 from sf_toolkit.auth import cli_login
+from sf_toolkit.data import select
 from sf_toolkit.data.fields import IdField, TextField, DateTimeField, FieldFlag
+from sf_toolkit.io.api import save_list
 
 
+@final
 class User(SObject):
     Id = IdField()
     Name = TextField(FieldFlag.readonly)
@@ -25,7 +29,7 @@ def print_users():
         )
         user.Department = "System Automations"
 
-    result.as_list().save()
+    _ = save_list(result.as_list())
 
     print(result.as_list())
     print(len(result), "Total Users")

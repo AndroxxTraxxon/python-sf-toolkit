@@ -448,11 +448,11 @@ class SoqlQuery(Generic[_SObject]):
             raise ValueError(f"Invalid mode: {mode}")
 
     def where(
-        self,
+        self: "SoqlQuery[_SObject]",
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
         **kwargs,
-    ):
+    ) -> "SoqlQuery[_SObject]":
         if _raw:
             self._where = _raw
         else:

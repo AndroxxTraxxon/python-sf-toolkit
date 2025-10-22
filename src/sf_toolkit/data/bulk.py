@@ -3,7 +3,17 @@ from io import StringIO
 import csv
 
 from ..interfaces import I_SalesforceClient
-from . import fields
+from .fields import (
+    FieldConfigurableObject,
+    IntField,
+    IdField,
+    NumberField,
+    PicklistField,
+    TextField,
+    DateTimeField,
+    query_fields,
+    serialize_object,
+)
 from .transformers import flatten
 
 from .sobject import SObject, SObjectList
@@ -12,36 +22,34 @@ T = TypeVar("T")
 _SO = TypeVar("_SO", bound=SObject)
 
 
-class BulkApiIngestJob(fields.FieldConfigurableObject):
+class BulkApiIngestJob(FieldConfigurableObject):
     """
     Represents a Salesforce Bulk API 2.0 job with its properties and state.
     https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_all_jobs.htm
     """
 
     # Attribute type annotations
-    apexProcessingTime = fields.IntField()
-    apiActiveProcessingTime = fields.IntField()
-    apiVersion = fields.TextField()
-    assignmentRuleId = fields.IdField()
-    columnDelimiter = fields.PicklistField(
+    apexProcessingTime = IntField()
+    apiActiveProcessingTime = IntField()
+    apiVersion = NumberField()
+    assignmentRuleId = IdField()
+    columnDelimiter = PicklistField(
         options=["BACKQUOTE", "CARET", "COMMA", "PIPE", "SEMICOLON", "TAB"]
     )
-    concurrencyMode = (
-        fields.TextField()
-    )  # This should be an enum, but I can't find the spec.
-    contentType = fields.PicklistField(options=["CSV"])
-    contentUrl = fields.TextField()
-    createdById = fields.IdField()
-    createdDate = fields.DateTimeField()
-    errorMessage = fields.TextField()
-    externalIdField = fields.TextField()
-    id = fields.IdField()
-    jobType = fields.PicklistField(options=["BigObjectIngest", "Classic", "V2Ingest"])
-    lineEnding = fields.PicklistField(options=["LF", "CRLF"])
-    numberRecordsFailed = fields.IntField()
-    numberRecordsProcessed = fields.IntField()
-    object = fields.TextField()
-    operation = fields.PicklistField(
+    concurrencyMode = TextField()  # This should be an enum, but I can't find the spec.
+    contentType = PicklistField(options=["CSV"])
+    contentUrl = TextField()
+    createdById = IdField()
+    createdDate = DateTimeField()
+    errorMessage = TextField()
+    externalIdField = TextField()
+    id = IdField()
+    jobType = PicklistField(options=["BigObjectIngest", "Classic", "V2Ingest"])
+    lineEnding = PicklistField(options=["LF", "CRLF"])
+    numberRecordsFailed = IntField()
+    numberRecordsProcessed = IntField()
+    object = TextField()
+    operation = PicklistField(
         options=[
             "insert",
             "delete",
@@ -50,12 +58,12 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
             "upsert",
         ]
     )
-    retries = fields.IntField()
-    state = fields.PicklistField(
+    retries = IntField()
+    state = PicklistField(
         options=["Open", "UploadComplete", "Aborted", "JobComplete", "Failed"]
     )
-    systemModstamp = fields.DateTimeField()
-    totalProcessingTime = fields.IntField()
+    systemModstamp = DateTimeField()
+    totalProcessingTime = IntField()
 
     @classmethod
     def init_job(
@@ -86,7 +94,7 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
             payload["externalIdFieldName"] = external_id_field
         url = connection.data_url + "/jobs/ingest"
         response = connection.post(url, json=payload, **callout_options)
-        return cls(**response.json())
+        return cls(connection, **response.json())
 
     def __init__(self, connection: I_SalesforceClient, **fields):
         self._connection = connection
@@ -100,17 +108,25 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
 
         assert data, "Cannot upload an empty list"
         data.assert_single_type()
-        fieldnames = fields.query_fields(type(data[0]))
+        fieldnames = query_fields(type(data[0]))
+        if self.operation == "delete" or self.operation == "hardDelete":
+            fieldnames = ["Id"]
+        line_terminator = "\n" if self.lineEnding == "LF" else "\r\n"
         with StringIO() as buffer:
             writer = csv.DictWriter(
-                buffer, fieldnames, delimiter=self._delimiter_char()
+                buffer,
+                fieldnames,
+                delimiter=self._delimiter_char(),
+                lineterminator=line_terminator,
             )
             writer.writeheader()
-            buffer_has_data = False
             for row in data:
-                serialized = flatten(fields.serialize_object(row))
+                before_row_len = buffer.tell()
+                if self.operation == "delete" or self.operation == "hardDelete":
+                    serialized = {"Id": row["Id"]}
+                else:
+                    serialized = flatten(serialize_object(row))
                 writer.writerow(serialized)
-                buffer_has_data = True
                 if buffer.tell() > 100_000_000:
                     # https://resources.docs.salesforce.com/256/latest/en-us/sfdc/pdf/api_asynch.pdf
                     # > A request can provide CSV data that does not in total exceed 150 MB
@@ -118,22 +134,31 @@ class BulkApiIngestJob(fields.FieldConfigurableObject):
                     # > converted to base64. This conversion can increase the data size by
                     # > approximately 50%. To account for the base64 conversion increase,
                     # > upload data that does not exceed 100 MB.
-                    _ = buffer.seek(0)
+
+                    # rewind to the row before the limit was exceeded
+                    _ = buffer.seek(before_row_len)
+                    _ = buffer.truncate()
+                    # push batch with data up to the previous row
                     _ = self._connection.put(
                         self.contentUrl,
-                        files=[("content", ("content", buffer.getvalue(), "text/csv"))],
+                        content=buffer.getvalue(),
+                        headers={
+                            "Content-Type": "text/csv",
+                            "Accept": "application/json",
+                        },
                         **callout_options,
                     )
+                    # reset buffer and write the current row again
                     _ = buffer.seek(0)
                     _ = buffer.truncate()
                     writer.writeheader()
-                    buffer_has_data = False
-            if buffer_has_data:
-                self._connection.put(
-                    self.contentUrl,
-                    files=[("content", ("content", buffer.getvalue(), "text/csv"))],
-                    **callout_options,
-                )
+                    writer.writerow(serialized)
+            _ = self._connection.put(
+                self.contentUrl,
+                content=buffer.getvalue() + "\n",
+                headers={"Content-Type": "text/csv", "Accept": "application/json"},
+                **callout_options,
+            )
 
             updated_values = self._connection.patch(
                 self.contentUrl.removesuffix("/batches"),

@@ -8,6 +8,7 @@ from sf_toolkit.data.fields import IdField, TextField, NumberField, dirty_fields
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.interfaces import I_SalesforceClient
 from sf_toolkit._models import SObjectSaveResult
+from sf_toolkit.io import api
 
 
 # Create test SObject classes
@@ -112,7 +113,7 @@ def test_sobject_list_init():
 
     # Test with non-SObject objects should raise TypeError
     with pytest.raises(TypeError):
-        SObjectList(["not an SObject"])  # type: ignore
+        _ = SObjectList(["not an SObject"])  # pyright: ignore[reportArgumentType]
 
 
 def test_sobject_list_append_extend():
@@ -143,36 +144,17 @@ def test_ensure_consistent_sobject_type(test_accounts, test_contacts):
     """Test _ensure_consistent_sobject_type method"""
     # Test with empty list
     empty_list = SObjectList()
-    assert empty_list._ensure_consistent_sobject_type() is None
+    assert api._ensure_consistent_sobject_type(empty_list) is None
 
     # Test with single type
     account_list = SObjectList(test_accounts)
-    assert account_list._ensure_consistent_sobject_type() is _TestAccount
+    assert api._ensure_consistent_sobject_type(account_list) is _TestAccount
 
     # Test with mixed types
     mixed_list = SObjectList([test_accounts[0]])
     mixed_list.append(test_contacts[0])
     with pytest.raises(TypeError, match="All objects must be of the same type"):
-        mixed_list._ensure_consistent_sobject_type()
-
-
-def test_get_client(mock_sf_client):
-    """Test _get_client method"""
-    # Test with connection specified
-    connection_list = SObjectList(connection=SalesforceClient.DEFAULT_CONNECTION_NAME)
-    client = connection_list._get_client()
-    assert client is mock_sf_client
-
-    # Test with items but no connection
-    account = _TestAccount(Name="Test")
-    account_list = SObjectList([account])
-    client = account_list._get_client()
-    assert client is mock_sf_client
-
-    # Test with no items and no connection
-    empty_list = SObjectList()
-    with pytest.raises(ValueError, match="Cannot determine Salesforce connection"):
-        empty_list._get_client()
+        api._ensure_consistent_sobject_type(mixed_list)
 
 
 def test_generate_record_batches(test_accounts):
@@ -180,7 +162,9 @@ def test_generate_record_batches(test_accounts):
     account_list = SObjectList(test_accounts)
 
     # Basic batching
-    batches, emitted_records = account_list._generate_record_batches(max_batch_size=2)
+    batches, emitted_records = api._generate_record_batches(
+        account_list, max_batch_size=2
+    )
     assert len(batches) == 3  # 5 accounts, batch size 2 = 3 batches
     assert len(batches[0][0]) == 2
     assert len(batches[1][0]) == 2
@@ -201,7 +185,9 @@ def test_generate_record_batches(test_accounts):
     test_accounts[0].Name = "Updated Name"
 
     # Generate batches with only_changes=True
-    batches, emitted_records = account_list._generate_record_batches(only_changes=True)
+    batches, emitted_records = api._generate_record_batches(
+        account_list, only_changes=True
+    )
     assert len(batches) == 1  # Only one record has changes
     assert len(emitted_records) == 1
     records, _ = batches[0]
@@ -223,7 +209,7 @@ def test_generate_record_batches(test_accounts):
         )
 
     # Should create a single batch for all records, as there are fewer than 10 chunks
-    batches, emitted_records = mixed_list._generate_record_batches()
+    batches, emitted_records = api._generate_record_batches(mixed_list)
     # With how the batching works, there should be no separate batches since there are fewer than 10 chunks
     assert len(batches) == 1
     assert len(emitted_records) == 20
@@ -231,7 +217,7 @@ def test_generate_record_batches(test_accounts):
     mixed_list.extend(
         [_TestAccount(Name="Account A6"), _TestAccount(Name="Account B6")]
     )
-    batches, emitted_records = mixed_list._generate_record_batches()
+    batches, emitted_records = api._generate_record_batches(mixed_list)
 
     # First batch should be TestAccounts, second should be TestContact
     assert len(batches[0][0]) == 20
@@ -252,7 +238,7 @@ def test_save_insert(mock_sf_client, test_accounts):
     mock_sf_client.post.return_value = mock_response
 
     # Call save_insert
-    results = account_list.save_insert()
+    results = api.save_insert_list(account_list)
 
     # Verify the API call
     mock_sf_client.post.assert_called_once()
@@ -290,7 +276,7 @@ def test_save_insert_with_errors(mock_sf_client, test_accounts):
     mock_sf_client.post.return_value = mock_response
 
     # Call save_insert
-    results = account_list.save_insert()
+    results = api.save_insert_list(account_list)
 
     # Verify results
     assert len(results) == 2
@@ -308,7 +294,7 @@ def test_save_insert_with_id_error(test_accounts_with_ids, mock_sf_client):
     with pytest.raises(
         ValueError, match="Cannot insert record that already has an Id set"
     ):
-        account_list.save_insert()
+        api.save_insert_list(account_list)
 
 
 def test_save_insert_async(mock_sf_client, test_accounts):
@@ -333,7 +319,7 @@ def test_save_insert_async(mock_sf_client, test_accounts):
     async_client.post = mock_response
 
     # Call save_insert with concurrency > 1
-    results = account_list.save_insert(concurrency=5, batch_size=5)
+    results = api.save_insert_list(account_list, concurrency=5, batch_size=5)
 
     # Verify async client was used
     async_client.post.assert_called()
@@ -362,7 +348,7 @@ def test_save_update(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save_update
-    results = account_list.save_update()
+    results = api.save_update_list(account_list)
 
     # Verify API call
     mock_sf_client.patch.assert_called_once()
@@ -398,7 +384,7 @@ def test_save_update_only_changes(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save_update with only_changes=True
-    account_list.save_update(only_changes=True)
+    api.save_update_list(account_list, only_changes=True)
 
     # Verify API call
     mock_sf_client.patch.assert_called_once()
@@ -426,7 +412,7 @@ def test_save_update_no_id(test_accounts, mock_sf_client):
 
     # Should raise ValueError
     with pytest.raises(ValueError, match="Record at index 0 has no Id for update"):
-        account_list.save_update()
+        api.save_update_list(account_list)
 
 
 def test_save_update_async(mock_sf_client, test_accounts_with_ids):
@@ -450,7 +436,7 @@ def test_save_update_async(mock_sf_client, test_accounts_with_ids):
     async_client.post.return_value = mock_response
 
     # Call save_update with concurrency > 1
-    results = account_list.save_update(concurrency=2)
+    results = api.save_update_list(account_list, concurrency=2)
 
     # Verify async client's post method was called
     async_client.post.assert_called()
@@ -484,7 +470,7 @@ def test_save_upsert(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save_upsert
-    object_list.save_upsert(external_id_field="ExternalId__c")
+    api.save_upsert_list(object_list, external_id_field="ExternalId__c")
 
     # Verify API call
     mock_sf_client.patch.assert_called()
@@ -492,7 +478,7 @@ def test_save_upsert(mock_sf_client):
     assert "ExternalId__c" in args[0]  # URL should include external ID field
 
     # Verify the results were transformed into SObjectSaveResult objects
-    results = object_list.save_upsert(external_id_field="ExternalId__c")
+    results = api.save_upsert_list(object_list, external_id_field="ExternalId__c")
     assert len(results) == len(object_list)
     for result in results:
         assert isinstance(result, SObjectSaveResult)
@@ -516,7 +502,7 @@ def test_save_upsert_missing_external_id(mock_sf_client):
     with pytest.raises(
         AssertionError, match="Record at index 1 has no value for external ID field"
     ):
-        object_list.save_upsert(external_id_field="ExternalId__c")
+        api.save_upsert_list(object_list, external_id_field="ExternalId__c")
 
 
 def test_save_upsert_async(mock_sf_client):
@@ -543,8 +529,8 @@ def test_save_upsert_async(mock_sf_client):
     )
 
     # Call save_upsert with concurrency > 1
-    results = object_list.save_upsert(
-        external_id_field="ExternalId__c", concurrency=3, batch_size=2
+    results = api.save_upsert_list(
+        object_list, external_id_field="ExternalId__c", concurrency=3, batch_size=2
     )
 
     # Verify async client was used
@@ -586,7 +572,9 @@ def test_save_upsert_only_changes(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save_upsert with only_changes=True
-    object_list.save_upsert(external_id_field="ExternalId__c", only_changes=True)
+    api.save_upsert_list(
+        object_list, external_id_field="ExternalId__c", only_changes=True
+    )
 
     # Verify API call
     mock_sf_client.patch.assert_called_once()
@@ -613,7 +601,7 @@ def test_consistent_sobject_type_for_upsert(mock_sf_client):
 
     # Should raise TypeError
     with pytest.raises(TypeError, match="All objects must be of the same type"):
-        mixed_list.save_upsert(external_id_field="ExternalId__c")
+        api.save_upsert_list(mixed_list, external_id_field="ExternalId__c")
 
 
 def test_delete(mock_sf_client, test_accounts_with_ids):
@@ -628,7 +616,7 @@ def test_delete(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.delete.return_value = mock_response
 
     # Call delete
-    account_list.delete()
+    api.delete_list(account_list)
 
     # Verify API call
     mock_sf_client.delete.assert_called_once()
@@ -652,7 +640,7 @@ def test_delete_with_clear_id(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.delete.return_value = mock_response
 
     # Call delete with clear_id_field=True
-    account_list.delete(clear_id_field=True)
+    api.delete_list(account_list, clear_id_field=True)
 
     # Verify ID fields were cleared
     for account in account_list:
@@ -673,7 +661,7 @@ def test_delete_async(mock_sf_client, test_accounts_with_ids):
     async_client.delete = mock_response
 
     # Call delete with concurrency > 1
-    account_list.delete(concurrency=2, batch_size=(len(account_list) // 2))
+    api.delete_list(account_list, concurrency=2, batch_size=(len(account_list) // 2))
 
     # Verify async client's delete method was called
     async_client.delete.assert_called()
@@ -684,9 +672,9 @@ def test_empty_list_operations(mock_sf_client):
     empty_list = SObjectList()
 
     # All operations should return empty lists without making API calls
-    assert empty_list.save_insert() == []
-    assert empty_list.save_update() == []
-    assert empty_list.delete() == []
+    assert api.save_insert_list(empty_list) == []
+    assert api.save_update_list(empty_list) == []
+    assert api.delete_list(empty_list) == []
 
     # Verify no API calls were made
     mock_sf_client.post.assert_not_called()
@@ -706,7 +694,7 @@ def test_save_basic_functionality(mock_sf_client, test_accounts):
     mock_sf_client.post.return_value = mock_response
 
     # Call save
-    account_list.save()
+    api.save_list(account_list)
 
     # Verify API call for insert
     mock_sf_client.post.assert_called_once()
@@ -734,7 +722,7 @@ def test_save_update_existing_records(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save
-    account_list.save()
+    api.save_list(account_list)
 
     # Verify API call for update
     mock_sf_client.patch.assert_called_once()
@@ -765,7 +753,7 @@ def test_save_upsert_with_external_id(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save with external_id_field
-    object_list.save(external_id_field="ExternalId__c")
+    api.save_list(object_list, external_id_field="ExternalId__c")
 
     # Verify API call for upsert
     mock_sf_client.patch.assert_called_once()
@@ -794,7 +782,7 @@ def test_save_with_only_changes_option(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save with only_changes=True
-    account_list.save(only_changes=True)
+    api.save_list(account_list, only_changes=True)
 
     # Verify API call
     mock_sf_client.patch.assert_called_once()
@@ -831,7 +819,7 @@ def test_save_with_update_only_option(mock_sf_client):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save with update_only=True
-    object_list.save(external_id_field="ExternalId__c", update_only=True)
+    api.save_list(object_list, external_id_field="ExternalId__c", update_only=True)
 
     # Verify API call for upsert with update_only
     mock_sf_client.patch.assert_called_once()
@@ -858,7 +846,7 @@ def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
     mock_sf_client.patch.return_value = mock_response
 
     # Call save with multiple options
-    account_list.save(only_changes=True, reload_after_success=False)
+    api.save_list(account_list, only_changes=True, reload_after_success=False)
 
     # Verify API call
     mock_sf_client.patch.assert_called_once()
@@ -881,4 +869,4 @@ def test_save_error_on_update_only_without_id_or_external_id(
         ValueError,
         match="Cannot perform update_only operation when no records have IDs",
     ):
-        account_list.save(update_only=True)
+        api.save_list(account_list, update_only=True)

@@ -16,6 +16,7 @@ FROM Account
 """
 
 from sf_toolkit import SalesforceClient, lazy_login, SObject
+from sf_toolkit.data import select
 from sf_toolkit.data.fields import IntField, ListField, TextField
 
 
@@ -48,7 +49,5 @@ with SalesforceClient(login=lazy_login(sf_cli_alias=True)):
     # The query object will be automatically converted to SOQL syntax
     query = select(Account).where(Id__in="SELECT AccountId FROM Contact")
     print(query)
-
-    results = query.execute()
-    for record in results:
+    for record in query:
         print(record.Name, [contact.LastName for contact in record.Contacts], sep=" | ")

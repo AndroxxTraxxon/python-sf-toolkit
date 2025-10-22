@@ -251,8 +251,9 @@ def test_from_description(mock_sf_client):
     assert obj["Name"] == "Test Object"
     assert obj["CustomDate__c"] == datetime.date(2023, 1, 15)
     assert obj["IsActive__c"] is True
-    assert isinstance(obj["Categories__c"], MultiPicklistValue)
-    assert obj["Categories__c"].values == ["one", "two", "three"]  # type: ignore
+    categories: MultiPicklistValue = getattr(obj, "Categories__c")  # type: ignore
+    assert isinstance(categories, MultiPicklistValue)
+    assert categories.values == ["one", "two", "three"]  # type: ignore
 
 
 def test_query_builder(mock_sf_client):

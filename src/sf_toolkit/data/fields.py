@@ -276,7 +276,7 @@ class Field(typing.Generic[T]):
         if self._py_type is not None and not isinstance(value, self._py_type):
             raise TypeError(
                 f"Expected {self._py_type.__qualname__} for field {self._name} "
-                f"on {self._owner.__name__}, got {type(value).__name__}"
+                f"on {self._owner.__name__}, got {type(value).__name__} {str(value)[:50]}"
             )
 
 
@@ -601,9 +601,7 @@ class BlobData:
         else:
             raise TypeError(f"Unsupported data type: {type(self.data)}")
 
-    def __exit__(
-        self, exc_type: type[Exception], exc_value: Exception, traceback: typing.Any
-    ):
+    def __exit__(self, exc_type, exc_value, traceback):
         if self._filepointer:
             self._filepointer.close()
 
