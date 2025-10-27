@@ -3,7 +3,7 @@ from typing import TypedDict, Generic, TypeVar, NamedTuple
 
 class SObjectAttributes(NamedTuple):
     type: str
-    connection: str
+    connection: str | None
     id_field: str
     blob_field: str | None
     tooling: bool

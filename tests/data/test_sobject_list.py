@@ -6,7 +6,6 @@ from sf_toolkit.data.transformers import chunked
 from sf_toolkit.data.sobject import SObject, SObjectList
 from sf_toolkit.data.fields import IdField, TextField, NumberField, dirty_fields
 from sf_toolkit.client import SalesforceClient
-from sf_toolkit.interfaces import I_SalesforceClient
 from sf_toolkit._models import SObjectSaveResult
 from sf_toolkit.io import api
 
@@ -46,17 +45,17 @@ def mock_sf_client():
     mock_async_client.__aexit__ = AsyncMock(return_value=None)
 
     # Keep a reference to the original _connections dictionary to restore later
-    original_connections = I_SalesforceClient._connections
+    original_connections = SalesforceClient._connections
 
     # Add the mock client to the _connections dictionary directly
-    I_SalesforceClient._connections = {
+    SalesforceClient._connections = {
         SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
     }
 
     yield mock_client
 
     # Restore the original _connections dictionary
-    I_SalesforceClient._connections = original_connections
+    SalesforceClient._connections = original_connections
 
 
 @pytest.fixture

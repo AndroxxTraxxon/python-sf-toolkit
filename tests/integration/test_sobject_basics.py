@@ -1,7 +1,6 @@
 import pytest
 from datetime import datetime, timedelta
-from sf_toolkit.client import SalesforceClient
-from sf_toolkit.interfaces import OrgType
+from sf_toolkit.client import SalesforceClient, OrgType
 from sf_toolkit.io.api import delete, fetch, save, update_record
 from sf_toolkit.exceptions import SalesforceError
 

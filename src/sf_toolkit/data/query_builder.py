@@ -1,10 +1,10 @@
 from asyncio import Task, create_task
+from pydoc import resolve
 from typing import Any, AsyncIterator, Iterator, Literal, NamedTuple, TypeVar, Generic
 from datetime import datetime, date
 
-from sf_toolkit.interfaces import I_SalesforceClient
 
-from ..client import SalesforceClient
+from ..client import AsyncSalesforceClient, SalesforceClient
 from .fields import ListField, object_fields, query_fields
 from .sobject import SObject, SObjectList
 
@@ -135,14 +135,25 @@ _SObjectJSON = TypeVar("_SObjectJSON", bound=dict[str, Any])
 
 
 def resolve_client(
-    sobject_type: type[_SObject], connection: str | I_SalesforceClient | None
+    sobject_type: type[_SObject], connection: str | SalesforceClient | None
 ):
     if isinstance(connection, str):
         return SalesforceClient.get_connection(connection)
-    if isinstance(connection, I_SalesforceClient):
+    if isinstance(connection, SalesforceClient):
         return connection
 
     return SalesforceClient.get_connection(sobject_type.attributes.connection)
+
+
+def resolve_async_client(
+    sobject_type: type[_SObject], connection: str | AsyncSalesforceClient | None
+):
+    if isinstance(connection, str):
+        return AsyncSalesforceClient.get_connection(connection)
+    if isinstance(connection, AsyncSalesforceClient):
+        return connection
+
+    return AsyncSalesforceClient.get_connection(sobject_type.attributes.connection)
 
 
 class QueryResultBatch(Generic[_SObject]):
@@ -164,7 +175,7 @@ class QueryResultBatch(Generic[_SObject]):
     "The list of records returned by the query"
     nextRecordsUrl: str | None
     "URL to the next batch of records, if more exist"
-    _connection: I_SalesforceClient
+    _connection: str | None
     _sobject_type: type[_SObject]
     "The SObject type this QueryResult contains records for"
     query_locator: str | None = None
@@ -178,7 +189,7 @@ class QueryResultBatch(Generic[_SObject]):
         totalSize: int = 0,
         records: list[SObjectRecordJSON] | None = None,
         nextRecordsUrl: str | None = None,
-        connection: I_SalesforceClient | None = None,
+        connection_name: str | None = None,
     ):
         """
         Initialize a QueryResult object from Salesforce API response data.
@@ -186,7 +197,7 @@ class QueryResultBatch(Generic[_SObject]):
         Args:
             **kwargs: Key-value pairs from the Salesforce API response.
         """
-        self._connection = resolve_client(sobject_type, connection)
+        self._connection = connection_name
         self._sobject_type = sobject_type
         self.done = done
         self.totalSize = totalSize
@@ -208,10 +219,14 @@ class QueryResultBatch(Generic[_SObject]):
         if not self.nextRecordsUrl:
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
-        result: QueryResultJSON = self._connection.get(self.nextRecordsUrl).json()
+        result: QueryResultJSON = (
+            SalesforceClient.get_connection(self._connection)
+            .get(self.nextRecordsUrl)
+            .json()
+        )
         return QueryResultBatch(
             self._sobject_type,
-            connection=self._connection,
+            connection_name=self._connection,
             **result,  # type: ignore
         )
 
@@ -220,11 +235,13 @@ class QueryResultBatch(Generic[_SObject]):
             raise ValueError("Cannot get more records without nextRecordsUrl")
 
         result: QueryResultJSON = (
-            await self._connection.as_async.get(self.nextRecordsUrl)
+            await AsyncSalesforceClient.get_connection(self._connection).get(
+                self.nextRecordsUrl
+            )
         ).json()
         return QueryResultBatch(
             self._sobject_type,
-            connection=self._connection,
+            connection_name=self._connection,
             **result,  # type: ignore
         )
 
@@ -234,16 +251,29 @@ class QueryResult(Generic[_SObject]):
     total_size: int
     batch_index: int = 0
     record_index: int = 0
-    _async_tasks: list[Task] | None
+    _async_tasks: list[Task[QueryResultBatch[_SObject]]] | None
 
     def __init__(
         self,
         batches: list[QueryResultBatch[_SObject]],
-        _async_tasks: list[Task] | None = None,
+        _async_tasks: list[Task[QueryResultBatch[_SObject]]] | None = None,
     ):
         self.batches = batches
         self.total_size = batches[0].totalSize
         self._async_tasks = _async_tasks
+
+    def copy(self) -> "QueryResult[_SObject]":
+        """Perform a shallow copy of the QueryResult object."""
+        return QueryResult(self.batches, self._async_tasks)
+
+    def __iter__(self) -> Iterator[_SObject]:
+        return self.copy()
+
+    def __aiter__(self) -> AsyncIterator[_SObject]:
+        if not self.done:
+            self.schedule_async_tasks()
+
+        return self.copy()
 
     def __len__(self):
         return self.total_size
@@ -257,26 +287,26 @@ class QueryResult(Generic[_SObject]):
             self, connection=self.batches[0]._sobject_type.attributes.connection
         )
 
-    async def as_list_async(self):
+    async def as_list_async(self) -> SObjectList[_SObject]:
         return await SObjectList.async_init(
             self, self.batches[0]._sobject_type.attributes.connection
         )
 
     async def _fetch_query_locator_batch(self, query_locator_url: str):
-        connection = self.batches[0]._connection.as_async
+        try:
+            connection = AsyncSalesforceClient.get_connection(
+                self.batches[0]._connection
+            )
+        except KeyError:
+            connection = SalesforceClient.get_connection(
+                self.batches[0]._connection
+            ).as_async
         result: QueryResultJSON = (await connection.get(query_locator_url)).json()
         return QueryResultBatch(
             self.batches[0]._sobject_type,
-            connection=self.batches[0]._connection,
+            connection_name=self.batches[0]._connection,
             **result,  ## type: ignore
         )
-
-    def copy(self) -> "QueryResult[_SObject]":
-        """Perform a shallow copy of the QueryResult object."""
-        return QueryResult(self.batches, self._async_tasks)
-
-    def __iter__(self) -> Iterator[_SObject]:
-        return self.copy()
 
     def schedule_async_tasks(self):
         assert self.batches[0].nextRecordsUrl is not None, (
@@ -289,12 +319,6 @@ class QueryResult(Generic[_SObject]):
             create_task(self._fetch_query_locator_batch(f"{url_root}-{index}"))
             for index in range(fetched_record_count, len(self), batch_size)
         ]
-
-    def __aiter__(self) -> AsyncIterator[_SObject]:
-        if not self.done:
-            self.schedule_async_tasks()
-
-        return self.copy()
 
     def __next__(self) -> _SObject:
         try:
@@ -593,6 +617,58 @@ class SoqlQuery(Generic[_SObject]):
         # Count query returns a list with a single record containing the count
         return len(count_result)
 
+    async def count_async(
+        self, connection: AsyncSalesforceClient | str | None = None
+    ) -> int:
+        """
+        Executes a count query instead of fetching records.
+        Returns the count of records that match the query criteria.
+
+        Returns:
+            int: Number of records matching the query criteria
+        """
+
+        # Execute the query
+        count_result = await self.execute_async("COUNT()", connection=connection)
+
+        # Count query returns a list with a single record containing the count
+        return len(count_result)
+
+    async def execute_async(
+        self,
+        *_fields: str,
+        connection: AsyncSalesforceClient | str | None = None,
+        **callout_options,
+    ) -> QueryResult[_SObject]:
+        """
+        Executes the SOQL query and returns the first batch of results (up to 2000 records).
+        """
+        if _fields:
+            fields = list(_fields)
+        else:
+            fields = self.fields
+
+        client = resolve_async_client(self.sobject_type, connection)
+
+        result: QueryResultJSON
+        assert not (self.sobject_type.attributes.tooling and self._include_deleted), (
+            "Tooling API does not support query deleted records (QueryAll)"
+        )
+        if self.sobject_type.attributes.tooling:
+            url = f"{client.data_url}/tooling/query/"
+        elif self._include_deleted:
+            url = f"{client.data_url}/queryAll/"
+        else:
+            url = f"{client.data_url}/query/"
+        result = (
+            await client.get(url, params={"q": self.format(fields)}, **callout_options)
+        ).json()
+        batch = QueryResultBatch(
+            self.sobject_type, connection_name=client.connection_name, **result
+        )  # type: ignore
+
+        return QueryResult([batch])
+
     def execute(
         self,
         *_fields: str,
@@ -622,9 +698,53 @@ class SoqlQuery(Generic[_SObject]):
         result = client.get(
             url, params={"q": self.format(fields)}, **callout_options
         ).json()
-        batch = QueryResultBatch(self.sobject_type, connection=client, **result)  # type: ignore
+        batch = QueryResultBatch(
+            self.sobject_type, connection_name=client.connection_name, **result
+        )  # type: ignore
 
         return QueryResult([batch])
+
+    def execute_bulk(
+        self, connection_name: str | None = None
+    ) -> "BulkQueryResult[_SObject]":
+        global BulkApiQueryJob, BulkQueryResult
+        try:
+            _ = BulkApiQueryJob
+        except NameError:
+            from .bulk import BulkApiQueryJob, BulkQueryResult
+
+        connection = SalesforceClient.get_connection(
+            connection_name or self.sobject_type.attributes.connection
+        )
+
+        bulk_job: BulkApiQueryJob[_SObject] = BulkApiQueryJob.init_job(
+            self,
+            connection,
+            operation="queryAll" if self._include_deleted else "query",
+        )
+        _ = bulk_job.monitor_until_complete()
+
+        return bulk_job.result
+
+    async def execute_bulk_async(
+        self, connection: AsyncSalesforceClient | str | None = None
+    ) -> "BulkQueryResult[_SObject]":
+        global BulkApiQueryJob, BulkQueryResult
+        try:
+            _ = BulkApiQueryJob
+        except NameError:
+            from .bulk import BulkApiQueryJob, BulkQueryResult
+
+        connection = resolve_async_client(self.sobject_type, connection)
+
+        bulk_job: BulkApiQueryJob[_SObject] = await BulkApiQueryJob.init_job_async(
+            self,
+            connection,
+            operation="queryAll" if self._include_deleted else "query",
+        )
+        _ = await bulk_job.monitor_until_complete_async()
+
+        return bulk_job.result
 
     def __iter__(self):
         return self.execute()

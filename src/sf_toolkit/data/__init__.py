@@ -25,14 +25,12 @@ from .fields import (
 
 from .sobject import SObject, SObjectList
 from .query_builder import SoqlQuery, select, QueryResult
-from .bulk import BulkApiIngestJob
 
 __all__ = [
     "Address",
     "AddressField",
     "BlobData",
     "BlobField",
-    "BulkApiIngestJob",
     "CheckboxField",
     "DateField",
     "DateTimeField",

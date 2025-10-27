@@ -9,12 +9,11 @@ from collections.abc import Iterable, AsyncIterable
 import warnings
 from ..logger import getLogger
 
-from .. import client as sftk_client
+from .. import SalesforceClient, client as sftk_client
 
 from .transformers import chunked
 from ..async_utils import run_concurrently
 from .._models import SObjectAttributes, SObjectSaveResult
-from ..interfaces import I_AsyncSalesforceClient, I_SObject, I_SalesforceClient
 from . import fields
 from .fields import (
     BlobData,
@@ -28,7 +27,6 @@ from .fields import (
 from .transformers import flatten
 
 _logger = getLogger("sobject")
-_sObject = TypeVar("_sObject", bound="SObject")
 
 _T = TypeVar("_T")
 
@@ -145,11 +143,11 @@ class SObjectDescribe:
         return self._raw_data
 
 
-class SObject(FieldConfigurableObject, I_SObject, ABC):
+class SObject(FieldConfigurableObject, ABC):
     def __init_subclass__(
         cls,
         api_name: str | None = None,
-        connection: str = "",
+        connection: str | None = None,
         id_field: str = "Id",
         tooling: bool = False,
         **kwargs,
@@ -158,7 +156,7 @@ class SObject(FieldConfigurableObject, I_SObject, ABC):
         if not api_name:
             api_name = cls.__name__
         blob_field = None
-        connection = connection or I_SalesforceClient.DEFAULT_CONNECTION_NAME
+        connection = connection or SalesforceClient.DEFAULT_CONNECTION_NAME
         for name, field in object_fields(cls).items():
             if isinstance(field, BlobField):
                 assert blob_field is None, (
@@ -200,10 +198,17 @@ def _is_sobject_subclass(cls):
     return issubclass(cls, SObject)
 
 
+_sObject = TypeVar("_sObject", bound=SObject)
+
+
 class SObjectList(list[_sObject]):
     """A list that contains SObject instances and provides bulk operations via Salesforce's composite API."""
 
-    def __init__(self, iterable: Iterable[_sObject] = (), *, connection: str = ""):
+    connection: str | None
+
+    def __init__(
+        self, iterable: Iterable[_sObject] = (), *, connection: str | None = None
+    ):
         """
         Initialize an SObjectList.
 
@@ -225,12 +230,12 @@ class SObjectList(list[_sObject]):
 
     @classmethod
     async def async_init(
-        cls, a_iterable: AsyncIterable[_sObject], connection: str = ""
-    ):
+        cls, a_iterable: AsyncIterable[_sObject], connection: str | None = None
+    ) -> "SObjectList[_sObject]":
         collected_records = [record async for record in a_iterable]
         return cls(collected_records, connection=connection)
 
-    def append(self, item: _sObject | Any):
+    def append(self, item: _sObject):
         """Add an SObject to the list."""
         if not isinstance(item, SObject):
             raise TypeError(f"Can only append SObject instances, got {type(item)}")

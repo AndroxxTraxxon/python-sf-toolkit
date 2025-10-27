@@ -1,15 +1,16 @@
+from abc import ABC, ABCMeta
 import asyncio
+from enum import Enum
 from functools import cached_property
 from types import TracebackType
+from typing import ClassVar, Generic, Protocol, TypeVar
+from typing_extensions import override
 
-from httpx import URL, Response
-from httpx._client import ClientState  # type: ignore
-
-from .interfaces import I_AsyncSalesforceClient, I_SalesforceClient
-
+from httpx import URL, AsyncClient, Client, Request, Response
+from httpx._client import BaseClient  # type: ignore
 
 from .logger import getLogger
-from .metrics import parse_api_usage
+from .metrics import ApiUsage, parse_api_usage
 from .exceptions import raise_for_status
 from .auth import (
     SalesforceAuth,
@@ -21,8 +22,172 @@ from .apimodels import ApiVersion, UserInfo, OrgLimits
 
 LOGGER = getLogger("client")
 
+_T = TypeVar("_T")
+_SCB = TypeVar("_SCB", bound="SalesforceClientBase")
 
-class AsyncSalesforceClient(I_AsyncSalesforceClient):
+
+class OrgType(Enum):
+    PRODUCTION = "Production"
+    SCRATCH = "Scratch"
+    SANDBOX = "Sandbox"
+    DEVELOPER = "Developer"
+
+
+class ClientBaseProto(Protocol):
+    _base_url: URL
+
+    def _enforce_trailing_slash(self, url: URL) -> URL: ...
+
+    def build_request(self, method: str, url: str) -> Request: ...
+
+
+class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
+    token_refresh_callback: TokenRefreshCallback | None = None
+    api_version: ApiVersion | None = None
+    _versions: dict[float, ApiVersion] | None = None
+    _userinfo: UserInfo | None = None
+    api_usage: ApiUsage | None = None
+    connection_name: str
+
+    DEFAULT_CONNECTION_NAME: ClassVar[str] = "default"
+
+    def __init__(
+        self,
+        api_version: ApiVersion | int | float | str | None = None,
+        connection_name: str = DEFAULT_CONNECTION_NAME,
+    ):
+        if api_version is not None:
+            self.api_version = ApiVersion.lazy_build(api_version)
+        self.connection_name = connection_name
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        cls._connections: dict[str, "SalesforceClientBase"] = {}
+
+    def handle_token_refresh(self, token: SalesforceToken):
+        self._derive_base_url(token)
+        if self.token_refresh_callback:
+            self.token_refresh_callback(token)
+
+    def set_token_refresh_callback(self, callback: TokenRefreshCallback):
+        self.token_refresh_callback = callback
+
+    def _derive_base_url(self, session: SalesforceToken):
+        self._base_url = self._enforce_trailing_slash(session.instance)
+
+    def org_type(self) -> OrgType:
+        if ".scratch." in self._base_url.host.lower():
+            return OrgType.SCRATCH
+        elif ".sandbox." in self._base_url.host.lower():
+            return OrgType.SANDBOX
+        elif self._base_url.host.lower().split(".", 1)[0].endswith("-dev-ed"):
+            return OrgType.DEVELOPER
+        else:
+            return OrgType.PRODUCTION
+
+    @property
+    def data_url(self):
+        if not self.api_version:
+            assert hasattr(self, "_versions") and self._versions, ""
+            self.api_version = self._versions[max(self._versions)]
+        return self.api_version.url
+
+    def _userinfo_request(self):
+        return self.build_request("GET", "/services/oauth2/userinfo")
+
+    def _versions_request(self):
+        return self.build_request("GET", "/services/data")
+
+    @property
+    def sobjects_url(self):
+        return f"{self.data_url}/sobjects"
+
+    def composite_sobjects_url(self, sobject: str | None = None):
+        url = f"{self.data_url}/composite/sobjects"
+        if sobject:
+            url += "/" + sobject
+        return url
+
+    @property
+    def tooling_url(self):
+        return f"{self.data_url}/tooling"
+
+    @property
+    def tooling_sobjects_url(self):
+        return f"{self.data_url}/tooling"
+
+    @property
+    def metadata_url(self):
+        return f"{self.data_url}/metadata"
+
+    @classmethod
+    def get_connection(cls: type[_SCB], name: str | None = None) -> _SCB:
+        return cls._connections[name or cls.DEFAULT_CONNECTION_NAME]
+
+    @classmethod
+    def register_connection(cls: type[_SCB], connection_name: str, instance: _SCB):
+        if connection_name in cls._connections:
+            raise KeyError(
+                f"SalesforceClient connection '{connection_name}' has already been registered."
+            )
+        cls._connections[connection_name] = instance
+
+    @classmethod
+    def unregister_connection(cls: type[_SCB], name_or_instance: str | _SCB):
+        if isinstance(name_or_instance, str):
+            names_to_unregister = [name_or_instance]
+        else:
+            names_to_unregister = [
+                name
+                for name, instance in cls._connections.items()
+                if instance is name_or_instance
+            ]
+        for name in names_to_unregister:
+            if name in cls._connections:
+                del cls._connections[name]
+
+    def __enter__(self):
+        sup = super()
+        if (_supenter := getattr(sup, "__enter__", None)) is not None:
+            _ = _supenter()
+        self.register_connection(self.connection_name, self)
+        return self
+
+    async def __aenter__(self):
+        sup = super()
+        if (_supenter := getattr(sup, "__aenter__", None)) is not None:
+            _ = await _supenter()
+        self.register_connection(self.connection_name, self)
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
+        sup = super()
+        if (_sup_exit := getattr(sup, "__exit__", None)) is not None:
+            return _sup_exit(exc_type, exc_value, traceback)
+        return
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
+        sup = super()
+        if (_sup_aexit := getattr(sup, "__aexit__", None)) is not None:
+            return await _sup_aexit(exc_type, exc_value, traceback)
+        return
+
+
+class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
     _auth: SalesforceAuth
 
     def __init__(
@@ -30,47 +195,43 @@ class AsyncSalesforceClient(I_AsyncSalesforceClient):
         login: SalesforceLogin | None = None,
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
-        sync_parent: "SalesforceClient | None" = None,
+        api_version: ApiVersion | int | float | str | None = None,
+        connection_name: str = SalesforceClientBase.DEFAULT_CONNECTION_NAME,
     ):
         assert login or token, (
             "Either auth or session parameters are required.\n"
             "Both are permitted simultaneously."
         )
-        super().__init__(
+        AsyncClient.__init__(
+            self,
             auth=SalesforceAuth(login, token, self.handle_token_refresh),
             headers={"Accept": "application/json"},
         )
+        SalesforceClientBase.__init__(self, api_version, connection_name)
         if token:
             self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
-        self.sync_parent = sync_parent
 
-    def unregister_parent(self):
-        self.sync_parent = None
-
-    async def __aenter__(self):  # type: ignore
-        if self._state == ClientState.UNOPENED:
-            await super().__aenter__()
-            self._userinfo = (await self.send(self._userinfo_request())).json(
-                object_hook=ApiVersion
-            )
-            self._versions = (await self.send(self._versions_request())).json(
-                object_hook=ApiVersion
+    async def __aenter__(self):
+        _ = await AsyncClient.__aenter__(self)
+        _ = await SalesforceClientBase.__aenter__(self)
+        try:
+            self._userinfo = UserInfo(
+                **(await self.send(self._userinfo_request())).json()
             )
             if self.api_version:
-                self.api_version = self._versions[self.api_version.version]
+                self.api_version = (await self.versions())[self.api_version.version]
             else:
-                self.api_version = self._versions[max(self._versions)]
-            return self
+                self.api_version = (await self.versions())[max(await self.versions())]
             LOGGER.info(
-                "Opened connection to %s as %s (%s) using API Version %s (%.01f)",
+                "Logged into %s as %s (%s)",
                 self.base_url,
                 self._userinfo.name,
                 self._userinfo.preferred_username,
-                self.api_version.label,
-                self.api_version.version,
             )
-
+        except Exception as e:
+            await self.__aexit__(type(e), e, e.__traceback__)
+            raise
         return self
 
     async def __aexit__(
@@ -79,8 +240,7 @@ class AsyncSalesforceClient(I_AsyncSalesforceClient):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
-        if self.sync_parent:
-            return None
+        _ = await SalesforceClientBase.__aexit__(self, exc_type, exc_value, traceback)
         return await super().__aexit__(exc_type, exc_value, traceback)
 
     async def request(
@@ -111,17 +271,33 @@ class AsyncSalesforceClient(I_AsyncSalesforceClient):
             for version in versions_data
         }
 
+    @property
+    def as_sync(self) -> "SalesforceClient":
+        client = SalesforceClient.get_connection(self.connection_name)
+        if client is None:
+            client = SalesforceClient(
+                login=self._auth.login,
+                token=self._auth.token,
+                # token_refresh_callback=self.handle_async_clone_token_refresh,
+                # not implementing async token refresh callback for sync client generated this way
+                api_version=self.api_version,
+                connection_name=self.connection_name,
+            )
+            SalesforceClient.register_connection(self.connection_name, client)
+        return client
 
-class SalesforceClient(I_SalesforceClient):
+
+class SalesforceClient(Client, SalesforceClientBase):
     token_refresh_callback: TokenRefreshCallback | None
     _auth: SalesforceAuth
 
     def __init__(
         self,
-        connection_name: str = I_SalesforceClient.DEFAULT_CONNECTION_NAME,
+        connection_name: str = SalesforceClientBase.DEFAULT_CONNECTION_NAME,
         login: SalesforceLogin | None = None,
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
+        api_version: ApiVersion | int | float | str | None = None,
         headers={"Accept": "application/json"},
         **kwargs,
     ):
@@ -131,17 +307,20 @@ class SalesforceClient(I_SalesforceClient):
         )
         auth = SalesforceAuth(login, token, self.handle_token_refresh)
         super().__init__(auth=auth, **kwargs)
+        SalesforceClientBase.__init__(
+            self, connection_name=connection_name, api_version=api_version
+        )
         if token:
             self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
-        self._connection_name = connection_name
+        self.connection_name = connection_name
 
     def __str__(self):
         if not (isinstance(self.auth, SalesforceAuth) and self.auth.token is not None):
-            return f"{type(self).__name__} ({self._connection_name})"
+            return f"{type(self).__name__} ({self.connection_name})"
         return (
-            f"{type(self).__name__} ({self._connection_name}) -> "
-            f"{self.auth.token.instance.host} as {self._userinfo.preferred_username}"
+            f"{type(self).__name__} ({self.connection_name}) -> "
+            f"{self.auth.token.instance.host} as {(_ui := self._userinfo) and _ui.preferred_username}"
         )
 
     def handle_async_clone_token_refresh(self, token: SalesforceToken):
@@ -149,27 +328,28 @@ class SalesforceClient(I_SalesforceClient):
 
     # caching this so that multiple calls don't generate new sessions.
     @property
-    def as_async(self) -> I_AsyncSalesforceClient:
-        a_client = getattr(self, "_async_session", None)
-        if a_client is None:
-            a_client = self._async_session = AsyncSalesforceClient(
+    def as_async(self) -> AsyncSalesforceClient:
+        client = AsyncSalesforceClient.get_connection(self.connection_name)
+        if client is None:
+            client = AsyncSalesforceClient(
                 login=self._auth.login,
                 token=self._auth.token,
                 token_refresh_callback=self.handle_async_clone_token_refresh,
-                sync_parent=self,
+                api_version=self.api_version,
+                connection_name=self.connection_name,
             )
-        return a_client
+            AsyncSalesforceClient.register_connection(self.connection_name, client)
+            client._versions = self.versions
+        return client
 
-    @as_async.deleter
-    def as_async(self):
-        self._async_session = None
-
+    @override
     def __enter__(self):
-        super().__enter__()
+        _ = Client.__enter__(self)
+        _ = SalesforceClientBase.__enter__(self)
         try:
             self._userinfo = UserInfo(**self.send(self._userinfo_request()).json())
-            if getattr(self, "api_version", None):
-                self.api_version = self.versions[self.api_version.version]
+            if _av := getattr(self, "api_version", None):
+                self.api_version = self.versions[_av.version]
             else:
                 self.api_version = self.versions[max(self.versions)]
             LOGGER.info(
@@ -179,20 +359,18 @@ class SalesforceClient(I_SalesforceClient):
                 self._userinfo.preferred_username,
             )
         except Exception as e:
-            super().__exit__(type(e), e, e.__traceback__)
+            self.__exit__(type(e), e, e.__traceback__)
             raise
         return self
 
+    @override
     def __exit__(
         self,
         exc_type: type[BaseException] | None = None,
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
-    ) -> None:
-        if self.as_async._state == ClientState.OPENED:
-            self.as_async.unregister_parent()
-            asyncio.run(self.as_async.__aexit__())
-            del self.as_async
+    ):
+        _ = SalesforceClientBase.__exit__(self, exc_type, exc_value, traceback)
         return super().__exit__(exc_type, exc_value, traceback)
 
     def request(

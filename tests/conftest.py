@@ -10,7 +10,6 @@ import pytest
 
 from sf_toolkit.client import SalesforceClient
 from sf_toolkit.auth.login_cli import cli_login
-from sf_toolkit.interfaces import I_SalesforceClient
 
 
 @pytest.fixture(scope="session")
@@ -53,19 +52,20 @@ def mock_sf_client():
     mock_client.composite_sobjects_url = MagicMock(
         return_value=f"{_url}/composite/sobjects/Account"
     )
+    mock_client.connection_name = SalesforceClient.DEFAULT_CONNECTION_NAME
 
     # Keep a reference to the original _connections dictionary to restore later
-    original_connections = I_SalesforceClient._connections
+    original_connections = SalesforceClient._connections
 
     # Add the mock client to the _connections dictionary directly
-    I_SalesforceClient._connections = {
+    SalesforceClient._connections = {
         SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
     }
 
     yield mock_client
 
     # Restore the original _connections dictionary
-    I_SalesforceClient._connections = original_connections
+    SalesforceClient._connections = original_connections
 
 
 @pytest.fixture

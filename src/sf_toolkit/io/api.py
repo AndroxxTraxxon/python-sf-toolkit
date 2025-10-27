@@ -28,8 +28,7 @@ from ..data.sobject import SObject, SObjectDescribe, SObjectList
 from ..data.bulk import BulkApiIngestJob
 
 from ..logger import getLogger
-from ..interfaces import I_AsyncSalesforceClient, I_SalesforceClient
-from ..client import SalesforceClient as sftk_client
+from ..client import AsyncSalesforceClient, SalesforceClient
 
 
 _logger = getLogger(__name__)
@@ -37,25 +36,31 @@ _sObject = TypeVar("_sObject", bound=SObject)
 
 
 def resolve_client(
-    cls: type[_sObject], client: I_SalesforceClient | None = None
-) -> I_SalesforceClient:
-    if client:
+    cls: type[_sObject], client: SalesforceClient | None = None
+) -> SalesforceClient:
+    if isinstance(client, SalesforceClient):
         return client
-    return sftk_client.get_connection(cls.attributes.connection)
+    try:
+        return SalesforceClient.get_connection(cls.attributes.connection)
+    except KeyError:
+        return AsyncSalesforceClient.get_connection(cls.attributes.connection).as_sync
 
 
 def resolve_async_client(
-    cls: type[_sObject], client: I_AsyncSalesforceClient | None = None
+    cls: type[_sObject], client: AsyncSalesforceClient | None = None
 ):
     if client:
         return client
-    return sftk_client.get_connection(cls.attributes.connection).as_async
+    try:
+        return AsyncSalesforceClient.get_connection(cls.attributes.connection)
+    except KeyError:
+        return SalesforceClient.get_connection(cls.attributes.connection).as_async
 
 
 def fetch(
     cls: type[_sObject],
     record_id: str,
-    sf_client: I_SalesforceClient | None = None,
+    sf_client: SalesforceClient | None = None,
 ) -> _sObject:
     sf_client = resolve_client(cls, sf_client)
 
@@ -70,9 +75,29 @@ def fetch(
     return cls(**response_data)
 
 
+async def fetch_async(
+    cls: type[_sObject],
+    record_id: str,
+    sf_client: AsyncSalesforceClient | None = None,
+) -> _sObject:
+    sf_client = resolve_async_client(cls, sf_client)
+
+    if cls.attributes.tooling:
+        url = f"{sf_client.tooling_sobjects_url}/{cls.attributes.type}/{record_id}"
+    else:
+        url = f"{sf_client.sobjects_url}/{cls.attributes.type}/{record_id}"
+
+    fields = list(object_fields(cls).keys())
+    response_data = (
+        await sf_client.get(url, params={"fields": ",".join(fields)})
+    ).json()
+
+    return cls(**response_data)
+
+
 def save_insert(
     record: SObject,
-    sf_client: I_SalesforceClient | None = None,
+    sf_client: SalesforceClient | None = None,
     reload_after_success: bool = False,
 ):
     sf_client = resolve_client(type(record), sf_client)
@@ -131,9 +156,74 @@ def save_insert(
     return
 
 
+async def save_insert_async(
+    record: SObject,
+    sf_client: AsyncSalesforceClient | None = None,
+    reload_after_success: bool = False,
+):
+    sf_client = resolve_async_client(type(record), sf_client)
+
+    # Assert that there is no ID on the record
+    if _id := getattr(record, record.attributes.id_field, None):
+        raise ValueError(
+            f"Cannot insert record that already has an {record.attributes.id_field} set: {_id}"
+        )
+
+    # Prepare the payload with all fields
+    payload = serialize_object(record)
+
+    if record.attributes.tooling:
+        url = f"{sf_client.tooling_sobjects_url}/{record.attributes.type}"
+    else:
+        url = f"{sf_client.sobjects_url}/{record.attributes.type}"
+
+    blob_data: BlobData | None = None
+    # Create a new record
+    if record.attributes.blob_field and (
+        blob_data := getattr(record, record.attributes.blob_field)
+    ):
+        with blob_data as blob_payload:
+            # use BlobData context manager to safely open & close files
+            response_data = (
+                await sf_client.post(
+                    url,
+                    files=[
+                        (
+                            "entity_document",
+                            (None, json.dumps(payload), "application/json"),
+                        ),
+                        (
+                            record.attributes.blob_field,
+                            (blob_data.filename, blob_payload, blob_data.content_type),
+                        ),
+                    ],
+                )
+            ).json()
+    else:
+        response_data = (
+            await sf_client.post(
+                url,
+                json=payload,
+            )
+        ).json()
+
+    # Set the new ID on the object
+    _id_val = response_data["id"]
+    setattr(record, record.attributes.id_field, _id_val)
+
+    # Reload the record if requested
+    if reload_after_success:
+        await reload_async(record, sf_client)
+
+    # Clear dirty fields since we've saved
+    dirty_fields(record).clear()
+
+    return
+
+
 def save_update(
     record: SObject,
-    sf_client: I_SalesforceClient | None = None,
+    sf_client: SalesforceClient | None = None,
     only_changes: bool = False,
     reload_after_success: bool = False,
     only_blob: bool = False,
@@ -194,10 +284,75 @@ def save_update(
     return
 
 
+async def save_update_async(
+    record: SObject,
+    sf_client: AsyncSalesforceClient | None = None,
+    only_changes: bool = False,
+    reload_after_success: bool = False,
+    only_blob: bool = False,
+):
+    sf_client = resolve_async_client(type(record), sf_client)
+
+    # Assert that there is an ID on the record
+    if not (_id_val := getattr(record, record.attributes.id_field, None)):
+        raise ValueError(f"Cannot update record without {record.attributes.id_field}")
+
+    # If only tracking changes and there are no changes, do nothing
+    if only_changes and not dirty_fields(record):
+        return
+
+    # Prepare the payload
+    payload = serialize_object(record, only_changes)
+    payload.pop(record.attributes.id_field, None)
+
+    if record.attributes.tooling:
+        url = f"{sf_client.tooling_sobjects_url}/{record.attributes.type}/{_id_val}"
+    else:
+        url = f"{sf_client.sobjects_url}/{record.attributes.type}/{_id_val}"
+
+    blob_data: BlobData | None = None
+    # Create a new record
+    if record.attributes.blob_field and (
+        blob_data := getattr(record, record.attributes.blob_field)
+    ):
+        with blob_data as blob_payload:
+            # use BlobData context manager to safely open & close files
+            (
+                await sf_client.patch(
+                    url,
+                    files=[
+                        (
+                            "entity_content",
+                            (None, json.dumps(payload), "application/json"),
+                        ),
+                        (
+                            record.attributes.blob_field,
+                            (blob_data.filename, blob_payload, blob_data.content_type),
+                        ),
+                    ],
+                )
+            ).json()
+    elif payload:
+        _ = await sf_client.patch(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Reload the record if requested
+    if reload_after_success:
+        await reload_async(record, sf_client)
+
+    # Clear dirty fields since we've saved
+    dirty_fields(record).clear()
+
+    return
+
+
 def save_upsert(
     record: SObject,
     external_id_field: str,
-    sf_client: I_SalesforceClient | None = None,
+    sf_client: SalesforceClient | None = None,
     reload_after_success: bool = False,
     update_only: bool = False,
     only_changes: bool = False,
@@ -255,6 +410,67 @@ def save_upsert(
     return record
 
 
+async def save_upsert_async(
+    record: SObject,
+    external_id_field: str,
+    sf_client: AsyncSalesforceClient | None = None,
+    reload_after_success: bool = False,
+    update_only: bool = False,
+    only_changes: bool = False,
+):
+    if record.attributes.tooling:
+        raise TypeError("Upsert is not available for Tooling SObjects.")
+
+    sf_client = resolve_async_client(type(record), sf_client)
+
+    # Get the external ID value
+    if not (ext_id_val := getattr(record, external_id_field, None)):
+        raise ValueError(
+            f"Cannot upsert record without a value for external ID field: {external_id_field}"
+        )
+
+    # Encode the external ID value in the URL to handle special characters
+    ext_id_val = quote_plus(str(ext_id_val))
+
+    # Prepare the payload
+    payload = serialize_object(record, only_changes)
+    payload.pop(external_id_field, None)
+
+    # If there's nothing to update when only_changes=True, just return
+    if only_changes and not payload:
+        return
+
+    # Execute the upsert
+    response = await sf_client.patch(
+        f"{sf_client.sobjects_url}/{record.attributes.type}/{external_id_field}/{ext_id_val}",
+        json=payload,
+        params={"updateOnly": update_only} if update_only else None,
+        headers={"Content-Type": "application/json"},
+    )
+
+    # For an insert via upsert, the response contains the new ID
+    if response.is_success:
+        response_data = response.json()
+        _id_val = response_data.get("id")
+        if _id_val:
+            setattr(record, record.attributes.id_field, _id_val)
+    elif update_only and response.status_code == 404:
+        raise ValueError(
+            f"Record not found for external ID field {external_id_field} with value {ext_id_val}"
+        )
+
+    # Reload the record if requested
+    if reload_after_success and (
+        _id_val := getattr(record, record.attributes.id_field, None)
+    ):
+        await reload_async(record, sf_client)
+
+    # Clear dirty fields since we've saved
+    dirty_fields(record).clear()
+
+    return record
+
+
 def sobject_save_csv(
     record: SObject, filepath: Path | str, encoding: str = "utf-8"
 ) -> None:
@@ -279,7 +495,7 @@ def sobject_save_json(
 
 def save(
     self: SObject,
-    sf_client: I_SalesforceClient | None = None,
+    sf_client: SalesforceClient | None = None,
     only_changes: bool = False,
     reload_after_success: bool = False,
     external_id_field: str | None = None,
@@ -313,9 +529,47 @@ def save(
         raise ValueError("Cannot update record without an ID or external ID")
 
 
+async def save_async(
+    self: SObject,
+    sf_client: AsyncSalesforceClient | None = None,
+    only_changes: bool = False,
+    only_blob: bool = False,
+    reload_after_success: bool = False,
+    external_id_field: str | None = None,
+    update_only: bool = False,
+):
+    # If we have an ID value, use save_update
+    if getattr(self, self.attributes.id_field, None) is not None:
+        return await save_update_async(
+            self,
+            sf_client=sf_client,
+            only_changes=only_changes,
+            reload_after_success=reload_after_success,
+            only_blob=only_blob,
+        )
+    # If we have an external ID field, use save_upsert
+    elif external_id_field:
+        return await save_upsert_async(
+            self,
+            external_id_field=external_id_field,
+            sf_client=sf_client,
+            reload_after_success=reload_after_success,
+            update_only=update_only,
+            only_changes=only_changes,
+        )
+    # Otherwise, if not update_only, use save_insert
+    elif not update_only:
+        return await save_insert_async(
+            self, sf_client=sf_client, reload_after_success=reload_after_success
+        )
+    else:
+        # If update_only is True and there's no ID or external ID, raise an error
+        raise ValueError("Cannot update record without an ID or external ID")
+
+
 def delete(
-    record: _sObject,
-    sf_client: I_SalesforceClient | None = None,
+    record: SObject,
+    sf_client: SalesforceClient | None = None,
     clear_id_field: bool = True,
 ):
     sf_client = resolve_client(type(record), sf_client)
@@ -328,13 +582,33 @@ def delete(
         url = f"{sf_client.tooling_sobjects_url}/{record.attributes.type}/{_id_val}"
     else:
         url = f"{sf_client.sobjects_url}/{record.attributes.type}/{_id_val}"
-    sf_client.delete(url)
+    _ = sf_client.delete(url).raise_for_status()
+    if clear_id_field:
+        delattr(record, record.attributes.id_field)
+
+
+async def delete_async(
+    record: SObject,
+    sf_client: AsyncSalesforceClient | None = None,
+    clear_id_field: bool = True,
+):
+    sf_client = resolve_async_client(type(record), sf_client)
+    _id_val = getattr(record, record.attributes.id_field, None)
+
+    if not _id_val:
+        raise ValueError("Cannot delete unsaved record (missing ID to delete)")
+
+    if record.attributes.tooling:
+        url = f"{sf_client.tooling_sobjects_url}/{record.attributes.type}/{_id_val}"
+    else:
+        url = f"{sf_client.sobjects_url}/{record.attributes.type}/{_id_val}"
+    _ = (await sf_client.delete(url)).raise_for_status()
     if clear_id_field:
         delattr(record, record.attributes.id_field)
 
 
 def download_file(
-    record: SObject, dest: Path | None, sf_client: I_SalesforceClient | None = None
+    record: SObject, dest: Path | None, sf_client: SalesforceClient | None = None
 ) -> None | bytes:
     """
     Download the file associated with the blob field to the specified destination.
@@ -367,10 +641,51 @@ def download_file(
             return response.read()
 
 
-def reload(record: SObject, sf_client: I_SalesforceClient | None = None):
+async def download_file_async(
+    record: SObject, dest: Path | None, sf_client: AsyncSalesforceClient | None = None
+) -> None | bytes:
+    """
+    Download the file associated with the blob field to the specified destination.
+    https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/dome_sobject_blob_retrieve.htm
+
+    Args:
+        dest (Path | None): The destination path to save the file.
+        If None, file content will be returned as bytes instead.
+    """
+    assert record.attributes.blob_field, "Object type must specify a blob field"
+    assert not record.attributes.tooling, (
+        "Cannot download file/BLOB from tooling object"
+    )
+    record_id = getattr(record, record.attributes.id_field, None)
+    assert record_id, "Record ID cannot be None or Empty for file download"
+
+    sf_client = resolve_async_client(type(record), sf_client)
+    url = (
+        f"{sf_client.sobjects_url}/{record.attributes.type}"
+        f"/{record_id}/{record.attributes.blob_field}"
+    )
+    async with sf_client.stream("GET", url) as response:
+        if dest:
+            with dest.open("wb") as file:
+                for block in response.iter_bytes():
+                    file.write(block)
+            return None
+
+        else:
+            return response.read()
+
+
+def reload(record: SObject, sf_client: SalesforceClient | None = None):
     record_id: str = getattr(record, record.attributes.id_field)
     sf_client = resolve_client(type(record), sf_client)
     reloaded = fetch(type(record), record_id, sf_client)
+    record._values.update(reloaded._values)
+
+
+async def reload_async(record: SObject, sf_client: AsyncSalesforceClient | None = None):
+    record_id: str = getattr(record, record.attributes.id_field)
+    sf_client = resolve_async_client(type(record), sf_client)
+    reloaded = await fetch_async(type(record), record_id, sf_client)
     record._values.update(reloaded._values)
 
 
@@ -384,8 +699,7 @@ def update_record(record: FieldConfigurableObject, /, **props):
 def fetch_list(
     cls: type[_sObject],
     *ids: str,
-    sf_client: I_SalesforceClient | None = None,
-    concurrency: int = 1,
+    sf_client: SalesforceClient | None = None,
     on_chunk_received: Callable[[Response], None] | None = None,
 ) -> "SObjectList[_sObject]":
     sf_client = resolve_client(cls, sf_client)
@@ -396,37 +710,23 @@ def fetch_list(
         )
 
     # pull in batches with composite API
-    if concurrency > 1 and len(ids) > 2000:
-        # do some async shenanigans
-        return asyncio.run(
-            sobject_read_async(
-                cls,
-                *ids,
-                sf_client=sf_client.as_async,
-                concurrency=concurrency,
-                on_chunk_received=on_chunk_received,
-            )
+    result: SObjectList[_sObject] = SObjectList(connection=cls.attributes.connection)
+    for chunk in chunked(ids, 2000):
+        response = sf_client.post(
+            sf_client.composite_sobjects_url(cls.attributes.type),
+            json={"ids": chunk, "fields": query_fields(cls)},
         )
-    else:
-        result: SObjectList[_sObject] = SObjectList(
-            connection=cls.attributes.connection
-        )
-        for chunk in chunked(ids, 2000):
-            response = sf_client.post(
-                sf_client.composite_sobjects_url(cls.attributes.type),
-                json={"ids": chunk, "fields": query_fields(cls)},
-            )
-            chunk_result: list[_sObject] = [cls(**record) for record in response.json()]
-            result.extend(chunk_result)
-            if on_chunk_received:
-                on_chunk_received(response)
-        return result
+        chunk_result: list[_sObject] = [cls(**record) for record in response.json()]
+        result.extend(chunk_result)
+        if on_chunk_received:
+            on_chunk_received(response)
+    return result
 
 
-async def sobject_read_async(
+async def fetch_list_async(
     cls: type[_sObject],
     *ids: str,
-    sf_client: I_AsyncSalesforceClient | None = None,
+    sf_client: AsyncSalesforceClient | None = None,
     concurrency: int = 1,
     on_chunk_received: Callable[[Response], Coroutine[None, None, None] | None]
     | None = None,
@@ -488,7 +788,7 @@ def sobject_from_description(
     Returns:
         type[SObject]: A dynamically created SObject subclass with fields matching the describe result
     """
-    sf_client = sftk_client.get_connection(connection)
+    sf_client = SalesforceClient.get_connection(connection)
 
     # Get the describe metadata for this SObject
     describe_url = f"{sf_client.sobjects_url}/{sobject}/describe"
@@ -635,7 +935,6 @@ def save_list(
     self: SObjectList[_sObject],
     external_id_field: str | None = None,
     only_changes: bool = False,
-    concurrency: int = 1,
     batch_size: int = 200,
     all_or_none: bool = False,
     update_only: bool = False,
@@ -679,7 +978,6 @@ def save_list(
         return save_upsert_list(
             upsert_objects,
             external_id_field=external_id_field,
-            concurrency=concurrency,
             batch_size=batch_size,
             only_changes=only_changes,
             all_or_none=all_or_none,
@@ -697,7 +995,6 @@ def save_list(
         return save_update_list(
             self,
             only_changes=only_changes,
-            concurrency=concurrency,
             batch_size=batch_size,
             **callout_options,
         )
@@ -708,9 +1005,7 @@ def save_list(
             raise ValueError(
                 "Cannot perform update_only operation when no records have IDs"
             )
-        return save_insert_list(
-            self, concurrency=concurrency, batch_size=batch_size, **callout_options
-        )
+        return save_insert_list(self, batch_size=batch_size, **callout_options)
 
     # Mixed case - some records have IDs, some don't
     else:
@@ -719,7 +1014,6 @@ def save_list(
             return save_update_list(
                 SObjectList(has_ids, connection=self.connection),
                 only_changes=only_changes,
-                concurrency=concurrency,
                 batch_size=batch_size,
                 **callout_options,
             )
@@ -732,7 +1026,6 @@ def save_list(
             update_results = save_update_list(
                 SObjectList(has_ids, connection=self.connection),
                 only_changes=only_changes,
-                concurrency=concurrency,
                 batch_size=batch_size,
                 **callout_options,
             )
@@ -742,7 +1035,6 @@ def save_list(
         if missing_ids and not update_only:
             insert_results = save_insert_list(
                 SObjectList(missing_ids, connection=self.connection),
-                concurrency=concurrency,
                 batch_size=batch_size,
                 **callout_options,
             )
@@ -755,7 +1047,7 @@ def save_upsert_bulk(
     self: SObjectList[_sObject],
     external_id_field: str,
     timeout: int = 600,
-    connection: I_SalesforceClient | str | None = None,
+    connection: SalesforceClient | str | None = None,
 ) -> BulkApiIngestJob:
     """Upsert records in bulk using Salesforce Bulk API 2.0
 
@@ -792,7 +1084,7 @@ def save_upsert_bulk(
 
 def save_insert_bulk(
     self: SObjectList[_sObject],
-    connection: I_SalesforceClient | str | None = None,
+    connection: SalesforceClient | str | None = None,
     **callout_options,
 ) -> BulkApiIngestJob:
     """Insert records in bulk using Salesforce Bulk API 2.0
@@ -823,9 +1115,41 @@ def save_insert_bulk(
     return job
 
 
+async def save_insert_bulk_async(
+    records: SObjectList[_sObject],
+    connection: AsyncSalesforceClient | str | None = None,
+    **callout_options,
+) -> BulkApiIngestJob | None:
+    """Insert records in bulk using Salesforce Bulk API 2.0
+
+    This method uses the Bulk API 2.0 to insert records.
+
+    Returns:
+        Dict[str, Any]: Job result information
+
+    Raises:
+        SalesforceBulkV2LoadError: If the job fails or times out
+        ValueError: If the list is empty or the external ID field doesn't exist
+    """
+    if not records:
+        warnings.warn("Cannot update empty SObjectList")
+        return None
+
+    if not connection:
+        connection = records[0].attributes.connection
+
+    job: BulkApiIngestJob = await BulkApiIngestJob.init_job_async(
+        records[0].attributes.type, "insert", connection=connection, **callout_options
+    )
+
+    _ = await job.upload_batches_async(records, **callout_options)
+
+    return job
+
+
 def save_update_bulk(
     records: SObjectList[_sObject],
-    connection: I_SalesforceClient | str | None = None,
+    connection: SalesforceClient | str | None = None,
     **callout_options,
 ) -> BulkApiIngestJob | None:
     """Update records in bulk using Salesforce Bulk API 2.0
@@ -855,12 +1179,44 @@ def save_update_bulk(
     return job
 
 
+async def save_update_bulk_async(
+    records: SObjectList[_sObject],
+    connection: AsyncSalesforceClient | str | None = None,
+    **callout_options,
+) -> BulkApiIngestJob | None:
+    """Update records in bulk using Salesforce Bulk API 2.0
+
+    This method uses the Bulk API 2.0 to update records.
+
+    Returns:
+        Dict[str, Any]: Job result information
+
+    Raises:
+        SalesforceBulkV2LoadError: If the job fails or times out
+        ValueError: If the list is empty or the external ID field doesn't exist
+    """
+    if not records:
+        warnings.warn("Cannot update empty SObjectList")
+        return None
+
+    if not connection:
+        connection = records[0].attributes.connection
+
+    job: BulkApiIngestJob = await BulkApiIngestJob.init_job_async(
+        records[0].attributes.type, "update", connection=connection, **callout_options
+    )
+
+    _ = await job.upload_batches_async(records, **callout_options)
+
+    return job
+
+
 def save_insert_list(
     self: SObjectList[_sObject],
     concurrency: int = 1,
     batch_size: int = 200,
     all_or_none: bool = False,
-    sf_client: I_SalesforceClient | None = None,
+    sf_client: SalesforceClient | None = None,
     **callout_options,
 ) -> list[SObjectSaveResult]:
     """
@@ -890,17 +1246,20 @@ def save_insert_list(
         headers.update(headers_option)
 
     if concurrency > 1 and len(record_chunks) > 1:
+
+        async def _tmp():
+            async with sf_client.as_async as async_client:
+                return await save_insert_list_async(
+                    async_client,
+                    record_chunks,
+                    headers,
+                    concurrency,
+                    all_or_none,
+                    **callout_options,
+                )
+
         # execute async
-        return asyncio.run(
-            save_insert_list_async(
-                sf_client,
-                record_chunks,
-                headers,
-                concurrency,
-                all_or_none,
-                **callout_options,
-            )
-        )
+        return asyncio.run(_tmp())
 
     # execute sync
     results = []
@@ -949,7 +1308,7 @@ def save_insert_list(
 
 
 async def save_insert_list_async(
-    sf_client: I_SalesforceClient,
+    sf_client: AsyncSalesforceClient,
     record_chunks: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]],
     headers: dict[str, str],
     concurrency: int,
@@ -958,30 +1317,29 @@ async def save_insert_list_async(
 ) -> list[SObjectSaveResult]:
     if header_options := callout_options.pop("headers", None):
         headers.update(header_options)
-    async with sf_client.as_async as a_client:
-        tasks = [
-            _save_insert_async_batch(
-                a_client,
-                sf_client.composite_sobjects_url(),
-                records,
-                blobs,
-                all_or_none,
-                headers,
-                **callout_options,
-            )
-            for records, blobs in record_chunks
-        ]
-        responses = await run_concurrently(concurrency, tasks)
-        return [
-            SObjectSaveResult(**result)
-            for response in responses
-            for result in response.json()
-        ]
+    tasks = [
+        _save_insert_async_batch(
+            sf_client,
+            sf_client.composite_sobjects_url(),
+            records,
+            blobs,
+            all_or_none,
+            headers,
+            **callout_options,
+        )
+        for records, blobs in record_chunks
+    ]
+    responses = await run_concurrently(concurrency, tasks)
+    return [
+        SObjectSaveResult(**result)
+        for response in responses
+        for result in response.json()
+    ]
 
 
 async def _save_insert_async_batch(
     # cls: type[SObjectList[_sObject]],
-    sf_client: I_AsyncSalesforceClient,
+    sf_client: AsyncSalesforceClient,
     url: str,
     records: list[dict[str, Any]],
     blobs: list[tuple[str, BlobData]] | None,
@@ -1027,7 +1385,6 @@ def save_update_list(
     self: SObjectList[_sObject],
     only_changes: bool = False,
     all_or_none: bool = False,
-    concurrency: int = 1,
     batch_size: int = 200,
     **callout_options,
 ) -> list[SObjectSaveResult]:
@@ -1037,7 +1394,6 @@ def save_update_list(
 
     Args:
         only_changes: If True, only send changed fields
-        concurrency: Number of concurrent requests to make
         batch_size: Number of records to include in each batch
         **callout_options: Additional options to pass to the API call
 
@@ -1046,8 +1402,6 @@ def save_update_list(
     """
     if not self:
         return []
-
-    sf_client = resolve_client(type(self[0]), None)
 
     # Ensure all records have IDs
     for i, record in enumerate(self):
@@ -1075,18 +1429,7 @@ def save_update_list(
     if headers_option := callout_options.pop("headers", None):
         headers.update(headers_option)
 
-    if concurrency > 1:
-        # execute async
-        return asyncio.run(
-            save_update_async(
-                [chunk[0] for chunk in record_chunks],
-                all_or_none,
-                headers,
-                sf_client,
-                **callout_options,
-            )
-        )
-
+    sf_client = resolve_client(type(self[0]), None)
     # execute sync
     results: list[SObjectSaveResult] = []
     for records, blobs in record_chunks:
@@ -1106,30 +1449,93 @@ def save_update_list(
     return results
 
 
-@staticmethod
-async def save_update_async(
+async def save_update_list_async(
+    self: SObjectList[_sObject],
+    only_changes: bool = False,
+    all_or_none: bool = False,
+    batch_size: int = 200,
+    **callout_options,
+) -> list[SObjectSaveResult]:
+    """
+    Update all SObjects in the list.
+    https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_update.htm
+
+    Args:
+        only_changes: If True, only send changed fields
+        batch_size: Number of records to include in each batch
+        **callout_options: Additional options to pass to the API call
+
+    Returns:
+        list[SObjectSaveResult]: List of save results
+    """
+    if not self:
+        return []
+
+    # Ensure all records have IDs
+    for i, record in enumerate(self):
+        id_val = getattr(record, record.attributes.id_field, None)
+        if not id_val:
+            raise ValueError(
+                f"Record at index {i} has no {record.attributes.id_field} for update"
+            )
+        if record.attributes.blob_field and getattr(
+            record, record.attributes.blob_field
+        ):
+            raise ValueError(
+                (
+                    f"Cannot update files in composite calls. "
+                    f"{type(record).__name__} Record at index {i} has Blob/File "
+                    f"value for field {record.attributes.blob_field}"
+                )
+            )
+
+    # Prepare records for update
+    record_chunks, emitted_records = _generate_record_batches(
+        self, batch_size, only_changes
+    )
+    headers = {"Content-Type": "application/json"}
+    if headers_option := callout_options.pop("headers", None):
+        headers.update(headers_option)
+
+    sf_client = resolve_async_client(type(self[0]), None)
+    # execute sync
+    results: list[SObjectSaveResult] = await _list_save_update_async(
+        [chunk[0] for chunk in record_chunks],
+        all_or_none,
+        headers,
+        sf_client,
+        **callout_options,
+    )
+
+    for record, result in zip(emitted_records, results):
+        if result.success:
+            dirty_fields(record).clear()
+
+    return results
+
+
+async def _list_save_update_async(
     record_chunks: list[list[dict[str, Any]]],
     all_or_none: bool,
     headers: dict[str, str],
-    sf_client: I_SalesforceClient,
+    sf_client: AsyncSalesforceClient,
     **callout_options,
 ) -> list[SObjectSaveResult]:
-    async with sf_client.as_async as a_client:
-        tasks = [
-            a_client.post(
-                sf_client.composite_sobjects_url(),
-                json={"allOrNone": all_or_none, "records": chunk},
-                headers=headers,
-                **callout_options,
-            )
-            for chunk in record_chunks
-        ]
-        responses = await asyncio.gather(*tasks)
-        return [
-            SObjectSaveResult(**result)
-            for response in responses
-            for result in response.json()
-        ]
+    tasks = [
+        sf_client.post(
+            sf_client.composite_sobjects_url(),
+            json={"allOrNone": all_or_none, "records": chunk},
+            headers=headers,
+            **callout_options,
+        )
+        for chunk in record_chunks
+    ]
+    responses = await asyncio.gather(*tasks)
+    return [
+        SObjectSaveResult(**result)
+        for response in responses
+        for result in response.json()
+    ]
 
 
 def save_upsert_list(
@@ -1229,7 +1635,7 @@ def save_upsert_list(
 
 
 async def save_upsert_list_async(
-    sf_client: I_SalesforceClient,
+    sf_client: SalesforceClient,
     url: str,
     record_chunks: list[list[dict[str, Any]]],
     headers: dict[str, str],
@@ -1325,7 +1731,7 @@ def delete_list(
 
 
 async def delete_list_async(
-    sf_client: I_SalesforceClient,
+    sf_client: SalesforceClient,
     record_id_batches: list[list[str]],
     all_or_none: bool,
     concurrency: int,

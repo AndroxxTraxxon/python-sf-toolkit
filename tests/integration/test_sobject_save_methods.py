@@ -2,9 +2,8 @@ import pytest
 import datetime
 from time import sleep
 
-from sf_toolkit.client import SalesforceClient
+from sf_toolkit.client import SalesforceClient, OrgType
 from sf_toolkit.data.fields import dirty_fields
-from sf_toolkit.interfaces import OrgType
 from sf_toolkit.io.api import (
     delete,
     fetch,

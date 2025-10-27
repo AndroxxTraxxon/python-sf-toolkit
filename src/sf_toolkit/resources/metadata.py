@@ -2,8 +2,9 @@ import json
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, Unpack
 
+from sf_toolkit.client import SalesforceClient
 
-from sf_toolkit.interfaces import I_SalesforceClient
+
 from .base import ApiResource
 from ..data import fields
 
@@ -250,14 +251,14 @@ class DeployRequest(fields.FieldConfigurableObject):
     deployResult = fields.ReferenceField(py_type=DeployResult)
     deployOptions = fields.ReferenceField(py_type=DeployOptions)
 
-    def __init__(self, _connection: I_SalesforceClient | None = None, **fields):
+    def __init__(self, _connection: SalesforceClient | None = None, **fields):
         super().__init__(**fields)
         self._connection = _connection
 
     def current_status(
         self,
         include_details: bool = True,
-        connection: I_SalesforceClient | str | None = None,
+        connection: SalesforceClient | str | None = None,
     ) -> "DeployRequest":
         """
         Get the current status of a deployment request
@@ -265,15 +266,15 @@ class DeployRequest(fields.FieldConfigurableObject):
         """
         if connection is None and self._connection:
             connection = self._connection
-        if not isinstance(connection, I_SalesforceClient):
-            connection = I_SalesforceClient.get_connection(connection)
+        if not isinstance(connection, SalesforceClient):
+            connection = SalesforceClient.get_connection(connection)
         url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         params = {"includeDetails": True} if include_details else {}
         response = connection.get(url, params=params)
         return type(self)(_connection=connection, **response.json())
 
     def cancel(
-        self, connection: I_SalesforceClient | str | None = None
+        self, connection: SalesforceClient | str | None = None
     ) -> "DeployRequest":
         """
         Cancel the deployment request
@@ -281,8 +282,8 @@ class DeployRequest(fields.FieldConfigurableObject):
         """
         if connection is None and self._connection:
             connection = self._connection
-        if not isinstance(connection, I_SalesforceClient):
-            connection = I_SalesforceClient.get_connection(connection)
+        if not isinstance(connection, SalesforceClient):
+            connection = SalesforceClient.get_connection(connection)
         url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         response = connection.patch(url, json={"deployResult": {"status": "Canceling"}})
         if response.status_code != 202:
@@ -290,7 +291,7 @@ class DeployRequest(fields.FieldConfigurableObject):
         return type(self)(_connection=connection, **response.json())
 
     def quick_deploy_validated(
-        self, connection: I_SalesforceClient | str | None = None
+        self, connection: SalesforceClient | str | None = None
     ) -> "DeployRequest":
         """
         Deploy a Recently Validated Component Set Without Tests
@@ -301,8 +302,8 @@ class DeployRequest(fields.FieldConfigurableObject):
         )
         if connection is None and self._connection:
             connection = self._connection
-        if not isinstance(connection, I_SalesforceClient):
-            connection = I_SalesforceClient.get_connection(connection)
+        if not isinstance(connection, SalesforceClient):
+            connection = SalesforceClient.get_connection(connection)
         url = self.url or f"{connection.metadata_url}/deployRequest/{self.id}"
         response = connection.post(url, json={"validatedDeployRequestId": self.id})
         return type(self)(_connection=connection, **response.json())

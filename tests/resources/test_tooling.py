@@ -132,7 +132,7 @@ def test_execute_anonymous_http_error(mock_sf_client):
 def test_tooling_api_resource_with_connection_string():
     """Test creating a Tooling API resource with a connection string."""
     with patch(
-        "sf_toolkit.resources.base.I_SalesforceClient.get_connection"
+        "sf_toolkit.resources.base.SalesforceClient.get_connection"
     ) as mock_get_connection:
         # Setup mock client returned by get_connection
         mock_client = MagicMock()
@@ -152,7 +152,7 @@ def test_tooling_api_resource_with_connection_string():
 def test_tooling_api_resource_with_default_connection():
     """Test creating a Tooling API resource with default connection."""
     with patch(
-        "sf_toolkit.resources.base.I_SalesforceClient.get_connection"
+        "sf_toolkit.resources.base.SalesforceClient.get_connection"
     ) as mock_get_connection:
         # Setup mock client returned by get_connection
         mock_client = MagicMock()
