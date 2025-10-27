@@ -46,7 +46,7 @@ The simplest way to use Bulk API is through the ``SObjectList`` bulk methods:
    account_list = SObjectList(accounts)
 
    # Insert using bulk API
-   results = account_list.save_insert_bulk()
+   results = save_insert_bulk(account_list)
 
    print(f"Successfully inserted {results.numberRecordsProcessed} records")
    print(f"Failed to insert {results.numberRecordsFailed} records")
@@ -65,7 +65,7 @@ To insert large sets of records:
    ])
 
    # Insert using bulk API
-   bulk_job = contacts.save_insert_bulk()
+   bulk_job = save_insert_bulk(contacts)
 
    # Check job status
    print(f"Job ID: {bulk_job.id}")
@@ -86,14 +86,15 @@ To update large sets of records:
    contacts = select(Contact).where(LastName="Bulk").execute()
 
    # Convert to SObjectList
-   contact_list = SObjectList(contacts)
+   contact_list = contacts.to_list()
 
    # Update all records
    for contact in contact_list:
        contact.Title = "Bulk API Example"
 
    # Update using bulk API
-   bulk_job = contact_list.save_update_bulk()
+   bulk_job = save_update_bulk(contact_list)
+   bulk_job.monitor_until_complete()
 
    print(f"Records processed: {bulk_job.numberRecordsProcessed}")
 
@@ -111,7 +112,7 @@ To upsert (insert or update) records based on an external ID:
    ])
 
    # Upsert using bulk API with external ID field
-   bulk_job = accounts.save_upsert_bulk(external_id_field="ExternalId__c")
+   bulk_job = save_upsert_bulk(accounts, external_id_field="ExternalId__c")
 
    print(f"Job state: {bulk_job.state}")
    print(f"Records processed: {bulk_job.numberRecordsProcessed}")

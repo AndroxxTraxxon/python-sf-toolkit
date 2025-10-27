@@ -1,6 +1,5 @@
-from unittest.mock import MagicMock, Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock
 import pytest
-import pytest_asyncio
 
 from sf_toolkit.data.transformers import chunked
 
@@ -29,34 +28,33 @@ class _TestContact(SObject, api_name="TestContact"):
     ExternalId__c = TextField()
 
 
-@pytest.fixture()
-def mock_sf_client():
-    """Create a mock SalesforceClient for testing"""
-    mock_client = MagicMock(spec=SalesforceClient)
-    mock_client.sobjects_url = "/services/data/v57.0/sobjects"
-    mock_client.data_url = "/services/data/v57.0/query"
-    mock_client.composite_sobjects_url = MagicMock(
-        return_value="/services/data/v57.0/composite/sobjects"
-    )
+# @pytest.fixture()
+# def mock_async_client():
+#     """Create a mock SalesforceClient for testing"""
+#     mock_client = MagicMock(spec=SalesforceClient)
+#     mock_client.sobjects_url = "/services/data/v57.0/sobjects"
+#     mock_client.data_url = "/services/data/v57.0/query"
+#     mock_client.composite_sobjects_url = MagicMock(
+#         return_value="/services/data/v57.0/composite/sobjects"
+#     )
 
-    # Mock the async client property
-    mock_async_client = Mock()
-    mock_client.as_async = mock_async_client
-    mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-    mock_async_client.__aexit__ = AsyncMock(return_value=None)
+#     # Mock the async client property
+#     mock_async_client = Mock()
+#     mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+#     mock_async_client.__aexit__ = AsyncMock(return_value=None)
 
-    # Keep a reference to the original _connections dictionary to restore later
-    original_connections = SalesforceClient._connections
+#     # Keep a reference to the original _connections dictionary to restore later
+#     original_connections = SalesforceClient._connections
 
-    # Add the mock client to the _connections dictionary directly
-    SalesforceClient._connections = {
-        SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
-    }
+#     # Add the mock client to the _connections dictionary directly
+#     SalesforceClient._connections = {
+#         SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
+#     }
 
-    yield mock_client
+#     yield mock_client
 
-    # Restore the original _connections dictionary
-    SalesforceClient._connections = original_connections
+#     # Restore the original _connections dictionary
+#     SalesforceClient._connections = original_connections
 
 
 @pytest.fixture
@@ -228,7 +226,6 @@ def test_generate_record_batches(test_accounts):
 def test_save_insert(mock_sf_client, test_accounts):
     """Test save_insert method"""
     account_list = SObjectList(test_accounts)
-
     # Mock the response
     mock_response = Mock()
     mock_response.json.return_value = [
@@ -243,7 +240,7 @@ def test_save_insert(mock_sf_client, test_accounts):
     # Verify the API call
     mock_sf_client.post.assert_called_once()
     args, kwargs = mock_sf_client.post.call_args
-    assert args[0] == "/services/data/v57.0/composite/sobjects"
+    assert args[0] == (mock_sf_client.data_url + "/composite/sobjects")
 
     # Verify the results
     assert len(results) == len(test_accounts)
@@ -298,37 +295,37 @@ def test_save_insert_with_id_error(test_accounts_with_ids, mock_sf_client):
 
 
 @pytest.mark.asyncio
-async def test_save_insert_async(mock_sf_client, test_accounts):
+async def test_save_insert_async(mock_async_client, test_accounts):
     """Test save_insert with async execution"""
     # Create enough accounts to trigger async execution
-    many_accounts = [_TestAccount(Name=f"Account {i}") for i in range(20)]
-    account_list = SObjectList(many_accounts)
+    account_list = SObjectList(_TestAccount(Name=f"Account {i}") for i in range(20))
 
     # Mock response for async client
-    async_client = mock_sf_client.as_async
     mock_response = AsyncMock()
     mock_response.return_value = Mock()
     mock_response.return_value.json.side_effect = list(
         chunked(
             (
                 {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
-                for i in range(len(many_accounts))
+                for i in range(len(account_list))
             ),
             5,
         )
     )
-    async_client.post = mock_response
+    mock_async_client.post = mock_response
+    from sf_toolkit import AsyncSalesforceClient
 
+    print(AsyncSalesforceClient._connections)
     # Call save_insert with concurrency > 1
     results = await api.save_insert_list_async(
         account_list, concurrency=2, batch_size=5
     )
 
     # Verify async client was used
-    async_client.post.assert_called()
+    mock_async_client.post.assert_called()
 
     # Verify the results
-    assert len(results) == len(many_accounts)
+    assert len(results) == len(account_list)
     for i, result in enumerate(results):
         assert result.id == f"001XX000{i}ABCDEFGHI"
         assert result.success
@@ -356,7 +353,7 @@ def test_save_update(mock_sf_client, test_accounts_with_ids):
     # Verify API call
     mock_sf_client.patch.assert_called_once()
     args, kwargs = mock_sf_client.patch.call_args
-    assert args[0] == "/services/data/v57.0/composite/sobjects"
+    assert args[0] == (mock_sf_client.data_url + "/composite/sobjects")
 
     # Check if dirty fields were cleared
     for account in account_list:
@@ -408,7 +405,7 @@ def test_save_update_only_changes(mock_sf_client, test_accounts_with_ids):
     assert "Name" not in request_data["records"][1]
 
 
-def test_save_update_no_id(test_accounts, mock_sf_client):
+def test_save_update_no_id(test_accounts, mock_async_client):
     """Test save_update with records that don't have IDs"""
     account_list = SObjectList(test_accounts)
     account_list.connection = SalesforceClient.DEFAULT_CONNECTION_NAME
@@ -419,7 +416,7 @@ def test_save_update_no_id(test_accounts, mock_sf_client):
 
 
 @pytest.mark.asyncio
-async def test_save_update_async(mock_sf_client, test_accounts_with_ids):
+async def test_save_update_async(mock_async_client, test_accounts_with_ids):
     """Test save_update with async execution"""
     # Create list with accounts
     account_list = SObjectList(test_accounts_with_ids)
@@ -429,21 +426,20 @@ async def test_save_update_async(mock_sf_client, test_accounts_with_ids):
         account.Industry = "Updated Industry"
 
     # Set up mock for async execution
-    async_client = mock_sf_client.as_async.__aenter__.return_value
-    async_client.post = AsyncMock()
+    mock_async_client.post = AsyncMock()
 
     # Set up mock response
     mock_response = Mock()
     mock_response.json.return_value = [
         {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
-    async_client.post.return_value = mock_response
+    mock_async_client.post.return_value = mock_response
 
     # Call save_update with concurrency > 1
     results = await api.save_update_list_async(account_list, concurrency=2)
 
     # Verify async client's post method was called
-    async_client.post.assert_called()
+    mock_async_client.post.assert_called()
 
     # Verify results
     assert len(results) == len(account_list)
@@ -509,7 +505,8 @@ def test_save_upsert_missing_external_id(mock_sf_client):
         api.save_upsert_list(object_list, external_id_field="ExternalId__c")
 
 
-def test_save_upsert_async(mock_sf_client):
+@pytest.mark.asyncio
+async def test_save_upsert_async(mock_async_client):
     """Test save_upsert with async execution"""
     # Create objects with external IDs
     custom_objects = [
@@ -519,10 +516,9 @@ def test_save_upsert_async(mock_sf_client):
     object_list.connection = SalesforceClient.DEFAULT_CONNECTION_NAME
 
     # Set up mock for async client
-    async_client = mock_sf_client.as_async.__aenter__.return_value
-    async_client.patch = AsyncMock()
-    async_client.patch.return_value = Mock()
-    async_client.patch.return_value.json.side_effect = list(
+    mock_async_client.patch = AsyncMock()
+    mock_async_client.patch.return_value = Mock()
+    mock_async_client.patch.return_value.json.side_effect = list(
         chunked(
             [
                 {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
@@ -533,12 +529,12 @@ def test_save_upsert_async(mock_sf_client):
     )
 
     # Call save_upsert with concurrency > 1
-    results = api.save_upsert_list(
+    results = await api.save_upsert_list_async(
         object_list, external_id_field="ExternalId__c", concurrency=3, batch_size=2
     )
 
     # Verify async client was used
-    async_client.patch.assert_called()
+    mock_async_client.patch.assert_called()
 
     # Verify the results
     assert len(results) == len(custom_objects)
@@ -625,7 +621,7 @@ def test_delete(mock_sf_client, test_accounts_with_ids):
     # Verify API call
     mock_sf_client.delete.assert_called_once()
     args, kwargs = mock_sf_client.delete.call_args
-    assert args[0] == "/services/data/v57.0/composite/sobjects"
+    assert args[0] == mock_sf_client.data_url + "/composite/sobjects"
 
     # Check IDs are included in params
     ids_param = kwargs.get("params", {}).get("ids", "")
@@ -656,19 +652,18 @@ def test_delete_async(mock_sf_client, test_accounts_with_ids):
     account_list = SObjectList(test_accounts_with_ids)
 
     # Set up mock for async client
-    async_client = mock_sf_client.as_async.__aenter__.return_value
     mock_response = AsyncMock()
     mock_response.return_value = Mock()
     mock_response.return_value.json.return_value = [
         {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
-    async_client.delete = mock_response
+    mock_sf_client.delete = mock_response
 
     # Call delete with concurrency > 1
     api.delete_list(account_list, concurrency=2, batch_size=(len(account_list) // 2))
 
     # Verify async client's delete method was called
-    async_client.delete.assert_called()
+    mock_sf_client.delete.assert_called()
 
 
 def test_empty_list_operations(mock_sf_client):
@@ -703,7 +698,7 @@ def test_save_basic_functionality(mock_sf_client, test_accounts):
     # Verify API call for insert
     mock_sf_client.post.assert_called_once()
     args, kwargs = mock_sf_client.post.call_args
-    assert args[0] == "/services/data/v57.0/composite/sobjects"
+    assert args[0] == (mock_sf_client.data_url + "/composite/sobjects")
 
     # Verify IDs were set on the records
     for i, account in enumerate(account_list):
@@ -724,14 +719,14 @@ def test_save_update_existing_records(mock_sf_client, test_accounts_with_ids):
         {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
     mock_sf_client.patch.return_value = mock_response
-
+    mock_sf_client.data_url = "/services/data/v65.0"
     # Call save
     api.save_list(account_list)
 
     # Verify API call for update
     mock_sf_client.patch.assert_called_once()
     args, kwargs = mock_sf_client.patch.call_args
-    assert args[0] == "/services/data/v57.0/composite/sobjects"
+    assert args[0] == (mock_sf_client.data_url + "/composite/sobjects")
 
     # Check that dirty fields were cleared
     for account in account_list:
@@ -848,7 +843,6 @@ def test_save_with_multiple_options(mock_sf_client, test_accounts_with_ids):
         {"id": account_list[0].Id, "success": True, "errors": []}
     ]
     mock_sf_client.patch.return_value = mock_response
-
     # Call save with multiple options
     api.save_list(account_list, only_changes=True, reload_after_success=False)
 

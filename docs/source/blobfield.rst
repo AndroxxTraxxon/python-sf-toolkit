@@ -64,7 +64,7 @@ cv = ContentVersion(
 cv.VersionData = Path("./example.pdf")
 
 # Save - file upload happens automatically
-cv.save()
+save_record(cv)
 
 print(f"Created ContentVersion with ID: {cv.Id}")
 ```

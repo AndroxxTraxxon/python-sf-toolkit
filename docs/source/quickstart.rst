@@ -66,7 +66,9 @@ Creating Records
    )
 
    # Save to Salesforce
-   new_contact.save()
+   save(new_contact)
+   # OR specifically insert a new record
+   save_insert(new_contact)
 
 Updating Records
 --------------
@@ -76,7 +78,11 @@ Updating Records
    # Update an existing contact
    contact = read(Contact, "003xxxxxxxxxxxx")
    contact.LastName = "Smith"
-   contact.save()
+
+   # Use the generic save function
+   save(contact)
+   # OR specifically update a record
+   save_update(contact)
 
 Next Steps
 ---------

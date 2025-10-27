@@ -11,6 +11,7 @@ The simplest way to create a query is using the ``query()`` method on your SObje
 .. code-block:: python
 
    from sf_toolkit.data import SObject
+   from sf_toolkit.data.query_builder import select
    from sf_toolkit.data.fields import IdField, TextField
 
    class Account(SObject):
@@ -38,6 +39,7 @@ to generate a QueryResult, which serves as the iterable object.
 .. code-block:: python
 
    from sf_toolkit.data import SObject
+   from sf_toolkit.data.query_builder import select
    from sf_toolkit.data.fields import IdField, TextField
 
    class Account(SObject):
@@ -145,7 +147,8 @@ Use ``and_where()`` and ``or_where()`` to build complex conditions incrementally
 Complex Conditions
 ---------------
 
-For more complex conditions, use the logical operators ``AND`` and ``OR``:
+For more complex conditions, use the logical operators ``AND`` and ``OR``. This example would generate a query with nested boolean logic:
+``SELECT ... FROM Account WHERE (Industry = 'Technology' OR (AnnualRevenue > 1000000 AND NumberOfEmployees > 100))``
 
 .. code-block:: python
 
@@ -250,7 +253,7 @@ Query results are returned as a ``QueryResult`` object which is an iterator over
 Counting Records
 -------------
 
-Execute a COUNT() query to get the total number of matching records:
+Execute a COUNT() query to get the total number of matching records without retrieving all records:
 
 .. code-block:: python
 

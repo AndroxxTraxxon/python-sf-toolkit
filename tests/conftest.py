@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Generator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import zipfile
 import random
@@ -41,28 +41,29 @@ def sf_client(cached_cli_login):
         yield client
 
 
-def mock_client(spec_cls: type):
+def mock_client(
+    spec_class: type[SalesforceClient | AsyncSalesforceClient],
+) -> Generator[MagicMock, None, None]:
     # Create a mock SalesforceClient for testing
-    mock_client = MagicMock(spec=spec_cls)
+    mock_client = MagicMock(spec=spec_class)
     mock_client.data_url = _url = "/services/data/v65.0"
     mock_client.sobjects_url = f"{_url}/sobjects"
     mock_client.tooling_url = f"{_url}/tooling"
     mock_client.metadata_url = f"{_url}/metadata"
     mock_client.composite_sobjects_url = MagicMock(
-        return_value=f"{_url}/composite/sobjects/Account"
+        return_value=f"{_url}/composite/sobjects"
     )
-    mock_client.connection_name = spec_cls.DEFAULT_CONNECTION_NAME or "default"
+    mock_client.connection_name = spec_class.DEFAULT_CONNECTION_NAME
 
     # Keep a reference to the original _connections dictionary to restore later
-    original_connections = spec_cls._connections
+    original_connections = spec_class._connections
 
     # Add the mock client to the _connections dictionary directly
-    spec_cls._connections = {spec_cls.DEFAULT_CONNECTION_NAME or "default": mock_client}
-
+    spec_class._connections = {spec_class.DEFAULT_CONNECTION_NAME: mock_client}
     yield mock_client
 
     # Restore the original _connections dictionary
-    spec_cls._connections = original_connections
+    spec_class._connections = original_connections
 
 
 @pytest.fixture()
@@ -72,7 +73,10 @@ def mock_sf_client():
 
 @pytest.fixture()
 def mock_async_client():
-    yield from mock_client(AsyncSalesforceClient)
+    for client in mock_client(AsyncSalesforceClient):
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=None)
+        yield client
 
 
 @pytest.fixture

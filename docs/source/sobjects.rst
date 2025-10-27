@@ -72,10 +72,10 @@ Reading Records
 .. code-block:: python
 
    # Retrieve by ID
-   account = read(Account, "001xxxxxxxxxxxxxxx")
+   account: Account = fetch(Account, "001xxxxxxxxxxxxxxx")
 
    # Fetch multiple records
-   accounts = Account.list("001xxxxxxxxxxxxxxx", "001yyyyyyyyyyyyyyy")
+   accounts: SObjectList[Account] = fetch_list(Account, "001xxxxxxxxxxxxxxx", "001yyyyyyyyyyyyyyy")
 
 Updating Records
 ^^^^^^^^^^^^^^
