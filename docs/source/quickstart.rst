@@ -42,11 +42,11 @@ Querying Records
 
 .. code-block:: python
 
-   from sf_toolkit.data.query_builder import SoqlSelect
+   from sf_toolkit.data.query_builder import select
 
    # ... later, within the context of a Salesforce client ...
    # Query contacts
-   query = Contact.select()
+   query = select(Contact)
    results = query.execute()
 
    # Process results
