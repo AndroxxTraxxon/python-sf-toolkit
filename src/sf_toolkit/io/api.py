@@ -1249,7 +1249,7 @@ def save_insert_list(
 
         async def _tmp():
             async with sf_client.as_async as async_client:
-                return await save_insert_list_async(
+                return await _insert_list_chunks_async(
                     async_client,
                     record_chunks,
                     headers,
@@ -1308,13 +1308,58 @@ def save_insert_list(
 
 
 async def save_insert_list_async(
-    sf_client: AsyncSalesforceClient,
+    records: SObjectList[_sObject],
+    concurrency: int = 5,
+    batch_size: int = 200,
+    all_or_none: bool = False,
+    sf_client: AsyncSalesforceClient | None = None,
+    **callout_options,
+) -> list[SObjectSaveResult]:
+    """
+    Insert all SObjects in the list.
+    https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm
+
+    Returns:
+        self: The list of SObjectSaveResults indicating success or failure of each insert operation
+    """
+    if not records:
+        return []
+
+    sf_client = resolve_async_client(type(records[0]), sf_client)
+
+    # Ensure none of the records have IDs
+    for obj in records:
+        if getattr(obj, obj.attributes.id_field, None):
+            raise ValueError(
+                f"Cannot insert record that already has an {obj.attributes.id_field} set"
+            )
+
+    # Prepare records for insert
+    record_chunks, emitted_records = _generate_record_batches(records, batch_size)
+
+    headers = {"Content-Type": "application/json"}
+    if headers_option := callout_options.pop("headers", None):
+        headers.update(headers_option)
+
+    return await _insert_list_chunks_async(
+        sf_client,
+        record_chunks,
+        headers,
+        concurrency,
+        all_or_none,
+        **callout_options,
+    )
+
+
+async def _insert_list_chunks_async(
+    sf_client: AsyncSalesforceClient | None,
     record_chunks: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]],
     headers: dict[str, str],
     concurrency: int,
     all_or_none: bool,
     **callout_options,
 ) -> list[SObjectSaveResult]:
+    sf_client = sf_client or AsyncSalesforceClient.get_connection()
     if header_options := callout_options.pop("headers", None):
         headers.update(header_options)
     tasks = [

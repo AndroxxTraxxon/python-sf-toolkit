@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 import pytest
 from datetime import datetime, date
 
@@ -690,15 +690,17 @@ def test_query_result_list_conversion(mock_sf_client, mock_query_result_response
 
 @pytest.mark.asyncio
 async def test_query_result_async_iterator(
-    mock_sf_client, mock_query_response_with_next, mock_next_query_response
+    mock_async_client, mock_query_response_with_next, mock_next_query_response
 ):
     """Test QueryResult async iterator functionality"""
-    # Setup mock responses
-    mock_sf_client.get.return_value = mock_query_response_with_next
-    mock_sf_client.as_async.get = AsyncMock(return_value=mock_next_query_response)
+    # Setup mock responses - need to return the actual mock objects, not wrap them in AsyncMock
+    mock_async_client.get.side_effect = [
+        mock_query_response_with_next,
+        mock_next_query_response,
+    ]
 
     # Use async iterator
-    records = [record async for record in select(Account)]
+    records = [record async for record in await select(Account).execute_async()]
 
     # Verify all records were retrieved
     assert len(records) == 4

@@ -8,7 +8,7 @@ import string
 
 import pytest
 
-from sf_toolkit.client import SalesforceClient
+from sf_toolkit.client import AsyncSalesforceClient, SalesforceClient
 from sf_toolkit.auth.login_cli import cli_login
 
 
@@ -41,31 +41,38 @@ def sf_client(cached_cli_login):
         yield client
 
 
-@pytest.fixture()
-def mock_sf_client():
+def mock_client(spec_cls: type):
     # Create a mock SalesforceClient for testing
-    mock_client = MagicMock(spec=SalesforceClient)
-    mock_client.data_url = _url = "/services/data/v57.0"
+    mock_client = MagicMock(spec=spec_cls)
+    mock_client.data_url = _url = "/services/data/v65.0"
     mock_client.sobjects_url = f"{_url}/sobjects"
     mock_client.tooling_url = f"{_url}/tooling"
     mock_client.metadata_url = f"{_url}/metadata"
     mock_client.composite_sobjects_url = MagicMock(
         return_value=f"{_url}/composite/sobjects/Account"
     )
-    mock_client.connection_name = SalesforceClient.DEFAULT_CONNECTION_NAME
+    mock_client.connection_name = spec_cls.DEFAULT_CONNECTION_NAME or "default"
 
     # Keep a reference to the original _connections dictionary to restore later
-    original_connections = SalesforceClient._connections
+    original_connections = spec_cls._connections
 
     # Add the mock client to the _connections dictionary directly
-    SalesforceClient._connections = {
-        SalesforceClient.DEFAULT_CONNECTION_NAME: mock_client
-    }
+    spec_cls._connections = {spec_cls.DEFAULT_CONNECTION_NAME or "default": mock_client}
 
     yield mock_client
 
     # Restore the original _connections dictionary
-    SalesforceClient._connections = original_connections
+    spec_cls._connections = original_connections
+
+
+@pytest.fixture()
+def mock_sf_client():
+    yield from mock_client(SalesforceClient)
+
+
+@pytest.fixture()
+def mock_async_client():
+    yield from mock_client(AsyncSalesforceClient)
 
 
 @pytest.fixture

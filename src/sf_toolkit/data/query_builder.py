@@ -293,14 +293,7 @@ class QueryResult(Generic[_SObject]):
         )
 
     async def _fetch_query_locator_batch(self, query_locator_url: str):
-        try:
-            connection = AsyncSalesforceClient.get_connection(
-                self.batches[0]._connection
-            )
-        except KeyError:
-            connection = SalesforceClient.get_connection(
-                self.batches[0]._connection
-            ).as_async
+        connection = AsyncSalesforceClient.get_connection(self.batches[0]._connection)
         result: QueryResultJSON = (await connection.get(query_locator_url)).json()
         return QueryResultBatch(
             self.batches[0]._sobject_type,
@@ -748,11 +741,6 @@ class SoqlQuery(Generic[_SObject]):
 
     def __iter__(self):
         return self.execute()
-
-    def __aiter__(self):
-        result = self.execute()
-        result.schedule_async_tasks()
-        return result
 
 
 def select(

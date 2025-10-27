@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, Mock, AsyncMock
 import pytest
+import pytest_asyncio
 
 from sf_toolkit.data.transformers import chunked
 
@@ -296,7 +297,8 @@ def test_save_insert_with_id_error(test_accounts_with_ids, mock_sf_client):
         api.save_insert_list(account_list)
 
 
-def test_save_insert_async(mock_sf_client, test_accounts):
+@pytest.mark.asyncio
+async def test_save_insert_async(mock_sf_client, test_accounts):
     """Test save_insert with async execution"""
     # Create enough accounts to trigger async execution
     many_accounts = [_TestAccount(Name=f"Account {i}") for i in range(20)]
@@ -318,7 +320,9 @@ def test_save_insert_async(mock_sf_client, test_accounts):
     async_client.post = mock_response
 
     # Call save_insert with concurrency > 1
-    results = api.save_insert_list(account_list, concurrency=5, batch_size=5)
+    results = await api.save_insert_list_async(
+        account_list, concurrency=2, batch_size=5
+    )
 
     # Verify async client was used
     async_client.post.assert_called()
@@ -414,7 +418,8 @@ def test_save_update_no_id(test_accounts, mock_sf_client):
         api.save_update_list(account_list)
 
 
-def test_save_update_async(mock_sf_client, test_accounts_with_ids):
+@pytest.mark.asyncio
+async def test_save_update_async(mock_sf_client, test_accounts_with_ids):
     """Test save_update with async execution"""
     # Create list with accounts
     account_list = SObjectList(test_accounts_with_ids)
@@ -435,7 +440,7 @@ def test_save_update_async(mock_sf_client, test_accounts_with_ids):
     async_client.post.return_value = mock_response
 
     # Call save_update with concurrency > 1
-    results = api.save_update_list(account_list, concurrency=2)
+    results = await api.save_update_list_async(account_list, concurrency=2)
 
     # Verify async client's post method was called
     async_client.post.assert_called()

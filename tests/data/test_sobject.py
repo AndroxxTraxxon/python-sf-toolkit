@@ -336,7 +336,7 @@ def test_save_insert(mock_sf_client):
     args, kwargs = mock_sf_client.post.call_args
 
     # Check the endpoint
-    assert args[0] == "/services/data/v57.0/sobjects/Account"
+    assert args[0] == (mock_sf_client.data_url + "/sobjects/Account")
 
     # Check the payload doesn't include Id or attributes
     assert "Id" not in kwargs["json"]
@@ -419,7 +419,7 @@ def test_save_update(mock_sf_client):
     args, kwargs = mock_sf_client.patch.call_args
 
     # Check the endpoint includes the ID
-    assert args[0] == "/services/data/v57.0/sobjects/Account/001XX0000003DGTUPD"
+    assert args[0] == (mock_sf_client.data_url + "/sobjects/Account/001XX0000003DGTUPD")
 
     # Check the payload only includes changed fields
     assert "Id" not in kwargs["json"]
@@ -507,9 +507,8 @@ def test_save_upsert(mock_sf_client):
     args, kwargs = mock_sf_client.patch.call_args
 
     # Check the endpoint includes the external ID field and value
-    assert (
-        args[0]
-        == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-12345"
+    assert args[0] == (
+        mock_sf_client.data_url + "/sobjects/CustomObject__c/External_Id__c/EXT-12345"
     )
 
     # Check the payload only includes the changed field
@@ -564,9 +563,8 @@ def test_save_upsert_insert(mock_sf_client):
     args, kwargs = mock_sf_client.patch.call_args
 
     # Check the endpoint includes the external ID field and value
-    assert (
-        args[0]
-        == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-NEW-1"
+    assert args[0] == (
+        mock_sf_client.data_url + "/sobjects/CustomObject__c/External_Id__c/EXT-NEW-1"
     )
 
     # Verify the ID was set from the response
@@ -599,7 +597,7 @@ def test_save_method_with_id(mock_sf_client):
     args, kwargs = mock_sf_client.patch.call_args
 
     # Check the endpoint includes the ID
-    assert args[0] == "/services/data/v57.0/sobjects/Account/001XX000003DGTSAVE"
+    assert args[0] == mock_sf_client.data_url + "/sobjects/Account/001XX000003DGTSAVE"
 
     # Check payload only contains changed fields
     assert kwargs["json"] == {"Name": "Save Method Updated"}
@@ -663,9 +661,8 @@ def test_save_method_with_external_id(mock_sf_client):
     args, kwargs = mock_sf_client.patch.call_args
 
     # Check the endpoint includes the external ID field and value
-    assert (
-        args[0]
-        == "/services/data/v57.0/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
+    assert args[0] == (
+        mock_sf_client.data_url + "/sobjects/CustomObject__c/External_Id__c/EXT-SAVE-1"
     )
 
 

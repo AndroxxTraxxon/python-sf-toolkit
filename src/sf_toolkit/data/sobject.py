@@ -1,30 +1,18 @@
 from abc import ABC
-import asyncio
-from contextlib import ExitStack
-import json
-from pathlib import Path
+
 from typing import Any, NamedTuple, TypeVar
 from collections.abc import Iterable, AsyncIterable
 
-import warnings
 from ..logger import getLogger
 
-from .. import SalesforceClient, client as sftk_client
+from .. import SalesforceClient
 
-from .transformers import chunked
-from ..async_utils import run_concurrently
-from .._models import SObjectAttributes, SObjectSaveResult
-from . import fields
+from .._models import SObjectAttributes
 from .fields import (
-    BlobData,
     BlobField,
     FieldConfigurableObject,
-    dirty_fields,
     object_fields,
-    query_fields,
-    serialize_object,
 )
-from .transformers import flatten
 
 _logger = getLogger("sobject")
 
@@ -156,7 +144,6 @@ class SObject(FieldConfigurableObject, ABC):
         if not api_name:
             api_name = cls.__name__
         blob_field = None
-        connection = connection or SalesforceClient.DEFAULT_CONNECTION_NAME
         for name, field in object_fields(cls).items():
             if isinstance(field, BlobField):
                 assert blob_field is None, (

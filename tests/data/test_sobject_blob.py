@@ -88,7 +88,7 @@ def test_save_insert_with_text_blob(mock_sf_client):
     args, kwargs = mock_sf_client.post.call_args
 
     # Check the URL
-    assert args[0] == "/services/data/v57.0/sobjects/Document"
+    assert args[0] == mock_sf_client.data_url + "/sobjects/Document"
 
     # Check that files parameter was used (multipart form upload)
     assert "files" in kwargs
