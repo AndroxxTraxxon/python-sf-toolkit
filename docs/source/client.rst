@@ -16,18 +16,36 @@ Basic Usage
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, cli_login
+    from sf_toolkit import SalesforceClient, cli_login
+    from sf_toolkit.data import select
+    from sf_toolkit import SObject
+    from sf_toolkit.data.fields import IdField, TextField
+    # Define an SObject model (fields you care about)
+    class Account(SObject):
+        Id = IdField()
+        Name = TextField()
 
-   # Using SF CLI Authentication
-   with SalesforceClient(login=cli_login()) as sf:
-       # Get available API versions
-       versions = sf.versions
+    # Basic synchronous usage with SF CLI authentication (alias optional)
+    with SalesforceClient(login=cli_login()) as sf:
+        # Synchronous properties (populated at login)
+        print("Available API versions:", sf.versions)
+        print("Current user Id:", sf._userinfo.user_id)
 
-       # Get user info
-       user_info = sf._userinfo
+        # Raw API GET request (immediate response as dict/json)
+        account_describe = sf.get("/services/data/v57.0/sobjects/Account/describe")
+        print("Account label:", account_describe["label"])
 
-       # Make a raw API request
-       response = sf.get("/services/data/v57.0/sobjects/Account/describe")
+        # Build a SOQL query using the query builder (returns an iterator)
+        accounts_iter = select(Account).where(Name__like="Acme%").limit(5).execute()
+
+        # Iterate results (records loaded lazily)
+        for acct in accounts_iter:
+            print("Got account:", acct.Id, acct.Name)
+
+        # You can also perform other CRUD operations, bulk operations, etc.
+        # e.g. sf.post("/services/data/v57.0/sobjects/Account", data={...})
+
+   # Client session is automatically closed when exiting the context manager
 
 Asynchronous Usage
 --------------------

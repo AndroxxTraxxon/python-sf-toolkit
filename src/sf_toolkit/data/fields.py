@@ -69,7 +69,7 @@ class FieldConfigurableObject:
 
     def __init__(
         self,
-        **field_values,
+        **field_values: typing.Any,
     ):
         self._values = {}
         _fields = object_fields(type(self))
@@ -82,6 +82,9 @@ class FieldConfigurableObject:
                 else:
                     warnings.warn(message)
             setattr(self, field, value)
+        for field_name, field in _fields.items():
+            if field_name not in field_values and field.default is not None:
+                setattr(self, field.name, field.field_value)
         dirty_fields(self).clear()
 
     def __init_subclass__(cls, strict_fields: bool = False) -> None:
@@ -226,11 +229,16 @@ class Field(typing.Generic[T]):
     _name: str
     flags: set[FieldFlag]
 
-    def __init__(self, *flags: FieldFlag, py_type: type[T]):
+    def __init__(self, *flags: FieldFlag, py_type: type[T], default: T | None = None):
         self._py_type = py_type
         self.flags = set(flags)
         self._owner = type(None)
         self._name = ""
+        if default is not None:
+            assert isinstance(default, py_type), (
+                f"default value must be of type {py_type}"
+            )
+        self.default = default
 
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> T:
@@ -295,7 +303,7 @@ class RawField(Field[typing.Any]):
     A Field that does no transformation or validation on the values passed to it.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: object | None = None):
         super().__init__(*flags, py_type=object)
 
     @override
@@ -308,7 +316,7 @@ class TextField(Field[str]):
     A field to contain text or string values
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: str | None = None):
         super().__init__(*flags, py_type=str)
 
 
@@ -338,7 +346,12 @@ class PicklistField(TextField):
 
     _options_: list[str]
 
-    def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
+    def __init__(
+        self,
+        *flags: FieldFlag,
+        default: str | None = None,
+        options: list[str] | None = None,
+    ):
         super().__init__(*flags)
         self._options_ = options or []
 
@@ -361,7 +374,12 @@ class MultiPicklistField(Field[MultiPicklistValue]):
 
     _options_: list[str]
 
-    def __init__(self, *flags: FieldFlag, options: list[str] | None = None):
+    def __init__(
+        self,
+        *flags: FieldFlag,
+        default: MultiPicklistValue | None = None,
+        options: list[str] | None = None,
+    ):
         super().__init__(*flags, py_type=MultiPicklistValue)
         self._options_ = options or []
 
@@ -383,7 +401,7 @@ class NumberField(Field[float]):
     A field to contain a floating-point numeric value.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: float | None = None):
         super().__init__(*flags, py_type=float)
 
     @override
@@ -396,7 +414,7 @@ class IntField(Field[int]):
     A field to contain an integer numeric value.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: int | None = None):
         super().__init__(*flags, py_type=int)
 
     @override
@@ -409,7 +427,7 @@ class CheckboxField(Field[bool]):
     A field to contain a boolean value.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: bool | None = None):
         super().__init__(*flags, py_type=bool)
 
     @override
@@ -422,7 +440,7 @@ class DateField(Field[datetime.date]):
     A field to contain a date value.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: datetime.date | None = None):
         super().__init__(*flags, py_type=datetime.date)
 
     @override
@@ -443,7 +461,7 @@ class TimeField(Field[datetime.time]):
     A field to contain a time value.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: datetime.time | None = None):
         super().__init__(*flags, py_type=datetime.time)
 
     @override
@@ -464,7 +482,7 @@ class DateTimeField(Field[datetime.datetime]):
     A field to contain a datetime value.
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: datetime.datetime | None = None):
         super().__init__(*flags, py_type=datetime.datetime)
 
     @override
@@ -629,7 +647,7 @@ class Geolocation(typing.NamedTuple):
 class GeolocationField(Field[Geolocation]):
     """Field type for handling geolocation data in Salesforce"""
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: Geolocation | None = None):
         super().__init__(*flags, py_type=Geolocation)
 
     @override
@@ -682,7 +700,7 @@ class AddressField(Field[Address]):
     Field type for handling address data in Salesforce
     """
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: Address | None = None):
         super().__init__(*flags, py_type=Address)
 
     @override
@@ -727,7 +745,7 @@ class AddressField(Field[Address]):
 class BlobField(Field[BlobData]):
     """Field type for handling blob data in Salesforce"""
 
-    def __init__(self, *flags: FieldFlag):
+    def __init__(self, *flags: FieldFlag, default: BlobData | None = None):
         super().__init__(*flags, py_type=BlobData)
 
     def revive(self, value):

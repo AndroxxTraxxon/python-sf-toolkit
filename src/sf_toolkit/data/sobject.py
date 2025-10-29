@@ -72,8 +72,8 @@ class SObjectDescribe:
         layoutable: bool = False,
         activateable: bool = False,
         fields: list[SObjectFieldDescribe] | None = None,
-        childRelationships: list[dict] | None = None,
-        recordTypeInfos: list[dict] | None = None,
+        childRelationships: list[dict[str, Any]] | None = None,
+        recordTypeInfos: list[dict[str, Any]] | None = None,
         **additional_properties,
     ):
         self.name = name
@@ -103,7 +103,7 @@ class SObjectDescribe:
                 self._raw_data[key] = value
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SObjectDescribe":
+    def from_dict(cls, data: dict[str, Any]) -> "SObjectDescribe":
         """Create an SObjectDescribe instance from a dictionary (typically from a Salesforce API response)"""
         # Extract fields specifically to convert them to SObjectFieldDescribe objects
         fields_data = data.pop("fields", []) if "fields" in data else []
@@ -126,7 +126,7 @@ class SObjectDescribe:
                 return field
         return None
 
-    def get_raw_data(self) -> dict:
+    def get_raw_data(self) -> dict[str, Any]:
         """Get the raw JSON data from the describe call"""
         return self._raw_data
 

@@ -48,6 +48,46 @@ Field flags can be used to set properties on fields:
 * ``FieldFlag.createable`` - Field can be set on creation
 * ``FieldFlag.updateable`` - Field can be updated
 
+Default Field Values
+--------------------
+
+You can specify a default value for a field so that new SObject instances automatically receive a value when one is not provided in the constructor.
+
+Passing a static default:
+.. code-block:: python
+
+   class Account(SObject, api_name="Account"):
+       Name = TextField()
+       Active__c = CheckboxField(default=True)
+       Rating = PicklistField(values=["Hot", "Warm", "Cold"], default="Cold")
+       Categories__c = MultiPicklistField(values=["A", "B", "C"], default=["A", "C"])
+
+   # Active__c, Rating, Categories__c are filled automatically
+   account = Account(Name="Example")
+   assert account.Active__c is True
+   assert account.Rating == "Cold"
+   assert set(account.Categories__c) == "A;C"
+
+Using a callable default (evaluated per instance):
+.. code-block:: python
+
+   from datetime import date, datetime
+
+   class Task(SObject, api_name="Task"):
+       DueDate__c = DateField(default=date.today)        # date.today() called for each new instance
+       CreatedMarker__c = DateTimeField(default=datetime.utcnow)
+
+       Priority__c = PicklistField(values=["High", "Normal", "Low"], default="Normal")
+
+   task = Task(Subject="Follow Up")
+   # If you do not pass DueDate__c, it is set to today's date.
+
+Notes:
+* The default is only applied if the field is not supplied when constructing the instance.
+* Callables (functions without arguments) are supported and invoked once per instance creation.
+* Defaults must pass field validation (e.g., picklist values must be in the allowed set).
+* Setting a field explicitly to None will override a default only if the field is nillable.
+
 CRUD Operations
 -------------
 

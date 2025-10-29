@@ -57,3 +57,6 @@ with SalesforceClient(login=lazy_login(sf_cli_alias=True)):
     print(query)
     for record in query:
         print(record.Name, [contact.LastName for contact in record.Contacts], sep=" | ")
+
+
+for record in select(Account).execute_bulk():

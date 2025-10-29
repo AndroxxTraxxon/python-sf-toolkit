@@ -20,7 +20,8 @@ pip install sf-toolkit
 ## Quick Start
 
 ```python
-from sf_toolkit import SalesforceClient, SObject, cli_login, query
+from sf_toolkit import SalesforceClient, SObject, cli_login
+from sf_toolkit.io import select, save
 from sf_toolkit.data.fields import IdField, TextField
 
 # Define a Salesforce object model
@@ -34,7 +35,7 @@ class Account(SObject):
 with SalesforceClient(login=cli_login()) as sf:
     # Create a new account
     account = Account(Name="Acme Corp", Industry="Technology")
-    account.save()
+    save(account)
 
     # Query accounts
     result = select(Account).execute()

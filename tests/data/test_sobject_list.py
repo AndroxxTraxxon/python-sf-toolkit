@@ -1,3 +1,4 @@
+from typing import ClassVar
 from unittest.mock import Mock, AsyncMock
 import pytest
 
@@ -12,11 +13,11 @@ from sf_toolkit.io import api
 
 # Create test SObject classes
 class _TestAccount(SObject, api_name="TestAccount"):
-    Id = IdField()
-    Name = TextField()
-    Industry = TextField()
-    Revenue = NumberField()
-    ExternalId__c = TextField()
+    Id: ClassVar[IdField] = IdField()
+    Name: ClassVar[TextField] = TextField()
+    Industry: ClassVar[TextField] = TextField()
+    Revenue: ClassVar[NumberField] = NumberField()
+    ExternalId__c: ClassVar[TextField] = TextField()
 
 
 class _TestContact(SObject, api_name="TestContact"):

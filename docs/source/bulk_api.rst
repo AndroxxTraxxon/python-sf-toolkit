@@ -245,9 +245,229 @@ Limitations
 ---------
 
 - Bulk API 2.0 only supports CSV format (not JSON or XML)
-- Maximum file size for a single upload is 100MB (base64 encoded size up to 150MB)
+- Maximum file size for a single batch is 100MB (base64 encoded size up to 150MB)
 - Certain SObject types are not supported in Bulk API
 - Some operations like merge are not supported
 - Processing is asynchronous; results are not immediately available
 
 For more details on Salesforce Bulk API 2.0, see the `Salesforce Bulk API Developer Guide <https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/>`_.
+
+
+Bulk Query API
+==============
+
+Salesforce Toolkit also provides an interface to the Salesforce Bulk API 2.0 Query endpoint for efficiently retrieving very large result sets. Bulk Query runs asynchronously and streams records in pages so you can process millions of rows without loading everything into memory at once.
+
+When to Use Bulk Query
+----------------------
+
+Use Bulk Query when:
+
+- Expecting more than ~20,000 records (especially 100k+)
+- Need to minimize API round‑trips (standard REST /query pagination returns 2k records per page)
+- Want asynchronous, resumable retrieval
+- Processing results incrementally (streaming)
+- Need CSV-style export semantics
+
+Basic Usage with select(...).execute_bulk()
+-------------------------------------------
+
+You can request a bulk query directly from the query builder:
+
+.. code-block:: python
+
+   from sf_toolkit.data import select, SObject
+   from sf_toolkit.data.fields import IdField, TextField
+
+   class Account(SObject):
+       Id = IdField()
+       Name = TextField()
+       Industry = TextField()
+
+   # Build a SOQL query
+   bulk_result = select(Account).where(Industry="Technology").execute_bulk()
+
+   # Iterate over all returned records (streaming pages internally)
+   for account in bulk_result:
+       print(account.Id, account.Name)
+
+   # Convert entire result to a list (loads all pages)
+   all_accounts = bulk_result.as_list()
+   print(f"Total accounts: {len(all_accounts)}")
+
+Asynchronous Usage
+------------------
+
+For very large datasets, async iteration lets other tasks run while pages are fetched:
+
+.. code-block:: python
+
+   import asyncio
+   from sf_toolkit.client import AsyncSalesforceClient
+   from sf_toolkit.auth import cli_login
+
+   async def main():
+       async with AsyncSalesforceClient(login=cli_login("my-org-alias")) as conn:
+           bulk_result = (
+               select(Account)
+               .where(Industry="Technology")
+               .execute_bulk_async(connection=conn)
+           )
+
+           async for account in bulk_result:
+               print(account.Id, account.Name)
+
+           # Load all records into memory (use cautiously for huge sets)
+           all_accounts = await bulk_result.as_list_async()
+           print(f"Loaded {len(all_accounts)} accounts")
+
+   asyncio.run(main())
+
+Working with BulkApiQueryJob Directly
+-------------------------------------
+
+For full control (custom SOQL string, manual monitoring) use BulkApiQueryJob:
+
+.. code-block:: python
+
+   from sf_toolkit.data.bulk import BulkApiQueryJob
+
+   soql = "SELECT Id, Name, Industry FROM Account WHERE Industry = 'Technology'"
+
+   # Initialize (creates job on Salesforce)
+   query_job = BulkApiQueryJob.init_job(
+       query=soql,
+       connection=client  # SalesforceClient or AsyncSalesforceClient
+   )
+
+   # Monitor until completed
+   query_job = query_job.monitor_until_complete()
+
+   if query_job.state == "JobComplete":
+       # Iterate through pages / records
+       for record in query_job:
+           print(record["Id"], record["Name"])
+   else:
+       print(f"Query failed: {query_job.errorMessage}")
+
+Async direct usage:
+
+.. code-block:: python
+
+   async_query_job = await BulkApiQueryJob.init_job_async(
+       query=soql,
+       connection=async_client
+   )
+
+   async_query_job = await async_query_job.monitor_until_complete_async()
+
+   if async_query_job.state == "JobComplete":
+       async for record in async_query_job:
+           print(record["Id"], record["Name"])
+   else:
+       print(f"Query failed: {async_query_job.errorMessage}")
+
+Streaming and Pagination
+------------------------
+
+Bulk query results are delivered in pages:
+
+- Iteration (for / async for) fetches one page at a time
+- Each page is parsed into SObject instances (when using select().execute_bulk())
+- Use as_list()/as_list_async() to force retrieval of all pages
+
+If you only need the first N records, break early in the loop to avoid fetching remaining pages.
+
+Job States for Query
+--------------------
+
+A bulk query job can be in one of these states:
+
+- UploadComplete (SOQL accepted, processing started)
+- InProgress (records being gathered)
+- Aborted (stopped by user)
+- JobComplete (all result pages ready)
+- Failed (error encountered)
+
+Error Handling
+--------------
+
+Check job.state and errorMessage after completion:
+
+.. code-block:: python
+
+   result = select(Account).execute_bulk()
+
+   # You can inspect underlying job via result._job (internal)
+   job = result._job
+   if job.state == "Failed":
+       print(f"Bulk query failed: {job.errorMessage}")
+   else:
+       print(f"State: {job.state}")
+
+Partial failures (e.g., field-level errors) typically manifest as a Failed state for query jobs; records are not partially returned.
+
+Performance Tips
+----------------
+
+1. Narrow fields: Select only required columns (avoid SELECT * style).
+2. Use selective WHERE clauses: Reduces scan time.
+3. Avoid overly complex formula fields: Can slow processing.
+4. Process incrementally: Stream pages instead of materializing large lists.
+
+Limitations
+-----------
+
+- Bulk Query is read-only (cannot modify data)
+- ORDER BY and OFFSET are not supported in Bulk API 2.0 queries
+- Real-time freshness is not guaranteed for very large result sets (eventual completion)
+- Result format is CSV internally (Toolkit parses to objects/dicts)
+- Relationship traversals (e.g., Account.Owner.Name) may be limited compared to REST query performance for huge datasets
+
+Example: Filtering and Streaming
+--------------------------------
+
+.. code-block:: python
+
+   tech_accounts = (
+       select(Account)
+       .where(Industry="Technology")
+       .and_where(Name__like="Bulk%")
+       .execute_bulk()
+   )
+
+   for acct in tech_accounts:
+       # Process on-the-fly without accumulating
+       do_something(acct)
+
+Async Example with Early Break
+------------------------------
+
+.. code-block:: python
+
+   async def first_100_account_ids(async_client):
+       result = (
+           select(Account)
+           .fields("Id")  # Limit to Id only
+           .execute_bulk_async(connection=async_client)
+       )
+       collected = []
+       async for acct in result:
+           collected.append(acct.Id)
+           if len(collected) >= 100:
+               break
+       return collected
+
+Comparing Standard vs Bulk Query
+--------------------------------
+
+Standard Query (REST):
+- Immediate response, limited page size (2k records per batch)
+- Better for small, interactive queries
+
+Bulk Query:
+- Asynchronous job creation + processing
+- Efficient for very large datasets
+- Stream or download full result set
+
+Choose based on dataset size and latency requirements.
