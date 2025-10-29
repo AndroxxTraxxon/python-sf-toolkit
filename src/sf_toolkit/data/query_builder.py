@@ -468,7 +468,7 @@ class SoqlQuery(Generic[_SObject]):
         self: "SoqlQuery[_SObject]",
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs,
+        **kwargs: Any,
     ) -> "SoqlQuery[_SObject]":
         if _raw:
             self._where = _raw
@@ -510,7 +510,7 @@ class SoqlQuery(Generic[_SObject]):
         self,
         _raw: Comparison | BooleanOperation | str | None = None,
         _mode: Literal["any", "all"] = "all",
-        **kwargs,
+        **kwargs: Any,
     ):
         if _raw:
             self._having = _raw
@@ -666,7 +666,7 @@ class SoqlQuery(Generic[_SObject]):
         self,
         *_fields: str,
         connection: SalesforceClient | str | None = None,
-        **callout_options,
+        **callout_options: Any,
     ) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).

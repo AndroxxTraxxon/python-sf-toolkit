@@ -108,6 +108,16 @@ class FieldConfigurableObject:
             raise KeyError(f"Undefined field {name} on object {type(self)}")
         setattr(self, name, value)
 
+    @override
+    def __delattr__(self, name: str, /) -> None:
+        if name not in object_fields(type(self)):
+            raise KeyError(f"Undefined field {name} on object {type(self)}")
+        if name in self._values:
+            del self._values[name]
+
+    def __delitem__(self, name: str):
+        self.__delattr__(name)
+
 
 _field_map: dict[type[FieldConfigurableObject], dict[str, "Field[typing.Any]"]] = (
     defaultdict(dict)

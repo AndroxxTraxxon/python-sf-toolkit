@@ -4,6 +4,7 @@ import logging
 
 from sf_toolkit import SalesforceClient, SObject
 from sf_toolkit.auth import cli_login
+from sf_toolkit.client import OrgType
 from sf_toolkit.data import select
 from sf_toolkit.data.fields import IdField, CheckboxField
 
@@ -46,6 +47,9 @@ async def freeze_users(conn: SalesforceClient):
 
 def main():
     with SalesforceClient(login=cli_login("heb--performtst")) as conn:
+        assert conn.org_type != OrgType.PRODUCTION, (
+            "This script should not be run against production orgs."
+        )
         asyncio.run(freeze_users(conn))
 
 

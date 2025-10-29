@@ -41,7 +41,6 @@ def resolve_client(
     if isinstance(client, SalesforceClient):
         return client
     return SalesforceClient.get_connection(cls.attributes.connection)
-   
 
 
 def resolve_async_client(
@@ -689,7 +688,7 @@ async def reload_async(record: SObject, sf_client: AsyncSalesforceClient | None 
     record._values.update(reloaded._values)
 
 
-def update_record(record: FieldConfigurableObject, /, **props):
+def update_record(record: FieldConfigurableObject, /, **props: Any):
     _fields = object_fields(type(record))
     for key, value in props.items():
         if key in _fields:
@@ -777,7 +776,8 @@ def sobject_from_description(
     sobject: str,
     connection: str = "",
     ignore_fields: Container[str] | None = None,
-) -> type["SObject"]:
+    base_class: type[_sObject] = SObject,
+) -> type[_sObject]:
     """
     Build an SObject type definition for the named SObject based on the object 'describe' from Salesforce
 
@@ -822,7 +822,7 @@ def sobject_from_description(
     # Create a new SObject subclass
     sobject_class = type(
         f"SObject__{sobject}",
-        (SObject,),
+        (base_class,),
         {
             "__doc__": f"Auto-generated SObject class for {sobject} ({describe_data.label})",
             **fields,
@@ -1082,6 +1082,45 @@ def save_upsert_bulk(
     return job
 
 
+async def save_upsert_bulk_async(
+    self: SObjectList[_sObject],
+    external_id_field: str,
+    timeout: int = 600,
+    connection: AsyncSalesforceClient | str | None = None,
+) -> BulkApiIngestJob:
+    """Upsert records in bulk using Salesforce Bulk API 2.0
+
+    This method uses the Bulk API 2.0 to upsert records based on an external ID field.
+    The external ID field must exist on the object and be marked as an external ID.
+
+    Args:
+        external_id_field: The API name of the external ID field to use for the upsert
+        timeout: Maximum time in seconds to wait for the job to complete
+
+    Returns:
+        Dict[str, Any]: Job result information
+
+    Raises:
+        SalesforceBulkV2LoadError: If the job fails or times out
+        ValueError: If the list is empty or the external ID field doesn't exist
+    """
+    assert self, "Cannot upsert empty SObjectList"
+
+    if not connection:
+        connection = self[0].attributes.connection
+
+    job = await BulkApiIngestJob.init_job_async(
+        self[0].attributes.type,
+        "upsert",
+        external_id_field=external_id_field,
+        connection=connection,
+    )
+
+    await job.upload_batches_async(self)
+
+    return job
+
+
 def save_insert_bulk(
     self: SObjectList[_sObject],
     connection: SalesforceClient | str | None = None,
@@ -1216,7 +1255,7 @@ def save_insert_list(
     batch_size: int = 200,
     all_or_none: bool = False,
     sf_client: SalesforceClient | None = None,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Insert all SObjects in the list.
@@ -1414,7 +1453,7 @@ def save_update_list(
     only_changes: bool = False,
     all_or_none: bool = False,
     batch_size: int = 200,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Update all SObjects in the list.
@@ -1661,6 +1700,7 @@ def save_upsert_list(
 
     return results
 
+
 async def save_upsert_list_async(
     records: SObjectList[_sObject],
     external_id_field: str,
@@ -1732,7 +1772,6 @@ async def save_upsert_list_async(
         all_or_none,
         **callout_options,
     )
- 
 
     # Clear dirty fields as operations were successful
     for record, result in zip(emitted_records, results):
@@ -1778,7 +1817,7 @@ def delete_list(
     batch_size: int = 200,
     concurrency: int = 1,
     all_or_none: bool = False,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Delete all SObjects in the list.
@@ -1836,6 +1875,7 @@ def delete_list(
 
     return results
 
+
 async def delete_list_async(
     records: SObjectList[_sObject],
     clear_id_field: bool = False,
@@ -1871,11 +1911,11 @@ async def delete_list_async(
     if len(record_id_batches) > 1 and concurrency > 1:
         results = await _delete_list_chunks_async(
             sf_client,
-                record_id_batches,
-                all_or_none,
-                concurrency,
-                **callout_options,
-            )
+            record_id_batches,
+            all_or_none,
+            concurrency,
+            **callout_options,
+        )
     if clear_id_field:
         for record, result in zip(records, results):
             if result.success:

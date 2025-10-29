@@ -75,7 +75,10 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
     def _derive_base_url(self, session: SalesforceToken):
         self._base_url = self._enforce_trailing_slash(session.instance)
 
+    @property
     def org_type(self) -> OrgType:
+        if not self._base_url:
+            raise ValueError("Base URL is not set on the client.")
         if ".scratch." in self._base_url.host.lower():
             return OrgType.SCRATCH
         elif ".sandbox." in self._base_url.host.lower():

@@ -661,6 +661,7 @@ class BulkQueryResult(
         _ = await page.fetch_async()
         return page
 
+    @override
     def __next__(self) -> _SO:
         try:
             return next(self.pages[self._page_index])
@@ -676,6 +677,7 @@ class BulkQueryResult(
 
             return next(self.pages[self._page_index])
 
+    @override
     async def __anext__(self) -> _SO:
         try:
             return await anext(self.pages[self._page_index])

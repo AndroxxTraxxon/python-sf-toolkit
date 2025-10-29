@@ -21,6 +21,7 @@ from .fields import (
     MultiPicklistField,
     MultiPicklistValue,
     ReadOnlyAssignmentException,
+    object_fields,
 )
 
 from .sobject import SObject, SObjectList
@@ -54,4 +55,5 @@ __all__ = [
     "TextField",
     "TimeField",
     "select",
+    "object_fields",
 ]

@@ -217,7 +217,9 @@ class SObjectList(list[_sObject]):
 
     @classmethod
     async def async_init(
-        cls, a_iterable: AsyncIterable[_sObject], connection: str | None = None
+        cls: "type[SObjectList[_sObject]]",
+        a_iterable: AsyncIterable[_sObject],
+        connection: str | None = None,
     ) -> "SObjectList[_sObject]":
         collected_records = [record async for record in a_iterable]
         return cls(collected_records, connection=connection)
