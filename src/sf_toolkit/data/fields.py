@@ -1,6 +1,7 @@
 """
 Module for basic field and field-configurable object scaffolding
 """
+# pyright: basic
 
 from collections import defaultdict
 from collections.abc import Mapping
@@ -83,8 +84,19 @@ class FieldConfigurableObject:
                     warnings.warn(message)
             setattr(self, field, value)
         for field_name, field in _fields.items():
-            if field_name not in field_values and field.default is not None:
-                setattr(self, field.name, field.field_value)
+            if (
+                field_name not in field_values
+                and (_default := field.default) is not None
+            ):
+                # set default values for fields not provided
+                if (
+                    callable(field.default)
+                    and field.meta_py_type
+                    and not isinstance(field.default, field.meta_py_type)
+                ):
+                    # if a method/function/lambda is passed, call that to get default value
+                    _default = field.default()
+                setattr(self, field_name, _default)
         dirty_fields(self).clear()
 
     def __init_subclass__(cls, strict_fields: bool = False) -> None:
@@ -219,6 +231,10 @@ def serialize_object(
 _FCO_Type = typing.TypeVar("_FCO_Type", bound=FieldConfigurableObject)
 
 
+class FieldProps(typing.Generic[T], typing.TypedDict):
+    default: typing.NotRequired[T | typing.Callable[[], T] | None]
+
+
 class Field(typing.Generic[T]):
     """
     Base class for all configurable field types
@@ -228,21 +244,25 @@ class Field(typing.Generic[T]):
     _py_type: type[T] | None = None
     _name: str
     flags: set[FieldFlag]
+    default: T | typing.Callable[[], T] | None
 
-    def __init__(self, *flags: FieldFlag, py_type: type[T], default: T | None = None):
+    def __init__(
+        self, *flags: FieldFlag, py_type: type[T], **props: typing.Unpack[FieldProps[T]]
+    ):
         self._py_type = py_type
         self.flags = set(flags)
         self._owner = type(None)
         self._name = ""
-        if default is not None:
-            assert isinstance(default, py_type), (
+        if (default := props.pop("default", None)) is not None:
+            assert isinstance(default, py_type) or callable(default), (
                 f"default value must be of type {py_type}"
+                f" or a callable generating {py_type}"
             )
         self.default = default
 
     # Add descriptor protocol methods
     def __get__(self, obj: FieldConfigurableObject, objtype=None) -> T:
-        return getattr(obj, "_values").get(self._name)  # type: ignore
+        return obj._values.get(self._name)  # pyright: ignore[reportPrivateUsage, reportReturnType]
 
     def __set__(self, obj: FieldConfigurableObject, value: typing.Any):
         value = self.revive(value)
@@ -303,8 +323,10 @@ class RawField(Field[typing.Any]):
     A Field that does no transformation or validation on the values passed to it.
     """
 
-    def __init__(self, *flags: FieldFlag, default: object | None = None):
-        super().__init__(*flags, py_type=object)
+    def __init__(
+        self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[typing.Any]]
+    ):
+        super().__init__(*flags, py_type=object, **props)
 
     @override
     def validate(self, value):
@@ -316,8 +338,8 @@ class TextField(Field[str]):
     A field to contain text or string values
     """
 
-    def __init__(self, *flags: FieldFlag, default: str | None = None):
-        super().__init__(*flags, py_type=str)
+    def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[str]]):
+        super().__init__(*flags, py_type=str, **props)
 
 
 class IdField(TextField):
@@ -349,11 +371,23 @@ class PicklistField(TextField):
     def __init__(
         self,
         *flags: FieldFlag,
-        default: str | None = None,
         options: list[str] | None = None,
+        **props: typing.Unpack[FieldProps[str]],
     ):
-        super().__init__(*flags)
+        super().__init__(*flags, **props)
         self._options_ = options or []
+        if (default_value := props.get("default", None)) is not None:
+            if (
+                options
+                and isinstance(default_value, str)
+                and default_value not in options
+            ):
+                raise ValueError(
+                    (
+                        f"Default value '{default_value}' is not in configured values for field"
+                        f" {self._name}"
+                    )
+                )
 
     @override
     def validate(self, value: str):
@@ -377,10 +411,23 @@ class MultiPicklistField(Field[MultiPicklistValue]):
     def __init__(
         self,
         *flags: FieldFlag,
-        default: MultiPicklistValue | None = None,
         options: list[str] | None = None,
+        **props: typing.Unpack[FieldProps[MultiPicklistValue]],
     ):
-        super().__init__(*flags, py_type=MultiPicklistValue)
+        super().__init__(*flags, py_type=MultiPicklistValue, **props)
+        if (default_value := props.get("default", None)) is not None:
+            if isinstance(default_value, str):
+                default_value = props["default"] = MultiPicklistValue(default_value)
+            if options and isinstance(default_value, MultiPicklistValue):
+                for value in default_value.values:
+                    if value not in options:
+                        raise ValueError(
+                            (
+                                f"Default value '{value}' is not in configured values for field"
+                                f" {self._name}"
+                            )
+                        )
+
         self._options_ = options or []
 
     @override
@@ -401,8 +448,8 @@ class NumberField(Field[float]):
     A field to contain a floating-point numeric value.
     """
 
-    def __init__(self, *flags: FieldFlag, default: float | None = None):
-        super().__init__(*flags, py_type=float)
+    def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[float]]):
+        super().__init__(*flags, py_type=float, **props)
 
     @override
     def revive(self, value: typing.Any):
@@ -414,8 +461,8 @@ class IntField(Field[int]):
     A field to contain an integer numeric value.
     """
 
-    def __init__(self, *flags: FieldFlag, default: int | None = None):
-        super().__init__(*flags, py_type=int)
+    def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[int]]):
+        super().__init__(*flags, py_type=int, **props)
 
     @override
     def revive(self, value: typing.Any):
@@ -427,8 +474,8 @@ class CheckboxField(Field[bool]):
     A field to contain a boolean value.
     """
 
-    def __init__(self, *flags: FieldFlag, default: bool | None = None):
-        super().__init__(*flags, py_type=bool)
+    def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[bool]]):
+        super().__init__(*flags, py_type=bool, **props)
 
     @override
     def revive(self, value: typing.Any):
@@ -440,8 +487,10 @@ class DateField(Field[datetime.date]):
     A field to contain a date value.
     """
 
-    def __init__(self, *flags: FieldFlag, default: datetime.date | None = None):
-        super().__init__(*flags, py_type=datetime.date)
+    def __init__(
+        self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[datetime.date]]
+    ):
+        super().__init__(*flags, py_type=datetime.date, **props)
 
     @override
     def revive(self, value: typing.Any):
@@ -461,8 +510,10 @@ class TimeField(Field[datetime.time]):
     A field to contain a time value.
     """
 
-    def __init__(self, *flags: FieldFlag, default: datetime.time | None = None):
-        super().__init__(*flags, py_type=datetime.time)
+    def __init__(
+        self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[datetime.time]]
+    ):
+        super().__init__(*flags, py_type=datetime.time, **props)
 
     @override
     def format(self, value: datetime.time | None):
@@ -482,8 +533,10 @@ class DateTimeField(Field[datetime.datetime]):
     A field to contain a datetime value.
     """
 
-    def __init__(self, *flags: FieldFlag, default: datetime.datetime | None = None):
-        super().__init__(*flags, py_type=datetime.datetime)
+    def __init__(
+        self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[datetime.datetime]]
+    ):
+        super().__init__(*flags, py_type=datetime.datetime, **props)
 
     @override
     def revive(self, value: str | None):
@@ -533,9 +586,14 @@ class ListField(Field[list[_FCO_Type]]):
 
     _nested_type: type[_FCO_Type | typing.Any]
 
-    def __init__(self, item_type: type[_FCO_Type | typing.Any], *flags: FieldFlag):
+    def __init__(
+        self,
+        item_type: type[_FCO_Type | typing.Any],
+        *flags: FieldFlag,
+        **props: typing.Unpack[FieldProps[list[_FCO_Type]]],
+    ):
         self._nested_type = item_type
-        super().__init__(*flags, py_type=list)
+        super().__init__(*flags, py_type=list, **props)
 
         try:
             global SObjectList, SObject
@@ -588,6 +646,7 @@ class BlobData:
         data: typing.Union[str, bytes, Path, io.IOBase],
         filename: str | None = None,
         content_type: str | None = None,
+        **props: typing.Unpack[FieldProps[datetime.date]],
     ):
         self.data = data
         self.filename = filename
@@ -647,8 +706,10 @@ class Geolocation(typing.NamedTuple):
 class GeolocationField(Field[Geolocation]):
     """Field type for handling geolocation data in Salesforce"""
 
-    def __init__(self, *flags: FieldFlag, default: Geolocation | None = None):
-        super().__init__(*flags, py_type=Geolocation)
+    def __init__(
+        self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[Geolocation]]
+    ):
+        super().__init__(*flags, py_type=Geolocation, **props)
 
     @override
     def revive(self, value: Geolocation | GeolocationSerialized | None):
@@ -700,8 +761,8 @@ class AddressField(Field[Address]):
     Field type for handling address data in Salesforce
     """
 
-    def __init__(self, *flags: FieldFlag, default: Address | None = None):
-        super().__init__(*flags, py_type=Address)
+    def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[Address]]):
+        super().__init__(*flags, py_type=Address, **props)
 
     @override
     def revive(self, value: Address | AddressSerialized | None):
@@ -745,8 +806,8 @@ class AddressField(Field[Address]):
 class BlobField(Field[BlobData]):
     """Field type for handling blob data in Salesforce"""
 
-    def __init__(self, *flags: FieldFlag, default: BlobData | None = None):
-        super().__init__(*flags, py_type=BlobData)
+    def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[BlobData]]):
+        super().__init__(*flags, py_type=BlobData, **props)
 
     def revive(self, value):
         if value is None:

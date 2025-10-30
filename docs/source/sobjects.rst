@@ -54,6 +54,7 @@ Default Field Values
 You can specify a default value for a field so that new SObject instances automatically receive a value when one is not provided in the constructor.
 
 Passing a static default:
+
 .. code-block:: python
 
    class Account(SObject, api_name="Account"):
@@ -62,13 +63,15 @@ Passing a static default:
        Rating = PicklistField(values=["Hot", "Warm", "Cold"], default="Cold")
        Categories__c = MultiPicklistField(values=["A", "B", "C"], default=["A", "C"])
 
+
    # Active__c, Rating, Categories__c are filled automatically
    account = Account(Name="Example")
    assert account.Active__c is True
    assert account.Rating == "Cold"
-   assert set(account.Categories__c) == "A;C"
+   assert set(account.Categories__c) == {"A", "C"}
 
 Using a callable default (evaluated per instance):
+
 .. code-block:: python
 
    from datetime import date, datetime
@@ -86,7 +89,6 @@ Notes:
 * The default is only applied if the field is not supplied when constructing the instance.
 * Callables (functions without arguments) are supported and invoked once per instance creation.
 * Defaults must pass field validation (e.g., picklist values must be in the allowed set).
-* Setting a field explicitly to None will override a default only if the field is nillable.
 
 CRUD Operations
 -------------

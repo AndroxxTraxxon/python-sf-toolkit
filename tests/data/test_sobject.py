@@ -701,3 +701,96 @@ def test_sobject_field_inheritance():
 
     # subclassing an object should not update its parents' fields.
     assert object_fields(SObject_A).keys() == {"field_a"}
+
+
+def test_field_default_values():
+    """Validate that default values (static and callable) are applied correctly."""
+
+    from sf_toolkit.data.fields import (
+        CheckboxField,
+        PicklistField,
+        MultiPicklistField,
+        IntField,
+        FieldFlag,
+    )
+
+    # SObject with a mix of static and callable defaults
+    class Task(SObject):
+        Id = IdField()
+        DueDate__c = DateField(default=datetime.date.today)  # callable default
+        CreatedDateTime__c = DateTimeField(
+            default=(lambda: datetime.datetime.now(datetime.timezone.utc))
+        )  # callable default
+        Priority__c = PicklistField(
+            options=["High", "Normal", "Low"], default="Normal"
+        )  # static default
+        Categories__c = MultiPicklistField(
+            options=["A", "B", "C"], default=MultiPicklistValue("A;C")
+        )  # static list default
+        Active__c = CheckboxField(default=True)  # static default
+        Nullable__c = TextField(
+            FieldFlag.nillable, default="Default Text"
+        )  # nillable default
+
+    # Instance without providing fields that have defaults
+    task1 = Task()
+    assert isinstance(task1.DueDate__c, datetime.date)
+    assert task1.DueDate__c == datetime.date.today()
+    assert isinstance(task1.CreatedDateTime__c, datetime.datetime)
+    assert (
+        task1.CreatedDateTime__c - datetime.datetime.now(datetime.timezone.utc)
+    ).total_seconds() < 1  # within 1 second
+    assert task1.Priority__c == "Normal"
+    categories: MultiPicklistValue = task1.Categories__c  # type: ignore
+    assert isinstance(categories, MultiPicklistValue)
+    assert set(categories.values) == {"A", "C"}
+    assert task1.Active__c is True
+    assert task1.Nullable__c == "Default Text"
+
+    # Instance overriding some defaults
+    task2 = Task(
+        Priority__c="High",
+        Categories__c="B",
+        Nullable__c=None,  # Explicit None should override default if nillable
+    )
+    assert task2.Priority__c == "High"
+    categories2: MultiPicklistValue = task2.Categories__c  # type: ignore
+    assert categories2.values == ["B"]
+    assert task2.Nullable__c is None
+
+    # Ensure callable defaults are evaluated per instance (not shared)
+    # (Can't reliably assert inequality for utcnow(), but we can assert both are datetimes)
+    assert isinstance(task1.CreatedDateTime__c, datetime.datetime)
+    assert isinstance(task2.CreatedDateTime__c, datetime.datetime)
+
+    # Test callable default uniqueness via a counter
+    call_counter = {"count": 0}
+
+    def next_count():
+        call_counter["count"] += 1
+        return call_counter["count"]
+
+    class CounterObject(SObject):
+        Counter__c = IntField(default=next_count)
+
+    c1 = CounterObject()
+    c2 = CounterObject()
+    assert c1.Counter__c == 1
+    assert c2.Counter__c == 2
+
+    # Providing an explicit value should bypass default callable
+    c3 = CounterObject(Counter__c=10)
+    assert c3.Counter__c == 10
+    assert call_counter["count"] == 2  # callable not invoked for c3
+
+    # Invalid default value for a Picklist should raise an error when instance is created
+    with pytest.raises(ValueError):
+
+        class BadPicklistDefault(SObject):
+            BadField__c = PicklistField(options=["One", "Two"], default="Three")
+
+    class BadPicklistDefault(SObject):
+        BadField__c = PicklistField(options=["One", "Two"], default=lambda: "Three")
+
+    with pytest.raises(ValueError):
+        BadPicklistDefault()
