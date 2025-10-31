@@ -1,13 +1,11 @@
-from abc import ABC, ABCMeta
-import asyncio
+from abc import ABCMeta
 from enum import Enum
 from functools import cached_property
 from types import TracebackType
-from typing import ClassVar, Generic, Protocol, TypeVar
+from typing import Any, ClassVar, Protocol, TypeVar
 from typing_extensions import override
 
 from httpx import URL, AsyncClient, Client, Request, Response
-from httpx._client import BaseClient  # type: ignore
 
 from .logger import getLogger
 from .metrics import ApiUsage, parse_api_usage
@@ -51,15 +49,15 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
 
     DEFAULT_CONNECTION_NAME: ClassVar[str] = "default"
 
-    def __init__(
-        self,
+    def register(
+        self: _SCB,
         api_version: ApiVersion | int | float | str | None = None,
         connection_name: str = DEFAULT_CONNECTION_NAME,
     ):
         if api_version is not None:
             self.api_version = ApiVersion.lazy_build(api_version)
         self.connection_name = connection_name
-        self.register_connection(connection_name, self)
+        type(self).register_connection(connection_name, self)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -126,7 +124,7 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
 
     @classmethod
     def get_connection(cls: type[_SCB], name: str | None = None) -> _SCB:
-        return cls._connections[name or cls.DEFAULT_CONNECTION_NAME]
+        return cls._connections[name or cls.DEFAULT_CONNECTION_NAME]  # pyright: ignore[reportReturnType]
 
     @classmethod
     def register_connection(cls: type[_SCB], connection_name: str, instance: _SCB):
@@ -150,49 +148,10 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
             if name in cls._connections:
                 del cls._connections[name]
 
-    def close(self):
-        self.unregister_connection(self.connection_name)
-        self.unregister_connection(self)
-        sup = super()
-        if (_sup_aclose := getattr(sup, "close", None)) is not None:
-            return _sup_aclose()
-        return
-
-    async def aclose(self):
-        self.unregister_connection(self.connection_name)
-        self.unregister_connection(self)
-        sup = super()
-        if (_sup_aclose := getattr(sup, "aclose", None)) is not None:
-            return _sup_aclose()
-        return
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None = None,
-        exc_value: BaseException | None = None,
-        traceback: TracebackType | None = None,
-    ) -> None:
-        _ = self.close()
-        sup = super()
-        if (_sup_exit := getattr(sup, "__exit__", None)) is not None:
-            return _sup_exit(exc_type, exc_value, traceback)
-        return
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None = None,
-        exc_value: BaseException | None = None,
-        traceback: TracebackType | None = None,
-    ) -> None:
-        _ = await self.aclose()
-        sup = super()
-        if (_sup_aexit := getattr(sup, "__aexit__", None)) is not None:
-            return await _sup_aexit(exc_type, exc_value, traceback)
-        return
-
 
 class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
     _auth: SalesforceAuth
+    token_refresh_callback: TokenRefreshCallback | None
 
     def __init__(
         self,
@@ -206,16 +165,16 @@ class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
             "Either auth or session parameters are required.\n"
             "Both are permitted simultaneously."
         )
-        AsyncClient.__init__(
-            self,
+        super().__init__(
             auth=SalesforceAuth(login, token, self.handle_token_refresh),
             headers={"Accept": "application/json"},
         )
-        SalesforceClientBase.__init__(self, api_version, connection_name)
+        self.register(api_version, connection_name)
         if token:
             self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
 
+    @override
     async def __aenter__(self):
         _ = await super().__aenter__()
         try:
@@ -237,17 +196,26 @@ class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
             raise
         return self
 
+    @override
+    async def aclose(self):
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
+        return await super().aclose()
+
+    @override
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None = None,
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
-        _ = await SalesforceClientBase.__aexit__(self, exc_type, exc_value, traceback)
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
         return await super().__aexit__(exc_type, exc_value, traceback)
 
+    @override
     async def request(
-        self, method: str, url: URL | str, resource_name: str = "", **kwargs
+        self, method: str, url: URL | str, resource_name: str = "", **kwargs: Any
     ) -> Response:
         response = await super().request(method, url, **kwargs)
 
@@ -277,6 +245,7 @@ class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
 
 class SalesforceClient(Client, SalesforceClientBase):
     token_refresh_callback: TokenRefreshCallback | None
+    connection_name: str
     _auth: SalesforceAuth
 
     def __init__(
@@ -286,8 +255,7 @@ class SalesforceClient(Client, SalesforceClientBase):
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
         api_version: ApiVersion | int | float | str | None = None,
-        headers={"Accept": "application/json"},
-        **kwargs,
+        **kwargs: Any,
     ):
         assert login or token, (
             "Either auth or session parameters are required.\n"
@@ -295,14 +263,13 @@ class SalesforceClient(Client, SalesforceClientBase):
         )
         auth = SalesforceAuth(login, token, self.handle_token_refresh)
         super().__init__(auth=auth, **kwargs)
-        SalesforceClientBase.__init__(
-            self, connection_name=connection_name, api_version=api_version
-        )
+        self.register(connection_name=connection_name, api_version=api_version)
         if token:
             self._derive_base_url(token)
         self.token_refresh_callback = token_refresh_callback
         self.connection_name = connection_name
 
+    @override
     def __str__(self):
         if not (isinstance(self.auth, SalesforceAuth) and self.auth.token is not None):
             return f"{type(self).__name__} ({self.connection_name})"
@@ -341,24 +308,32 @@ class SalesforceClient(Client, SalesforceClientBase):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ):
-        _ = SalesforceClientBase.__exit__(self, exc_type, exc_value, traceback)
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
         return super().__exit__(exc_type, exc_value, traceback)
 
+    @override
+    def close(self):
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
+        return super().close()
+
+    @override
     def request(
         self,
         method: str,
         url: URL | str,
         resource_name: str = "",
         response_status_raise: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> Response:
         response = super().request(method, url, **kwargs)
 
         if response_status_raise:
             raise_for_status(response, resource_name)
 
-        sforce_limit_info = response.headers.get("Sforce-Limit-Info")
-        if sforce_limit_info and isinstance(sforce_limit_info, str):
+        sforce_limit_info: str | None = response.headers.get("Sforce-Limit-Info")
+        if sforce_limit_info:
             self.api_usage = parse_api_usage(sforce_limit_info)
         return response
 

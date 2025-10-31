@@ -44,6 +44,7 @@ def test_client_context_manager(mocker):
     mock_response_userinfo.json.return_value = mock_userinfo
 
     mock_response_versions = mocker.Mock()
+    mock_response_versions.headers.get.return_value = None
     mock_response_versions.json.return_value = [
         {"version": "50.0", "label": "Winter '21", "url": "/services/data/v50.0"},
         {"version": "51.0", "label": "Spring '21", "url": "/services/data/v51.0"},

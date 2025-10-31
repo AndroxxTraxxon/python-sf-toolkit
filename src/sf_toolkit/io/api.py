@@ -938,7 +938,7 @@ def save_list(
     batch_size: int = 200,
     all_or_none: bool = False,
     update_only: bool = False,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Save all SObjects in the list, determining whether to insert, update, or upsert based on the records and parameters.
@@ -1189,7 +1189,7 @@ async def save_insert_bulk_async(
 def save_update_bulk(
     records: SObjectList[_sObject],
     connection: SalesforceClient | str | None = None,
-    **callout_options,
+    **callout_options: Any,
 ) -> BulkApiIngestJob | None:
     """Update records in bulk using Salesforce Bulk API 2.0
 

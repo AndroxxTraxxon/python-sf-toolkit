@@ -1,7 +1,14 @@
-from typing import TypeVar
+from typing import Any, TypeVar, TypedDict
+from typing_extensions import override
 
 
 _T_ApiVer = TypeVar("_T_ApiVer", bound="ApiVersion")
+
+
+class ApiVersionDict(TypedDict):
+    version: float
+    label: str
+    url: str
 
 
 class ApiVersion:
@@ -28,7 +35,9 @@ class ApiVersion:
         self.url = url
 
     @classmethod
-    def lazy_build(cls, value) -> "ApiVersion":
+    def lazy_build(
+        cls, value: "ApiVersion | str | float | int | ApiVersionDict"
+    ) -> "ApiVersion":
         if isinstance(value, cls):
             return value
         elif isinstance(value, str):
@@ -57,17 +66,18 @@ class ApiVersion:
 
         raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
 
-        raise TypeError("Unable to build an ApiVersion from value %s", repr(value))
-
+    @override
     def __repr__(self) -> str:
         return f"ApiVersion(version={self.version}, label='{self.label}')"
 
+    @override
     def __str__(self) -> str:
         return f"Salesforce API Version {self.label} ({self.version:.01f})"
 
     def __float__(self) -> float:
         return self.version
 
+    @override
     def __eq__(self, other) -> bool:
         if isinstance(other, ApiVersion):
             return self.version == other.version and self.url == other.url
@@ -75,6 +85,7 @@ class ApiVersion:
             return self.version == float(other)
         return False
 
+    @override
     def __hash__(self) -> int:
         return hash(self.version)
 
@@ -99,7 +110,7 @@ class UserInfo:
         photos: dict[str, str],
         profile: str,
         picture: str,
-        address: dict,
+        address: dict[str, Any],
         urls: dict[str, str],
         active: bool,
         user_type: str,
@@ -108,7 +119,7 @@ class UserInfo:
         utcOffset: int,
         updated_at: str,
         preferred_username: str,
-        **kwargs,
+        **kwargs: Any,
     ):
         """
         Initialize a UserInfo object.

@@ -358,11 +358,13 @@ class BulkApiIngestJob(FieldConfigurableObject):
 
         while self.state not in COMPLETE_STATES:
             _LOGGER.info(
-                "Bulk %s job %s for object %s state: %s",
+                "Bulk %s job %s for object %s state: %s (%d processed, %d failed)",
                 self.operation,
                 self.id,
                 self.object,
                 self.state,
+                self.numberRecordsProcessed,
+                self.numberRecordsFailed,
             )
             sleep_sync(poll_interval)
             _ = self.refresh(connection=connection)
