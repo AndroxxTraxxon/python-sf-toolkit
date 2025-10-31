@@ -2,7 +2,7 @@ from asyncio import Task, sleep as sleep_async
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from time import sleep as sleep_sync
 from tkinter.constants import S
-from typing import Generic, Literal, TypeVar, TypedDict
+from typing import Any, Generic, Literal, TypeVar, TypedDict
 from httpx import URL
 from sf_toolkit.client import AsyncSalesforceClient, SalesforceClient
 from typing_extensions import override
@@ -104,7 +104,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
         line_ending: Literal["LF", "CRLF"] = "LF",
         external_id_field: str | None = None,
         connection: SalesforceClient | str | None = None,
-        **callout_options,
+        **callout_options: Any,
     ):
         if not isinstance(connection, SalesforceClient):
             connection = SalesforceClient.get_connection(connection)  # type: ignore
@@ -137,7 +137,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
         line_ending: Literal["LF", "CRLF"] = "LF",
         external_id_field: str | None = None,
         connection: AsyncSalesforceClient | str | None = None,
-        **callout_options,
+        **callout_options: Any,
     ):
         if isinstance(connection, AsyncSalesforceClient):
             pass
@@ -254,7 +254,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
                     writer.writerow(serialized)
             yield buffer.getvalue()
 
-    def upload_batches(self, data: SObjectList[_SO], **callout_options):
+    def upload_batches(self, data: SObjectList[_SO], **callout_options: Any):
         """
         Upload data batches to be processed by the Salesforce bulk API.
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm
@@ -284,7 +284,9 @@ class BulkApiIngestJob(FieldConfigurableObject):
             setattr(self, field, value)
         return self
 
-    async def upload_batches_async(self, data: SObjectList[_SO], **callout_options):
+    async def upload_batches_async(
+        self, data: SObjectList[_SO], **callout_options: Any
+    ):
         """
         Upload data batches to be processed by the Salesforce bulk API.
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm

@@ -1,3 +1,4 @@
+# pyright: reportAny=false, reportExplicitAny=false
 import asyncio
 from collections.abc import Callable, Container, Coroutine
 from contextlib import ExitStack
@@ -220,7 +221,7 @@ def save_update(
     sf_client: SalesforceClient | None = None,
     only_changes: bool = False,
     reload_after_success: bool = False,
-    only_blob: bool = False,
+    only_blob: bool = False,  # pyright: ignore[reportUnusedParameter]
 ):
     sf_client = resolve_client(type(record), sf_client)
 
@@ -283,7 +284,7 @@ async def save_update_async(
     sf_client: AsyncSalesforceClient | None = None,
     only_changes: bool = False,
     reload_after_success: bool = False,
-    only_blob: bool = False,
+    only_blob: bool = False,  # pyright: ignore[reportUnusedParameter]
 ):
     sf_client = resolve_async_client(type(record), sf_client)
 
@@ -479,7 +480,7 @@ def sobject_save_csv(
 
 
 def sobject_save_json(
-    record: SObject, filepath: Path | str, encoding: str = "utf-8", **json_options
+    record: SObject, filepath: Path | str, encoding: str = "utf-8", **json_options: Any
 ) -> None:
     if isinstance(filepath, str):
         filepath = Path(filepath).resolve()
@@ -633,7 +634,7 @@ def download_file(
         if dest:
             with dest.open("wb") as file:
                 for block in response.iter_bytes():
-                    file.write(block)
+                    _ = file.write(block)
             return None
 
         else:
@@ -667,7 +668,7 @@ async def download_file_async(
         if dest:
             with dest.open("wb") as file:
                 for block in response.iter_bytes():
-                    file.write(block)
+                    _ = file.write(block)
             return None
 
         else:
@@ -678,14 +679,14 @@ def reload(record: SObject, sf_client: SalesforceClient | None = None):
     record_id: str = getattr(record, record.attributes.id_field)
     sf_client = resolve_client(type(record), sf_client)
     reloaded = fetch(type(record), record_id, sf_client)
-    record._values.update(reloaded._values)
+    record._values.update(reloaded._values)  # pyright: ignore[reportPrivateUsage]
 
 
 async def reload_async(record: SObject, sf_client: AsyncSalesforceClient | None = None):
     record_id: str = getattr(record, record.attributes.id_field)
     sf_client = resolve_async_client(type(record), sf_client)
     reloaded = await fetch_async(type(record), record_id, sf_client)
-    record._values.update(reloaded._values)
+    record._values.update(reloaded._values)  # pyright: ignore[reportPrivateUsage]
 
 
 def update_record(record: FieldConfigurableObject, /, **props: Any):
@@ -715,8 +716,7 @@ def fetch_list(
             sf_client.composite_sobjects_url(cls.attributes.type),
             json={"ids": chunk, "fields": query_fields(cls)},
         )
-        chunk_result: list[_sObject] = [cls(**record) for record in response.json()]
-        result.extend(chunk_result)
+        result.extend([cls(**record) for record in response.json()])  # pyright: ignore[reportUnknownMemberType]
         if on_chunk_received:
             on_chunk_received(response)
     return result
@@ -831,7 +831,7 @@ def sobject_from_description(
         connection=connection,
     )
 
-    return sobject_class
+    return sobject_class  # pyright: ignore[reportReturnType]
 
 
 ### SOBJECT LIST OPERATORS ###
@@ -1019,7 +1019,7 @@ def save_list(
             )
 
         # Otherwise, split and process separately
-        results = []
+        results: list[SObjectSaveResult] = []
 
         # Process updates first
         if has_ids:
@@ -1046,8 +1046,8 @@ def save_list(
 def save_upsert_bulk(
     self: SObjectList[_sObject],
     external_id_field: str,
-    timeout: int = 600,
     connection: SalesforceClient | str | None = None,
+    **callout_options: Any,
 ) -> BulkApiIngestJob:
     """Upsert records in bulk using Salesforce Bulk API 2.0
 
@@ -1075,9 +1075,10 @@ def save_upsert_bulk(
         "upsert",
         external_id_field=external_id_field,
         connection=connection,
+        **callout_options,
     )
 
-    job.upload_batches(self)
+    _ = job.upload_batches(self, **callout_options)
 
     return job
 
@@ -1085,7 +1086,6 @@ def save_upsert_bulk(
 async def save_upsert_bulk_async(
     self: SObjectList[_sObject],
     external_id_field: str,
-    timeout: int = 600,
     connection: AsyncSalesforceClient | str | None = None,
 ) -> BulkApiIngestJob:
     """Upsert records in bulk using Salesforce Bulk API 2.0
@@ -1116,7 +1116,7 @@ async def save_upsert_bulk_async(
         connection=connection,
     )
 
-    await job.upload_batches_async(self)
+    _ = await job.upload_batches_async(self)
 
     return job
 
@@ -1124,7 +1124,7 @@ async def save_upsert_bulk_async(
 def save_insert_bulk(
     self: SObjectList[_sObject],
     connection: SalesforceClient | str | None = None,
-    **callout_options,
+    **callout_options: Any,
 ) -> BulkApiIngestJob:
     """Insert records in bulk using Salesforce Bulk API 2.0
 
@@ -1149,7 +1149,7 @@ def save_insert_bulk(
         self[0].attributes.type, "insert", connection=connection, **callout_options
     )
 
-    job.upload_batches(self, **callout_options)
+    _ = job.upload_batches(self, **callout_options)
 
     return job
 
@@ -1157,7 +1157,7 @@ def save_insert_bulk(
 async def save_insert_bulk_async(
     records: SObjectList[_sObject],
     connection: AsyncSalesforceClient | str | None = None,
-    **callout_options,
+    **callout_options: Any,
 ) -> BulkApiIngestJob | None:
     """Insert records in bulk using Salesforce Bulk API 2.0
 
@@ -1213,7 +1213,7 @@ def save_update_bulk(
         records[0].attributes.type, "update", connection=connection, **callout_options
     )
 
-    job.upload_batches(records, **callout_options)
+    _ = job.upload_batches(records, **callout_options)
 
     return job
 
@@ -1221,7 +1221,7 @@ def save_update_bulk(
 async def save_update_bulk_async(
     records: SObjectList[_sObject],
     connection: AsyncSalesforceClient | str | None = None,
-    **callout_options,
+    **callout_options: Any,
 ) -> BulkApiIngestJob | None:
     """Update records in bulk using Salesforce Bulk API 2.0
 
@@ -1284,7 +1284,7 @@ def save_insert_list(
         headers.update(headers_option)
 
     # execute sync
-    results = []
+    results: list[SObjectSaveResult] = []
     for records, blobs in record_chunks:
         if blobs:
             with ExitStack() as blob_context:
@@ -1335,7 +1335,7 @@ async def save_insert_list_async(
     batch_size: int = 200,
     all_or_none: bool = False,
     sf_client: AsyncSalesforceClient | None = None,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Insert all SObjects in the list.
@@ -1357,7 +1357,7 @@ async def save_insert_list_async(
             )
 
     # Prepare records for insert
-    record_chunks, emitted_records = _generate_record_batches(records, batch_size)
+    record_chunks, _ = _generate_record_batches(records, batch_size)
 
     headers = {"Content-Type": "application/json"}
     if headers_option := callout_options.pop("headers", None):
@@ -1379,7 +1379,7 @@ async def _insert_list_chunks_async(
     headers: dict[str, str],
     concurrency: int,
     all_or_none: bool,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     sf_client = sf_client or AsyncSalesforceClient.get_connection()
     if header_options := callout_options.pop("headers", None):
@@ -1412,7 +1412,7 @@ async def _save_insert_async_batch(
     blobs: list[tuple[str, BlobData]] | None,
     all_or_none: bool,
     headers: dict[str, str],
-    **callout_options,
+    **callout_options: Any,
 ) -> Response:
     if blobs:
         with ExitStack() as blob_context:
@@ -1521,7 +1521,7 @@ async def save_update_list_async(
     only_changes: bool = False,
     all_or_none: bool = False,
     batch_size: int = 200,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Update all SObjects in the list.
@@ -1586,7 +1586,7 @@ async def _list_save_update_async(
     all_or_none: bool,
     headers: dict[str, str],
     sf_client: AsyncSalesforceClient,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     tasks = [
         sf_client.post(
@@ -1612,7 +1612,7 @@ def save_upsert_list(
     batch_size: int = 200,
     only_changes: bool = False,
     all_or_none: bool = False,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Upsert all SObjects in the list using an external ID field.
@@ -1659,6 +1659,7 @@ def save_upsert_list(
     )
 
     headers = {"Content-Type": "application/json"}
+    headers_option: dict[str, str] | None
     if headers_option := callout_options.pop("headers", None):
         headers.update(headers_option)
 
@@ -1669,6 +1670,7 @@ def save_upsert_list(
     )
     results: list[SObjectSaveResult]
     if concurrency > 1 and len(record_batches) > 1:
+        sf_client = resolve_async_client(object_type, None)
         # execute async
         results = asyncio.run(
             _save_upsert_list_chunks_async(
@@ -1708,7 +1710,7 @@ async def save_upsert_list_async(
     batch_size: int = 200,
     only_changes: bool = False,
     all_or_none: bool = False,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Upsert all SObjects in the list using an external ID field.
@@ -1788,7 +1790,7 @@ async def _save_upsert_list_chunks_async(
     headers: dict[str, str],
     concurrency: int,
     all_or_none: bool,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     tasks = [
         sf_client.patch(
@@ -1841,9 +1843,9 @@ def delete_list(
             batch_size,
         )
     )
-    sf_client = resolve_client(type(records[0]), None)
     results: list[SObjectSaveResult]
     if len(record_id_batches) > 1 and concurrency > 1:
+        sf_client = resolve_async_client(type(records[0]), None)
         results = asyncio.run(
             _delete_list_chunks_async(
                 sf_client,
@@ -1854,6 +1856,7 @@ def delete_list(
             )
         )
     else:
+        sf_client = resolve_client(type(records[0]), None)
         headers = {"Content-Type": "application/json"}
         if headers_option := callout_options.pop("headers", None):
             headers.update(headers_option)
@@ -1882,7 +1885,7 @@ async def delete_list_async(
     batch_size: int = 200,
     concurrency: int = 1,
     all_or_none: bool = False,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Delete all SObjects in the list.
@@ -1906,9 +1909,9 @@ async def delete_list_async(
             batch_size,
         )
     )
-    sf_client = resolve_async_client(type(records[0]), None)
-    results: list[SObjectSaveResult]
+    results: list[SObjectSaveResult] = []
     if len(record_id_batches) > 1 and concurrency > 1:
+        sf_client = resolve_async_client(type(records[0]), None)
         results = await _delete_list_chunks_async(
             sf_client,
             record_id_batches,
@@ -1916,10 +1919,10 @@ async def delete_list_async(
             concurrency,
             **callout_options,
         )
-    if clear_id_field:
-        for record, result in zip(records, results):
-            if result.success:
-                delattr(record, record.attributes.id_field)
+        if clear_id_field:
+            for record, result in zip(records, results):
+                if result.success:
+                    delattr(record, record.attributes.id_field)
 
     return results
 
@@ -1929,7 +1932,7 @@ async def _delete_list_chunks_async(
     record_id_batches: list[list[str]],
     all_or_none: bool,
     concurrency: int,
-    **callout_options,
+    **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
     Delete all SObjects in the list asynchronously.
