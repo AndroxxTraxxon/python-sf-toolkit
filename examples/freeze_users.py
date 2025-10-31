@@ -40,7 +40,7 @@ async def freeze_users(conn: SalesforceClient):
         select(UserLogin)
         .where(IsFrozen=True)
         .and_where(UserId__in="SELECT Id FROM User WHERE IsActive=TRUE")
-        .count()
+        .count(timeout=900)
     )
     LOGGER.info("Total frozen users: %d", frozen_user_count)
 

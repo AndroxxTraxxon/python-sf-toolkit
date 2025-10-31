@@ -595,23 +595,8 @@ class SoqlQuery(Generic[_SObject]):
     def __str__(self):
         return self.format()
 
-    def count(self, connection: SalesforceClient | str | None = None) -> int:
-        """
-        Executes a count query instead of fetching records.
-        Returns the count of records that match the query criteria.
-
-        Returns:
-            int: Number of records matching the query criteria
-        """
-
-        # Execute the query
-        count_result = self.execute("COUNT()", connection=connection)
-
-        # Count query returns a list with a single record containing the count
-        return len(count_result)
-
-    async def count_async(
-        self, connection: AsyncSalesforceClient | str | None = None
+    def count(
+        self, connection: SalesforceClient | str | None = None, **callout_options: Any
     ) -> int:
         """
         Executes a count query instead of fetching records.
@@ -622,7 +607,28 @@ class SoqlQuery(Generic[_SObject]):
         """
 
         # Execute the query
-        count_result = await self.execute_async("COUNT()", connection=connection)
+        count_result = self.execute("COUNT()", connection=connection, **callout_options)
+
+        # Count query returns a list with a single record containing the count
+        return len(count_result)
+
+    async def count_async(
+        self,
+        connection: AsyncSalesforceClient | str | None = None,
+        **callout_options: Any,
+    ) -> int:
+        """
+        Executes a count query instead of fetching records.
+        Returns the count of records that match the query criteria.
+
+        Returns:
+            int: Number of records matching the query criteria
+        """
+
+        # Execute the query
+        count_result = await self.execute_async(
+            "COUNT()", connection=connection, **callout_options
+        )
 
         # Count query returns a list with a single record containing the count
         return len(count_result)
@@ -631,7 +637,7 @@ class SoqlQuery(Generic[_SObject]):
         self,
         *_fields: str,
         connection: AsyncSalesforceClient | str | None = None,
-        **callout_options,
+        **callout_options: Any,
     ) -> QueryResult[_SObject]:
         """
         Executes the SOQL query and returns the first batch of results (up to 2000 records).

@@ -29,7 +29,7 @@ def print_users():
         )
         user.Department = "System Automations"
 
-    _ = save_list(result.as_list())
+    _ = save_list(result.as_list(), timeout=60)
 
     print(result.as_list())
     print(len(result), "Total Users")
