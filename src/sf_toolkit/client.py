@@ -59,6 +59,7 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
         if api_version is not None:
             self.api_version = ApiVersion.lazy_build(api_version)
         self.connection_name = connection_name
+        self.register_connection(connection_name, self)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -149,19 +150,21 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
             if name in cls._connections:
                 del cls._connections[name]
 
-    def __enter__(self):
+    def close(self):
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
         sup = super()
-        if (_supenter := getattr(sup, "__enter__", None)) is not None:
-            _ = _supenter()
-        self.register_connection(self.connection_name, self)
-        return self
+        if (_sup_aclose := getattr(sup, "close", None)) is not None:
+            return _sup_aclose()
+        return
 
-    async def __aenter__(self):
+    async def aclose(self):
+        self.unregister_connection(self.connection_name)
+        self.unregister_connection(self)
         sup = super()
-        if (_supenter := getattr(sup, "__aenter__", None)) is not None:
-            _ = await _supenter()
-        self.register_connection(self.connection_name, self)
-        return self
+        if (_sup_aclose := getattr(sup, "aclose", None)) is not None:
+            return _sup_aclose()
+        return
 
     def __exit__(
         self,
@@ -169,8 +172,7 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
-        self.unregister_connection(self.connection_name)
-        self.unregister_connection(self)
+        _ = self.close()
         sup = super()
         if (_sup_exit := getattr(sup, "__exit__", None)) is not None:
             return _sup_exit(exc_type, exc_value, traceback)
@@ -182,8 +184,7 @@ class SalesforceClientBase(ClientBaseProto, metaclass=ABCMeta):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
-        self.unregister_connection(self.connection_name)
-        self.unregister_connection(self)
+        _ = await self.aclose()
         sup = super()
         if (_sup_aexit := getattr(sup, "__aexit__", None)) is not None:
             return await _sup_aexit(exc_type, exc_value, traceback)
@@ -274,21 +275,6 @@ class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
             for version in versions_data
         }
 
-    @property
-    def as_sync(self) -> "SalesforceClient":
-        client = SalesforceClient.get_connection(self.connection_name)
-        if client is None:
-            client = SalesforceClient(
-                login=self._auth.login,
-                token=self._auth.token,
-                # token_refresh_callback=self.handle_async_clone_token_refresh,
-                # not implementing async token refresh callback for sync client generated this way
-                api_version=self.api_version,
-                connection_name=self.connection_name,
-            )
-            SalesforceClient.register_connection(self.connection_name, client)
-        return client
-
 
 class SalesforceClient(Client, SalesforceClientBase):
     token_refresh_callback: TokenRefreshCallback | None
@@ -329,26 +315,9 @@ class SalesforceClient(Client, SalesforceClientBase):
     def handle_async_clone_token_refresh(self, token: SalesforceToken):
         self._auth.token = token
 
-    # caching this so that multiple calls don't generate new sessions.
-    @property
-    def as_async(self) -> AsyncSalesforceClient:
-        client = AsyncSalesforceClient.get_connection(self.connection_name)
-        if client is None:
-            client = AsyncSalesforceClient(
-                login=self._auth.login,
-                token=self._auth.token,
-                token_refresh_callback=self.handle_async_clone_token_refresh,
-                api_version=self.api_version,
-                connection_name=self.connection_name,
-            )
-            AsyncSalesforceClient.register_connection(self.connection_name, client)
-            client._versions = self.versions
-        return client
-
     @override
     def __enter__(self):
         _ = Client.__enter__(self)
-        _ = SalesforceClientBase.__enter__(self)
         try:
             self._userinfo = UserInfo(**self.send(self._userinfo_request()).json())
             if _av := getattr(self, "api_version", None):
