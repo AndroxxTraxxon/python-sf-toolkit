@@ -1,11 +1,11 @@
+# pyright: reportAny=false, reportExplicitAny=false
 from abc import ABC
 
-from typing import Any, NamedTuple, TypeVar
+from typing import Any, ClassVar, NamedTuple, TypeVar
 from collections.abc import Iterable, AsyncIterable
+from typing_extensions import override
 
 from ..logger import getLogger
-
-from .. import SalesforceClient
 
 from .._models import SObjectAttributes
 from .fields import (
@@ -52,6 +52,27 @@ class SObjectFieldDescribe(NamedTuple):
 class SObjectDescribe:
     """Represents metadata about a Salesforce SObject from a describe call"""
 
+    name: str
+    label: str
+    labelPlural: str
+    keyPrefix: str
+    custom: bool
+    customSetting: bool
+    createable: bool
+    updateable: bool
+    deletable: bool
+    undeletable: bool
+    mergeable: bool
+    queryable: bool
+    feedEnabled: bool
+    searchable: bool
+    layoutable: bool
+    activateable: bool
+    fields: list[SObjectFieldDescribe]
+    childRelationships: list[dict[str, Any]]
+    recordTypeInfos: list[dict[str, Any]]
+    _raw_data: dict[str, Any]
+
     def __init__(
         self,
         *,
@@ -74,7 +95,7 @@ class SObjectDescribe:
         fields: list[SObjectFieldDescribe] | None = None,
         childRelationships: list[dict[str, Any]] | None = None,
         recordTypeInfos: list[dict[str, Any]] | None = None,
-        **additional_properties,
+        **additional_properties: Any,
     ):
         self.name = name
         self.label = label
@@ -106,7 +127,9 @@ class SObjectDescribe:
     def from_dict(cls, data: dict[str, Any]) -> "SObjectDescribe":
         """Create an SObjectDescribe instance from a dictionary (typically from a Salesforce API response)"""
         # Extract fields specifically to convert them to SObjectFieldDescribe objects
-        fields_data = data.pop("fields", []) if "fields" in data else []
+        fields_data: list[dict[str, Any]] = (
+            data.pop("fields", []) if "fields" in data else []
+        )
         describe_fields = SObjectFieldDescribe._fields
         # Create SObjectFieldDescribe instances for each field
         fields = [
@@ -132,13 +155,15 @@ class SObjectDescribe:
 
 
 class SObject(FieldConfigurableObject, ABC):
+    attributes: ClassVar[SObjectAttributes]
+
     def __init_subclass__(
         cls,
         api_name: str | None = None,
         connection: str | None = None,
         id_field: str = "Id",
         tooling: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init_subclass__(**kwargs)
         if not api_name:
@@ -157,12 +182,12 @@ class SObject(FieldConfigurableObject, ABC):
             api_name, connection, id_field, blob_field, tooling
         )
 
-    def __init__(self, /, **fields):
-        fields.pop("attributes", None)
+    def __init__(self, /, **field_values: Any):
+        field_values.pop("attributes", None)
         blob_value = None
         if self.attributes.blob_field:
-            blob_value = fields.pop(self.attributes.blob_field, None)
-        super().__init__(**fields)
+            blob_value = field_values.pop(self.attributes.blob_field, None)
+        super().__init__(**field_values)
         if self.attributes.blob_field and blob_value is not None:
             setattr(self, self.attributes.blob_field, blob_value)
 
@@ -175,14 +200,6 @@ class SObject(FieldConfigurableObject, ABC):
         if self.attributes.blob_field in self._values:
             return True
         return False
-
-
-def _is_sobject(value):
-    return isinstance(value, SObject)
-
-
-def _is_sobject_subclass(cls):
-    return issubclass(cls, SObject)
 
 
 _sObject = TypeVar("_sObject", bound=SObject)
@@ -208,7 +225,7 @@ class SObjectList(list[_sObject]):
         super().__init__(iterable)
         # Validate all items are SObjects
         for item in self:
-            if not isinstance(item, SObject):
+            if not isinstance(item, SObject):  # pyright: ignore[reportUnnecessaryIsInstance]
                 raise TypeError(
                     f"All items must be SObject instances, got {type(item)}"
                 )
@@ -224,19 +241,21 @@ class SObjectList(list[_sObject]):
         collected_records = [record async for record in a_iterable]
         return cls(collected_records, connection=connection)
 
+    @override
     def append(self, item: _sObject):
         """Add an SObject to the list."""
-        if not isinstance(item, SObject):
-            raise TypeError(f"Can only append SObject instances, got {type(item)}")
+        if not isinstance(item, SObject):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise TypeError(f"Can only append SObject instances, got {type(item)}")  # pyright: ignore[reportUnreachable]
         super().append(item)  # type: ignore
 
-    def extend(self, iterable):
+    @override
+    def extend(self, iterable: Iterable[_sObject]):
         """Extend the list with an iterable of SObjects."""
         if not isinstance(iterable, (tuple, list, set)):
             # ensure that we're not going to be exhausting a generator and losing items.
             iterable = tuple(iterable)
         for item in iterable:
-            if not isinstance(item, SObject):
+            if not isinstance(item, SObject):  # pyright: ignore[reportUnnecessaryIsInstance]
                 raise TypeError(
                     f"All items must be SObject instances, got {type(item)}"
                 )
