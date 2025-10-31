@@ -217,8 +217,7 @@ class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
         self.token_refresh_callback = token_refresh_callback
 
     async def __aenter__(self):
-        _ = await AsyncClient.__aenter__(self)
-        _ = await SalesforceClientBase.__aenter__(self)
+        _ = await super().__aenter__()
         try:
             self._userinfo = UserInfo(
                 **(await self.send(self._userinfo_request())).json()
