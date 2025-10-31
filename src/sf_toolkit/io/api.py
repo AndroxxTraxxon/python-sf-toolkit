@@ -1817,7 +1817,6 @@ def delete_list(
     records: SObjectList[_sObject],
     clear_id_field: bool = False,
     batch_size: int = 200,
-    concurrency: int = 1,
     all_or_none: bool = False,
     **callout_options: Any,
 ) -> list[SObjectSaveResult]:
@@ -1844,32 +1843,20 @@ def delete_list(
         )
     )
     results: list[SObjectSaveResult]
-    if len(record_id_batches) > 1 and concurrency > 1:
-        sf_client = resolve_async_client(type(records[0]), None)
-        results = asyncio.run(
-            _delete_list_chunks_async(
-                sf_client,
-                record_id_batches,
-                all_or_none,
-                concurrency,
-                **callout_options,
-            )
+    sf_client = resolve_client(type(records[0]), None)
+    headers = {"Content-Type": "application/json"}
+    if headers_option := callout_options.pop("headers", None):
+        headers.update(headers_option)
+    url = sf_client.composite_sobjects_url()
+    results = []
+    for batch in record_id_batches:
+        response = sf_client.delete(
+            url,
+            params={"allOrNone": all_or_none, "ids": ",".join(batch)},
+            headers=headers,
+            **callout_options,
         )
-    else:
-        sf_client = resolve_client(type(records[0]), None)
-        headers = {"Content-Type": "application/json"}
-        if headers_option := callout_options.pop("headers", None):
-            headers.update(headers_option)
-        url = sf_client.composite_sobjects_url()
-        results = []
-        for batch in record_id_batches:
-            response = sf_client.delete(
-                url,
-                params={"allOrNone": all_or_none, "ids": ",".join(batch)},
-                headers=headers,
-                **callout_options,
-            )
-            results.extend([SObjectSaveResult(**result) for result in response.json()])
+        results.extend([SObjectSaveResult(**result) for result in response.json()])
 
     if clear_id_field:
         for record, result in zip(records, results):
@@ -1910,19 +1897,18 @@ async def delete_list_async(
         )
     )
     results: list[SObjectSaveResult] = []
-    if len(record_id_batches) > 1 and concurrency > 1:
-        sf_client = resolve_async_client(type(records[0]), None)
-        results = await _delete_list_chunks_async(
-            sf_client,
-            record_id_batches,
-            all_or_none,
-            concurrency,
-            **callout_options,
-        )
-        if clear_id_field:
-            for record, result in zip(records, results):
-                if result.success:
-                    delattr(record, record.attributes.id_field)
+    sf_client = resolve_async_client(type(records[0]), None)
+    results = await _delete_list_chunks_async(
+        sf_client,
+        record_id_batches,
+        all_or_none,
+        concurrency,
+        **callout_options,
+    )
+    if clear_id_field:
+        for record, result in zip(records, results):
+            if result.success:
+                delattr(record, record.attributes.id_field)
 
     return results
 

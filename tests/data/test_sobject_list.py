@@ -648,7 +648,8 @@ def test_delete_with_clear_id(mock_sf_client, test_accounts_with_ids):
         assert account.Id is None
 
 
-def test_delete_async(mock_sf_client, test_accounts_with_ids):
+@pytest.mark.asyncio
+async def test_delete_async(mock_async_client, test_accounts_with_ids):
     """Test delete with async execution"""
     account_list = SObjectList(test_accounts_with_ids)
 
@@ -658,13 +659,15 @@ def test_delete_async(mock_sf_client, test_accounts_with_ids):
     mock_response.return_value.json.return_value = [
         {"id": account.Id, "success": True, "errors": []} for account in account_list
     ]
-    mock_sf_client.delete = mock_response
+    mock_async_client.delete = mock_response
 
     # Call delete with concurrency > 1
-    api.delete_list(account_list, concurrency=2, batch_size=(len(account_list) // 2))
+    _ = await api.delete_list_async(
+        account_list, concurrency=2, batch_size=(len(account_list) // 2)
+    )
 
     # Verify async client's delete method was called
-    mock_sf_client.delete.assert_called()
+    mock_async_client.delete.assert_called()
 
 
 def test_empty_list_operations(mock_sf_client):
