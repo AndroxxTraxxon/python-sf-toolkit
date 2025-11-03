@@ -233,6 +233,12 @@ class BulkApiIngestJob(FieldConfigurableObject):
                 if self.operation == "delete" or self.operation == "hardDelete":
                     serialized = {"Id": row["Id"]}
                 else:
+                    if isinstance(row, SObject):
+                        serialized = serialize_object(row)
+                    if not isinstance(row, dict):
+                        raise TypeError(
+                            f"Encountered record of type {type(row)}. Must be dict or SObject"
+                        )
                     serialized = flatten(serialize_object(row))
                 writer.writerow(serialized)
                 if buffer.tell() > 100_000_000:
@@ -253,7 +259,9 @@ class BulkApiIngestJob(FieldConfigurableObject):
                     writer.writerow(serialized)
             yield buffer.getvalue()
 
-    def upload_batches(self, data: SObjectList[_SO], **callout_options: Any):
+    def upload_batches(
+        self, data: Iterable[dict[str, str] | _SO], **callout_options: Any
+    ):
         """
         Upload data batches to be processed by the Salesforce bulk API.
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm
@@ -284,7 +292,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
         return self
 
     async def upload_batches_async(
-        self, data: SObjectList[_SO], **callout_options: Any
+        self, data: Iterable[dict[str, str] | _SO], **callout_options: Any
     ):
         """
         Upload data batches to be processed by the Salesforce bulk API.

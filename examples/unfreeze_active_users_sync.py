@@ -1,4 +1,5 @@
 import logging
+from typing import ClassVar
 
 from sf_toolkit import SalesforceClient, SObject
 from sf_toolkit.auth import cli_login
@@ -12,12 +13,12 @@ logging.basicConfig(level=logging.INFO)
 
 
 class User(SObject):
-    Id = IdField()
+    Id: ClassVar[IdField] = IdField()
 
 
 class UserLogin(SObject):
-    Id = IdField()
-    IsFrozen = CheckboxField()
+    Id: ClassVar[IdField] = IdField()
+    IsFrozen: ClassVar[CheckboxField] = CheckboxField()
 
 
 def unfreeze_active_users():
