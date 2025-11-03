@@ -1,7 +1,6 @@
 from asyncio import Task, sleep as sleep_async
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from time import sleep as sleep_sync
-from tkinter.constants import S
 from typing import Any, Generic, Literal, TypeVar, TypedDict
 from httpx import URL
 from sf_toolkit.client import AsyncSalesforceClient, SalesforceClient
@@ -478,10 +477,11 @@ class ResultPage(Generic[_SO]):
         """
         Fetch and parse the CSV payload for this result page (synchronous).
         """
+        if self._records is not None:
+            return self._records
         _connection = SalesforceClient.get_connection(self._connection)
         response = _connection.get(
             self._url,
-            params={"maxRecords": 50000},
             headers={
                 "Accept": "text/csv",
                 # Use compression!
@@ -502,7 +502,7 @@ class ResultPage(Generic[_SO]):
         self.next_page_locator = response.headers.get("Sforce-locator")
         if self.next_page_locator == "null":
             self.next_page_locator = None
-        if self.next_page_locator is not None:
+        elif self.next_page_locator is not None:
             _LOGGER.info(
                 "There's another page at locator "
                 + self.next_page_locator
@@ -513,6 +513,7 @@ class ResultPage(Generic[_SO]):
             self._sobject_type(**r)
             for r in rows  # type: ignore
         )
+        breakpoint()
         return self._records
 
     async def fetch_async(self):
@@ -674,7 +675,8 @@ class BulkQueryResult(
             self._page_index += 1
             if self._page_index >= len(self.pages):
                 # No more pages loaded, try to fetch more
-                if _next_page := self.pages[-1].next_page():
+                _next_page = self.pages[-1].next_page()
+                if _next_page is not None:
                     self.pages.append(_next_page)
                 else:
                     raise StopIteration

@@ -38,7 +38,7 @@ def unfreeze_active_users():
     if not bulk_job:
         LOGGER.error("No data to process in bulk job")
         return
-    bulk_job.monitor_until_complete()
+    _ = bulk_job.monitor_until_complete()
 
     LOGGER.info("Bulk load finished %s", bulk_job.state)
     if bulk_job.state == "Failed":
