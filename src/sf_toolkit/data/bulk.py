@@ -212,8 +212,11 @@ class BulkApiIngestJob(FieldConfigurableObject):
         self._connection = connection
         super().__init__(**fields)
 
-    def _batch_buffers(self, data: SObjectList[_SO]):
-        fieldnames = query_fields(type(data[0]))
+    def _batch_buffers(
+        self, data: Iterable[_SO | dict[str, Any]], fieldnames: set[str] | list[str]
+    ):
+        if not isinstance(fieldnames, list):
+            fieldnames = sorted(fieldnames)
         if self.operation == "delete" or self.operation == "hardDelete":
             fieldnames = ["Id"]
         if self.operation == "insert" and "Id" in fieldnames:
@@ -235,11 +238,13 @@ class BulkApiIngestJob(FieldConfigurableObject):
                 else:
                     if isinstance(row, SObject):
                         serialized = serialize_object(row)
-                    if not isinstance(row, dict):
+                    elif isinstance(row, dict):
+                        serialized = row
+                    else:
                         raise TypeError(
                             f"Encountered record of type {type(row)}. Must be dict or SObject"
                         )
-                    serialized = flatten(serialize_object(row))
+                    serialized = flatten(serialized)
                 writer.writerow(serialized)
                 if buffer.tell() > 100_000_000:
                     # https://resources.docs.salesforce.com/256/latest/en-us/sfdc/pdf/api_asynch.pdf
@@ -259,6 +264,48 @@ class BulkApiIngestJob(FieldConfigurableObject):
                     writer.writerow(serialized)
             yield buffer.getvalue()
 
+    def validate_fieldnames(self, data: Iterable[dict[str, str] | _SO]) -> set[str]:
+        iter_data = iter(data)
+        try:
+            first_record = next(iter_data)
+        except StopIteration:
+            raise ValueError("No data provided for upload_batches")
+
+        if isinstance(data, SObjectList):
+            data.assert_single_type()
+            return set(query_fields(type(data[0])))
+        else:
+            if isinstance(first_record, FieldConfigurableObject):
+                keys = set(query_fields(type(first_record)))
+            elif isinstance(first_record, dict):
+                keys = set(flatten(first_record))
+            else:
+                raise TypeError(
+                    f"Expected SObject or dict in dataset, found {type(first_record)}"
+                )
+            for record in iter_data:
+                if isinstance(record, FieldConfigurableObject):
+                    record_keys = set(query_fields(type(record)))
+                elif isinstance(record, dict):
+                    record_keys = set(flatten(record))
+                else:
+                    raise TypeError(
+                        f"Expected SObject or dict in dataset, found {type(record)}"
+                    )
+                if not record_keys == keys:
+                    diff = {*(record_keys - keys), *(keys - record_keys)}
+                    raise ValueError(
+                        (
+                            "Inconsistent record schema detected. Expected keys: {expected}; found: {found}; differences: {diff}"
+                        ).format(
+                            expected=sorted(keys),
+                            found=sorted(record_keys),
+                            diff=sorted(diff),
+                        )
+                    )
+
+            return keys
+
     def upload_batches(
         self, data: Iterable[dict[str, str] | _SO], **callout_options: Any
     ):
@@ -267,11 +314,9 @@ class BulkApiIngestJob(FieldConfigurableObject):
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm
         """
 
-        if not data:
-            raise ValueError("No data provided for upload_batches")
-        data.assert_single_type()
+        fieldnames = self.validate_fieldnames(data)
         _connection = SalesforceClient.get_connection(self._connection)
-        for batch_buffer in self._batch_buffers(data):
+        for batch_buffer in self._batch_buffers(data, fieldnames):
             _ = _connection.put(
                 self.contentUrl,
                 content=batch_buffer,
@@ -292,19 +337,16 @@ class BulkApiIngestJob(FieldConfigurableObject):
         return self
 
     async def upload_batches_async(
-        self, data: Iterable[dict[str, str] | _SO], **callout_options: Any
+        self, data: Iterable[dict[str, Any] | _SO], **callout_options: Any
     ):
         """
         Upload data batches to be processed by the Salesforce bulk API.
         https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/upload_job_data.htm
         """
-
-        if not data:
-            raise ValueError("No data provided for upload_batches")
-        data.assert_single_type()
+        fieldnames = self.validate_fieldnames(data)
         _connection = AsyncSalesforceClient.get_connection(self._connection)
         batch_count = 0
-        for batch_content in self._batch_buffers(data):
+        for batch_content in self._batch_buffers(data, fieldnames):
             batch_count += 1
             _ = await _connection.put(
                 self.contentUrl,
@@ -364,8 +406,19 @@ class BulkApiIngestJob(FieldConfigurableObject):
         connection: SalesforceClient | str | None = None,
     ):
         _ = self.refresh(connection=connection)
+        _LOGGER.info(
+            "Bulk %s job %s for object %s state: %s (%d processed, %d failed)",
+            self.operation,
+            self.id,
+            self.object,
+            self.state,
+            self.numberRecordsProcessed,
+            self.numberRecordsFailed,
+        )
 
         while self.state not in COMPLETE_STATES:
+            sleep_sync(poll_interval)
+            _ = self.refresh(connection=connection)
             _LOGGER.info(
                 "Bulk %s job %s for object %s state: %s (%d processed, %d failed)",
                 self.operation,
@@ -375,8 +428,6 @@ class BulkApiIngestJob(FieldConfigurableObject):
                 self.numberRecordsProcessed,
                 self.numberRecordsFailed,
             )
-            sleep_sync(poll_interval)
-            _ = self.refresh(connection=connection)
         return self
 
     async def monitor_until_complete_async(
@@ -385,7 +436,16 @@ class BulkApiIngestJob(FieldConfigurableObject):
         connection: AsyncSalesforceClient | str | None = None,
     ):
         _ = await self.refresh_async(connection=connection)
+        _LOGGER.info(
+            "Bulk %s job %s for object %s state: %s",
+            self.operation,
+            self.id,
+            self.object,
+            self.state,
+        )
         while self.state not in COMPLETE_STATES:
+            await sleep_async(poll_interval)
+            _ = self.refresh_async(connection=connection)
             _LOGGER.info(
                 "Bulk %s job %s for object %s state: %s",
                 self.operation,
@@ -393,8 +453,6 @@ class BulkApiIngestJob(FieldConfigurableObject):
                 self.object,
                 self.state,
             )
-            await sleep_async(poll_interval)
-            _ = self.refresh_async(connection=connection)
         return self
 
     def _delimiter_char(self) -> str:
@@ -521,7 +579,6 @@ class ResultPage(Generic[_SO]):
             self._sobject_type(**r)
             for r in rows  # type: ignore
         )
-        breakpoint()
         return self._records
 
     async def fetch_async(self):

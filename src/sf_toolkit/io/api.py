@@ -876,9 +876,7 @@ def _generate_record_batches(
 
     """
     if max_batch_size > 200:
-        warnings.warn(
-            f"batch size is {max_batch_size}, but Salesforce only allows 200",
-        )
+        _logger.warn("batch size is %d, but Salesforce only allows 200", max_batch_size)
         max_batch_size = 200
     emitted_records: list[_sObject] = []
     batches: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]] = []
@@ -1171,7 +1169,7 @@ async def save_insert_bulk_async(
         ValueError: If the list is empty or the external ID field doesn't exist
     """
     if not records:
-        warnings.warn("Cannot update empty SObjectList")
+        _logger.warn("Cannot update empty SObjectList")
         return None
 
     if not connection:
@@ -1203,7 +1201,7 @@ def save_update_bulk(
         ValueError: If the list is empty or the external ID field doesn't exist
     """
     if not records:
-        warnings.warn("Cannot update empty SObjectList")
+        _logger.warn("Cannot update empty SObjectList")
         return None
 
     if not connection:
@@ -1235,7 +1233,7 @@ async def save_update_bulk_async(
         ValueError: If the list is empty or the external ID field doesn't exist
     """
     if not records:
-        warnings.warn("Cannot update empty SObjectList")
+        _logger.warn("Cannot update empty SObjectList")
         return None
 
     if not connection:

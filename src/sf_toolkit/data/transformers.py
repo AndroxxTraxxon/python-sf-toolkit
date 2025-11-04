@@ -1,4 +1,4 @@
-from typing import Any, TypeVar
+from typing import Any, Mapping, TypeVar
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -35,7 +35,7 @@ def unflatten(flattened_data: dict[str, _T]) -> dict[str, _T | dict[str, _T]]:
     return inflated_data
 
 
-def flatten(data: dict[str, _T | dict[str, _T]]) -> dict[str, _T]:
+def flatten(data: Mapping[str, _T | dict[str, _T]]) -> dict[str, _T]:
     flattened_data: dict[str, _T] = {}
     for fieldname in data.keys():
         field_data = data[fieldname]

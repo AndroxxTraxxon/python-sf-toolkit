@@ -26,7 +26,7 @@ async def freeze_users(conn: SalesforceClient):
         .where(IsFrozen=False)
         .and_where(UserId__ne=conn._userinfo.user_id)
         .and_where(UserId__in="SELECT Id FROM User WHERE IsActive = TRUE")
-        .limit(10)
+        .limit(50)
     )
     LOGGER.info(freeze_query)
     users_to_freeze = freeze_query.execute(timeout=900)
