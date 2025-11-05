@@ -83,10 +83,8 @@ async def fetch_async(
         url = f"{sf_client.sobjects_url}/{cls.attributes.type}/{record_id}"
 
     fields = list(object_fields(cls).keys())
-    response_data = (
-        await sf_client.get(url, params={"fields": ",".join(fields)})
-    ).json()
-
+    response = await sf_client.get(url, params={"fields": ",".join(fields)})
+    response_data = response.json()
     return cls(**response_data)
 
 
@@ -1201,7 +1199,7 @@ def save_update_bulk(
         ValueError: If the list is empty or the external ID field doesn't exist
     """
     if not records:
-        _logger.warn("Cannot update empty SObjectList")
+        _logger.warning("Cannot update empty SObjectList")
         return None
 
     if not connection:
@@ -1361,7 +1359,7 @@ async def save_insert_list_async(
     if headers_option := callout_options.pop("headers", None):
         headers.update(headers_option)
 
-    return await _insert_list_chunks_async(
+    results = await _insert_list_chunks_async(
         sf_client,
         record_chunks,
         headers,
@@ -1369,6 +1367,11 @@ async def save_insert_list_async(
         all_or_none,
         **callout_options,
     )
+    for record, result in zip(records, results):
+        if result.success:
+            setattr(record, record.attributes.id_field, result.id)
+
+    return results
 
 
 async def _insert_list_chunks_async(

@@ -304,12 +304,13 @@ async def test_save_insert_async(mock_async_client, test_accounts):
     # Mock response for async client
     mock_response = AsyncMock()
     mock_response.return_value = Mock()
+    results_raw = [
+        {"id": f"001XX00{i:02d}ABCDEFGHI", "success": True, "errors": []}
+        for i in range(len(account_list))
+    ]
     mock_response.return_value.json.side_effect = list(
         chunked(
-            (
-                {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []}
-                for i in range(len(account_list))
-            ),
+            results_raw,
             5,
         )
     )
@@ -327,9 +328,9 @@ async def test_save_insert_async(mock_async_client, test_accounts):
 
     # Verify the results
     assert len(results) == len(account_list)
-    for i, result in enumerate(results):
-        assert result.id == f"001XX000{i}ABCDEFGHI"
-        assert result.success
+    for raw, result in zip(results_raw, results):
+        assert result.id == raw["id"]
+        assert result.success == raw["success"]
         assert not result.errors
 
 
