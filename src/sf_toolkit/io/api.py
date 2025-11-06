@@ -37,19 +37,19 @@ _sObject = TypeVar("_sObject", bound=SObject)
 
 
 def resolve_client(
-    cls: type[_sObject], client: SalesforceClient | None = None
+    cls: type[_sObject], client: SalesforceClient | str | None = None
 ) -> SalesforceClient:
     if isinstance(client, SalesforceClient):
         return client
-    return SalesforceClient.get_connection(cls.attributes.connection)
+    return SalesforceClient.get_connection(client or cls.attributes.connection)
 
 
 def resolve_async_client(
-    cls: type[_sObject], client: AsyncSalesforceClient | None = None
+    cls: type[_sObject], client: AsyncSalesforceClient | str | None = None
 ):
-    if client:
+    if isinstance(client, AsyncSalesforceClient):
         return client
-    return AsyncSalesforceClient.get_connection(cls.attributes.connection)
+    return AsyncSalesforceClient.get_connection(client or cls.attributes.connection)
 
 
 def fetch(
@@ -874,7 +874,9 @@ def _generate_record_batches(
 
     """
     if max_batch_size > 200:
-        _logger.warn("batch size is %d, but Salesforce only allows 200", max_batch_size)
+        _logger.warning(
+            "batch size is %d, but Salesforce only allows 200", max_batch_size
+        )
         max_batch_size = 200
     emitted_records: list[_sObject] = []
     batches: list[tuple[list[dict[str, Any]], list[tuple[str, BlobData]]]] = []
@@ -1167,7 +1169,7 @@ async def save_insert_bulk_async(
         ValueError: If the list is empty or the external ID field doesn't exist
     """
     if not records:
-        _logger.warn("Cannot update empty SObjectList")
+        _logger.warning("Cannot update empty SObjectList")
         return None
 
     if not connection:
@@ -1231,7 +1233,7 @@ async def save_update_bulk_async(
         ValueError: If the list is empty or the external ID field doesn't exist
     """
     if not records:
-        _logger.warn("Cannot update empty SObjectList")
+        _logger.warning("Cannot update empty SObjectList")
         return None
 
     if not connection:
@@ -1613,6 +1615,7 @@ def save_upsert_list(
     batch_size: int = 200,
     only_changes: bool = False,
     all_or_none: bool = False,
+    sf_client: SalesforceClient | None = None,
     **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
@@ -1634,7 +1637,7 @@ def save_upsert_list(
     if not object_type:
         # no records to upsert, early return
         return []
-    sf_client = resolve_client(object_type, None)
+    sf_client = resolve_client(object_type, sf_client or records.connection)
 
     # Ensure all records have the external ID field
     for i, record in enumerate(records):
@@ -1711,6 +1714,7 @@ async def save_upsert_list_async(
     batch_size: int = 200,
     only_changes: bool = False,
     all_or_none: bool = False,
+    sf_client: AsyncSalesforceClient | None = None,
     **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
@@ -1732,7 +1736,7 @@ async def save_upsert_list_async(
     if not object_type:
         # no records to upsert, early return
         return []
-    sf_client = resolve_async_client(object_type, None)
+    sf_client = resolve_async_client(object_type, sf_client or records.connection)
 
     # Ensure all records have the external ID field
     for i, record in enumerate(records):
@@ -1819,6 +1823,7 @@ def delete_list(
     clear_id_field: bool = False,
     batch_size: int = 200,
     all_or_none: bool = False,
+    sf_client: SalesforceClient | None = None,
     **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
@@ -1844,7 +1849,7 @@ def delete_list(
         )
     )
     results: list[SObjectSaveResult]
-    sf_client = resolve_client(type(records[0]), None)
+    sf_client = resolve_client(type(records[0]), sf_client or records.connection)
     headers = {"Content-Type": "application/json"}
     if headers_option := callout_options.pop("headers", None):
         headers.update(headers_option)
@@ -1873,6 +1878,7 @@ async def delete_list_async(
     batch_size: int = 200,
     concurrency: int = 1,
     all_or_none: bool = False,
+    sf_client: AsyncSalesforceClient | None = None,
     **callout_options: Any,
 ) -> list[SObjectSaveResult]:
     """
@@ -1898,7 +1904,7 @@ async def delete_list_async(
         )
     )
     results: list[SObjectSaveResult] = []
-    sf_client = resolve_async_client(type(records[0]), None)
+    sf_client = resolve_async_client(type(records[0]), sf_client or records.connection)
     results = await _delete_list_chunks_async(
         sf_client,
         record_id_batches,

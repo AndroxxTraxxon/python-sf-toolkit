@@ -1,30 +1,54 @@
-from asyncio import Task, sleep as sleep_async
+import csv
+from asyncio import Task
+from asyncio import sleep as sleep_async
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
+from io import StringIO
 from time import sleep as sleep_sync
-from typing import Any, Generic, Literal, TypeVar, TypedDict
+from typing import Any, Generic, Literal, TypedDict, TypeVar
+
 from httpx import URL
-from sf_toolkit.client import AsyncSalesforceClient, SalesforceClient
 from typing_extensions import override
 
-from ..logger import getLogger
-from io import StringIO
-import csv
+from sf_toolkit.client import AsyncSalesforceClient, SalesforceClient
 
+from ..logger import getLogger
 from .fields import (
     CheckboxField,
+    DateTimeField,
     FieldConfigurableObject,
-    IntField,
     IdField,
+    IntField,
     NumberField,
     PicklistField,
     TextField,
-    DateTimeField,
     query_fields,
     serialize_object,
 )
+from .sobject import SObject, SObjectList
 from .transformers import flatten
 
-from .sobject import SObject, SObjectList
+
+class SuccessfulResult:
+    sf__Created: bool
+    sf__Id: str
+    data: dict[str, str]
+
+    def __init__(self, sf__Created: str, sf__Id: str, **data: str):
+        self.sf__Created = sf__Created.casefold() == "true"
+        self.sf__Id = sf__Id
+        self.data = data
+
+
+class FailedResult:
+    sf__Error: str
+    sf__Id: str | None
+    data: dict[str, str]
+
+    def __init__(self, sf__Error: str, sf__Id: str | None, **data: str):
+        self.sf__Error = sf__Error
+        self.sf__Id = sf__Id or None
+        self.data = data
+
 
 T = TypeVar("T")
 _SO = TypeVar("_SO", bound=SObject)
@@ -62,7 +86,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
     createdById = IdField()
     createdDate = DateTimeField()
     errorMessage = TextField()
-    externalIdField = TextField()
+    externalIdFieldName = TextField()
     id = IdField()
     jobType = PicklistField(options=["BigObjectIngest", "Classic", "V2Ingest"])
     lineEnding = PicklistField(options=["LF", "CRLF"])
@@ -130,7 +154,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
     @classmethod
     async def init_job_async(
         cls,
-        sobject_type: str | type[SObject],
+        object_type: str | type[SObject],
         operation: Literal["insert", "delete", "hardDelete", "update", "upsert"],
         column_delimiter: DELIMITER = "COMMA",
         line_ending: Literal["LF", "CRLF"] = "LF",
@@ -148,9 +172,9 @@ class BulkApiIngestJob(FieldConfigurableObject):
             "contentType": "CSV",
             "lineEnding": line_ending,
             "object": (
-                sobject_type
-                if isinstance(sobject_type, str)
-                else sobject_type.attributes.type
+                object_type
+                if isinstance(object_type, str)
+                else object_type.attributes.type
             ),
             "operation": operation,
         }
@@ -199,7 +223,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
             raise ValueError("No data provided for upload_dataset")
         dataset.assert_single_type()
         job = await cls.init_job_async(
-            sobject_type=type(dataset[0]),
+            object_type=type(dataset[0]),
             operation="upsert",
             connection=dataset[0].attributes.connection,
             **callout_options,
@@ -231,6 +255,8 @@ class BulkApiIngestJob(FieldConfigurableObject):
                 extrasaction="ignore",
             )
             writer.writeheader()
+            batch_count = 1
+            row_count = 0
             for row in data:
                 before_row_len = buffer.tell()
                 if self.operation == "delete" or self.operation == "hardDelete":
@@ -245,6 +271,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
                             f"Encountered record of type {type(row)}. Must be dict or SObject"
                         )
                     serialized = flatten(serialized)
+                row_count += 1
                 writer.writerow(serialized)
                 if buffer.tell() > 100_000_000:
                     # https://resources.docs.salesforce.com/256/latest/en-us/sfdc/pdf/api_asynch.pdf
@@ -257,11 +284,29 @@ class BulkApiIngestJob(FieldConfigurableObject):
                     # rewind to the row before the limit was exceeded
                     _ = buffer.seek(before_row_len)
                     _ = buffer.truncate()
+                    _LOGGER.info(
+                        "%d rows in batch %d for %s %s job %s ",
+                        row_count,
+                        batch_count,
+                        self.object,
+                        self.operation,
+                        self.id,
+                    )
                     yield buffer.getvalue()
                     _ = buffer.seek(0)
                     _ = buffer.truncate()
                     writer.writeheader()
+                    batch_count += 1
                     writer.writerow(serialized)
+                    row_count = 1
+            _LOGGER.info(
+                "%d rows in batch %d for %s %s job %s ",
+                row_count,
+                batch_count,
+                self.object,
+                self.operation,
+                self.id,
+            )
             yield buffer.getvalue()
 
     def validate_fieldnames(self, data: Iterable[dict[str, str] | _SO]) -> set[str]:
@@ -400,6 +445,283 @@ class BulkApiIngestJob(FieldConfigurableObject):
             setattr(self, key, value)
         return self
 
+    def successful_results(self, connection: SalesforceClient | str | None = None):
+        """
+        Get Job Successful Record Results
+        -----
+        Retrieves a list of successfully processed records for a completed job.
+        https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_job_successful_results.htm
+
+        Callout to `/services/data/vXX.X/jobs/ingest/jobID/successfulResults/`
+        """
+
+        if connection is None:
+            connection = self._connection
+        if not isinstance(connection, SalesforceClient):
+            connection = SalesforceClient.get_connection(connection)  # type: ignore
+            assert isinstance(connection, SalesforceClient), (
+                "Could not find Salesforce Client connection"
+            )
+
+        if self.state not in COMPLETE_STATES:
+            _LOGGER.warning(
+                "Retrieving successful results for job %s before completion (current state: %s)",
+                self.id,
+                self.state,
+            )
+
+        url = connection.data_url + f"/jobs/ingest/{self.id}/successfulResults/"
+        response = connection.get(
+            url,
+            headers={
+                "Accept": "text/csv",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        _ = response.raise_for_status()
+        reader = csv.DictReader(StringIO(response.text))
+        rows = [SuccessfulResult(**row) for row in reader]
+        _LOGGER.info(
+            "Fetched %d successful result rows for %s %s job %s",
+            len(rows),
+            self.object,
+            self.operation,
+            self.id,
+        )
+        return rows
+
+    async def successful_results_async(
+        self, connection: AsyncSalesforceClient | str | None = None
+    ):
+        """
+        Get Job Successful Record Results (Asynchronous)
+        -----
+        Retrieves a list of successfully processed records for a completed job.
+        https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_job_successful_results.htm
+
+        Callout to `/services/data/vXX.X/jobs/ingest/jobID/successfulResults/`
+        """
+        if connection is None:
+            connection = self._connection
+        if not isinstance(connection, AsyncSalesforceClient):
+            connection = AsyncSalesforceClient.get_connection(connection)  # type: ignore
+            assert isinstance(connection, AsyncSalesforceClient), (
+                "Could not find Salesforce Client connection"
+            )
+
+        if self.state not in COMPLETE_STATES:
+            _LOGGER.warning(
+                "Retrieving successful results (async) for job %s before completion (current state: %s)",
+                self.id,
+                self.state,
+            )
+
+        url = connection.data_url + f"/jobs/ingest/{self.id}/successfulResults/"
+        response = await connection.get(
+            url,
+            headers={
+                "Accept": "text/csv",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        _ = response.raise_for_status()
+        raw_csv = response.text
+        reader = csv.DictReader(StringIO(raw_csv))
+        rows = [SuccessfulResult(**row) for row in reader]
+        _LOGGER.info(
+            "Fetched %d successful result rows (async) for %s %s job %s",
+            len(rows),
+            self.object,
+            self.operation,
+            self.id,
+        )
+        return rows
+
+    def failed_results(self, connection: SalesforceClient | str | None = None):
+        """
+        Get Job Failed Record Results
+        -----
+        Retrieves a list of failed records (and associated errors) for a completed job.
+        https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_job_failed_results.htm
+
+        Callout to `/services/data/vXX.X/jobs/ingest/jobID/failedResults/`
+        """
+        if connection is None:
+            connection = self._connection
+        if not isinstance(connection, SalesforceClient):
+            connection = SalesforceClient.get_connection(connection)  # type: ignore
+            assert isinstance(connection, SalesforceClient), (
+                "Could not find Salesforce Client connection"
+            )
+
+        if self.state not in COMPLETE_STATES:
+            _LOGGER.warning(
+                "Retrieving failed results for job %s before completion (current state: %s)",
+                self.id,
+                self.state,
+            )
+
+        url = connection.data_url + f"/jobs/ingest/{self.id}/failedResults/"
+        response = connection.get(
+            url,
+            headers={
+                "Accept": "text/csv",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        _ = response.raise_for_status()
+        raw_csv = response.text
+        reader = csv.DictReader(StringIO(raw_csv))
+        rows = [FailedResult(**row) for row in reader]
+        _LOGGER.info(
+            "Fetched %d failed result rows for %s %s job %s",
+            len(rows),
+            self.object,
+            self.operation,
+            self.id,
+        )
+        return rows
+
+    async def failed_results_async(
+        self, connection: AsyncSalesforceClient | str | None = None
+    ):
+        """
+        Get Job Failed Record Results (Asynchronous)
+        -----
+        Retrieves a list of failed records (and associated errors) for a completed job.
+        https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_job_failed_results.htm
+
+        Callout to `/services/data/vXX.X/jobs/ingest/jobID/failedResults/`
+        """
+        if connection is None:
+            connection = self._connection
+        if not isinstance(connection, AsyncSalesforceClient):
+            connection = AsyncSalesforceClient.get_connection(connection)  # type: ignore
+            assert isinstance(connection, AsyncSalesforceClient), (
+                "Could not find Salesforce Client connection"
+            )
+
+        if self.state not in COMPLETE_STATES:
+            _LOGGER.warning(
+                "Retrieving failed results (async) for job %s before completion (current state: %s)",
+                self.id,
+                self.state,
+            )
+
+        url = connection.data_url + f"/jobs/ingest/{self.id}/failedResults/"
+        response = await connection.get(
+            url,
+            headers={
+                "Accept": "text/csv",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        _ = response.raise_for_status()
+        raw_csv = response.text
+        reader = csv.DictReader(StringIO(raw_csv))
+        rows = [FailedResult(**row) for row in reader]
+        _LOGGER.info(
+            "Fetched %d failed result rows (async) for %s %s job %s",
+            len(rows),
+            self.object,
+            self.operation,
+            self.id,
+        )
+        return rows
+
+    def unprocessed_results(
+        self, connection: SalesforceClient | str | None = None
+    ) -> list[dict[str, str]]:
+        """
+        Get Job Unprocessed Record Results
+        -----
+        Retrieves a list of records that were not processed for a completed job.
+        https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_job_unprocessed_results.htm
+
+        Callout to `/services/data/vXX.X/jobs/ingest/jobID/unprocessedrecords/`
+        """
+        if connection is None:
+            connection = self._connection
+        if not isinstance(connection, SalesforceClient):
+            connection = SalesforceClient.get_connection(connection)  # type: ignore
+            assert isinstance(connection, SalesforceClient), (
+                "Could not find Salesforce Client connection"
+            )
+
+        if self.state not in COMPLETE_STATES:
+            _LOGGER.warning(
+                "Retrieving unprocessed results for job %s before completion (current state: %s)",
+                self.id,
+                self.state,
+            )
+
+        url = connection.data_url + f"/jobs/ingest/{self.id}/unprocessedrecords/"
+        response = connection.get(
+            url,
+            headers={
+                "Accept": "text/csv",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        _ = response.raise_for_status()
+        reader = csv.DictReader(StringIO(response.text))
+        rows = list(reader)
+        _LOGGER.info(
+            "Fetched %d unprocessed result rows for %s %s job %s",
+            len(rows),
+            self.object,
+            self.operation,
+            self.id,
+        )
+        return rows
+
+    async def unprocessed_results_async(
+        self, connection: AsyncSalesforceClient | str | None = None
+    ) -> list[dict[str, str]]:
+        """
+        Get Job Unprocessed Record Results (Asynchronous)
+        -----
+        Retrieves a list of records that were not processed for a completed job.
+        https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/get_job_unprocessed_results.htm
+
+        Callout to `/services/data/vXX.X/jobs/ingest/jobID/unprocessedrecords/`
+        """
+        if connection is None:
+            connection = self._connection
+        if not isinstance(connection, AsyncSalesforceClient):
+            connection = AsyncSalesforceClient.get_connection(connection)  # type: ignore
+            assert isinstance(connection, AsyncSalesforceClient), (
+                "Could not find Salesforce Client connection"
+            )
+
+        if self.state not in COMPLETE_STATES:
+            _LOGGER.warning(
+                "Retrieving unprocessed results (async) for job %s before completion (current state: %s)",
+                self.id,
+                self.state,
+            )
+
+        url = connection.data_url + f"/jobs/ingest/{self.id}/unprocessedrecords/"
+        response = await connection.get(
+            url,
+            headers={
+                "Accept": "text/csv",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        _ = response.raise_for_status()
+        raw_csv = response.text
+        reader = csv.DictReader(StringIO(raw_csv))
+        rows = list(reader)
+        _LOGGER.info(
+            "Fetched %d unprocessed result rows (async) for %s %s job %s",
+            len(rows),
+            self.object,
+            self.operation,
+            self.id,
+        )
+        return rows
+
     def monitor_until_complete(
         self,
         poll_interval: float = 5.0,
@@ -445,7 +767,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
         )
         while self.state not in COMPLETE_STATES:
             await sleep_async(poll_interval)
-            _ = self.refresh_async(connection=connection)
+            _ = await self.refresh_async(connection=connection)
             _LOGGER.info(
                 "Bulk %s job %s for object %s state: %s",
                 self.operation,

@@ -1,28 +1,28 @@
 from pathlib import Path
 from typing import ClassVar
+from unittest.mock import AsyncMock, MagicMock, Mock
 from urllib.parse import quote_plus
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock
 
+from sf_toolkit._models import SObjectSaveResult
 from sf_toolkit.data.fields import TextField
+from sf_toolkit.data.sobject import SObject, SObjectList
 from sf_toolkit.io.api import (
     fetch,
     save_insert,
+    save_list,
     save_update,
     save_upsert,
-    save_list,
 )
 from sf_toolkit.io.file import (
-    to_json_file,
+    from_csv_file,
+    from_file,
     from_json_file,
     to_csv_file,
-    from_csv_file,
     to_file,
-    from_file,
+    to_json_file,
 )
-from sf_toolkit._models import SObjectSaveResult
-from sf_toolkit.data.sobject import SObject, SObjectList
 
 
 @pytest.fixture
@@ -389,7 +389,7 @@ def test_save_orchestration_paths(simple_sobject, monkeypatch, mock_sf_client):
 def test_save_upsert_list_success_and_dirty_clear(
     simple_sobject, monkeypatch, mock_sf_client
 ):
-    from sf_toolkit.io.api import save_upsert_list, dirty_fields
+    from sf_toolkit.io.api import dirty_fields, save_upsert_list
 
     # Prepare records with external ids
     records = [simple_sobject(External_Id__c=f"EXT{i}", Name=f"N{i}") for i in range(3)]
@@ -449,7 +449,7 @@ def test_save_update_list_requires_ids(simple_sobject, monkeypatch):
 def test_save_update_list_clears_dirty_fields(
     simple_sobject, monkeypatch, mock_sf_client
 ):
-    from sf_toolkit.io.api import save_update_list, dirty_fields
+    from sf_toolkit.io.api import dirty_fields, save_update_list
 
     r1 = simple_sobject(Id="001", Name="A")
     r2 = simple_sobject(Id="002", Name="B")
@@ -640,7 +640,7 @@ def test_save_upsert_list_with_concurrency(simple_sobject, monkeypatch):
 def test_save_function_with_external_id_only_changes(
     simple_sobject, monkeypatch, mock_sf_client
 ):
-    from sf_toolkit.io.api import save, dirty_fields
+    from sf_toolkit.io.api import dirty_fields, save
 
     rec = simple_sobject(External_Id__c="EXT100")
     rec.Name = "Initial"
@@ -744,8 +744,9 @@ def test_delete_raises_without_id(simple_sobject, mock_sf_client):
 async def test_fetch_async_builds_correct_url_and_returns_instance(
     simple_sobject, mock_async_client
 ):
-    from sf_toolkit.io.api import fetch_async
     from unittest.mock import AsyncMock
+
+    from sf_toolkit.io.api import fetch_async
 
     record_id = "001ASYNC"
     expected_url = (
@@ -771,16 +772,20 @@ async def test_fetch_async_builds_correct_url_and_returns_instance(
     assert set(params["fields"].split(",")) == {"Id", "Name", "External_Id__c"}
 
 
-def test_delete_async_removes_id_and_calls_delete(simple_sobject, mock_async_client):
-    from sf_toolkit.io.api import delete_async
+@pytest.mark.asyncio
+async def test_delete_async_removes_id_and_calls_delete(
+    simple_sobject, mock_async_client
+):
     from unittest.mock import AsyncMock
-    import asyncio
+
+    from sf_toolkit.io.api import delete_async
 
     rec = simple_sobject(Id="001DELASYNC")
     mock_async_client.delete = AsyncMock()
+    mock_async_client.delete.return_value = MagicMock()
     mock_async_client.delete.return_value.raise_for_status.return_value = None
 
-    asyncio.run(delete_async(rec, sf_client=mock_async_client))
+    _result = await delete_async(rec, sf_client=mock_async_client)
     assert mock_async_client.delete.call_count == 1
     assert rec.Id is None
 
@@ -799,8 +804,9 @@ def test_reload_updates_fields(simple_sobject, monkeypatch, mock_sf_client):
 
 
 def test_reload_async_updates_fields(simple_sobject, monkeypatch, mock_async_client):
-    from sf_toolkit.io.api import reload_async
     import asyncio
+
+    from sf_toolkit.io.api import reload_async
 
     rec = simple_sobject(Id="001RELOADA", Name="OldA")
 
@@ -849,7 +855,7 @@ def test_save_upsert_update_only_not_found_raises(simple_sobject, mock_sf_client
 def test_save_upsert_only_changes_no_payload_skips_call(
     simple_sobject, mock_sf_client, monkeypatch
 ):
-    from sf_toolkit.io.api import save_upsert, dirty_fields
+    from sf_toolkit.io.api import dirty_fields, save_upsert
 
     rec = simple_sobject(External_Id__c="EXTNOCHANGE")
     # Mark external id dirty then clear so only_changes yields empty payload
@@ -860,9 +866,10 @@ def test_save_upsert_only_changes_no_payload_skips_call(
 
 
 def test_fetch_list_async_batches(simple_sobject, mock_async_client, monkeypatch):
-    from sf_toolkit.io.api import fetch_list_async
-    from unittest.mock import AsyncMock
     import asyncio
+    from unittest.mock import AsyncMock
+
+    from sf_toolkit.io.api import fetch_list_async
 
     ids = [f"IDA{i}" for i in range(2500)]  # 2 batches (2000 + 500)
 
@@ -891,9 +898,10 @@ def test_fetch_list_async_batches(simple_sobject, mock_async_client, monkeypatch
 
 
 def test_delete_list_async_batches(simple_sobject, mock_async_client, monkeypatch):
-    from sf_toolkit.io.api import delete_list_async
-    from unittest.mock import AsyncMock
     import asyncio
+    from unittest.mock import AsyncMock
+
+    from sf_toolkit.io.api import delete_list_async
 
     recs = [simple_sobject(Id=f"DEL{i}") for i in range(5)]
     lst = SObjectList(recs, connection="test")
@@ -923,9 +931,10 @@ def test_delete_list_async_batches(simple_sobject, mock_async_client, monkeypatc
 
 
 def test_save_upsert_list_async_success(simple_sobject, mock_async_client, monkeypatch):
-    from sf_toolkit.io.api import save_upsert_list_async, dirty_fields
-    from unittest.mock import AsyncMock
     import asyncio
+    from unittest.mock import AsyncMock
+
+    from sf_toolkit.io.api import dirty_fields, save_upsert_list_async
 
     recs = SObjectList(
         [simple_sobject(External_Id__c=f"EX{i}", Name=f"N{i}") for i in range(3)],
@@ -966,8 +975,9 @@ def test_save_insert_list_empty_returns_empty(simple_sobject):
 async def test_save_insert_list_async_assigns_ids(
     simple_sobject, mock_async_client, monkeypatch
 ):
-    from sf_toolkit.io.api import save_insert_list_async
     from unittest.mock import AsyncMock
+
+    from sf_toolkit.io.api import save_insert_list_async
 
     recs = SObjectList([simple_sobject(Name="A"), simple_sobject(Name="B")])
 
@@ -992,9 +1002,10 @@ async def test_save_insert_list_async_assigns_ids(
 def test_save_update_list_async_clears_dirty(
     simple_sobject, mock_async_client, monkeypatch
 ):
-    from sf_toolkit.io.api import save_update_list_async, dirty_fields
-    from unittest.mock import AsyncMock
     import asyncio
+    from unittest.mock import AsyncMock
+
+    from sf_toolkit.io.api import dirty_fields, save_update_list_async
 
     recs = SObjectList(
         [simple_sobject(Id="001", Name="A"), simple_sobject(Id="002", Name="B")],
@@ -1041,7 +1052,6 @@ def test_save_update_bulk_invokes_job_methods(simple_sobject, monkeypatch):
 @pytest.mark.asyncio
 async def test_save_insert_bulk_async_invokes_job_methods(simple_sobject, monkeypatch):
     from sf_toolkit.io.api import save_insert_bulk_async
-    import asyncio
 
     recs = SObjectList(
         [simple_sobject(Name="A"), simple_sobject(Name="B")], connection="test"
@@ -1101,16 +1111,18 @@ def test_save_insert_bulk_empty_returns_none(simple_sobject):
 
 
 def test_save_update_bulk_async_empty_returns_none(simple_sobject):
-    from sf_toolkit.io.api import save_update_bulk_async
     import asyncio
+
+    from sf_toolkit.io.api import save_update_bulk_async
 
     empty = SObjectList([], connection="test")
     assert asyncio.run(save_update_bulk_async(empty)) is None
 
 
 def test_save_insert_bulk_async_empty_returns_none(simple_sobject):
-    from sf_toolkit.io.api import save_insert_bulk_async
     import asyncio
+
+    from sf_toolkit.io.api import save_insert_bulk_async
 
     empty = SObjectList([], connection="test")
     assert asyncio.run(save_insert_bulk_async(empty)) is None
