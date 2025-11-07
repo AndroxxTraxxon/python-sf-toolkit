@@ -1,18 +1,21 @@
 # pyright: reportAny=false, reportExplicitAny=false
 import asyncio
+import json
+import warnings
 from collections.abc import Callable, Container, Coroutine
 from contextlib import ExitStack
-import json
 from pathlib import Path
 from typing import Any, TypeVar
 from urllib.parse import quote_plus
-import warnings
 
 from httpx import Response
+
 from sf_toolkit._models import SObjectSaveResult
 from sf_toolkit.async_utils import run_concurrently
 from sf_toolkit.data.transformers import chunked, flatten
 
+from ..client import AsyncSalesforceClient, SalesforceClient
+from ..data.bulk import BulkApiIngestJob
 from ..data.fields import (
     FIELD_TYPE_LOOKUP,
     BlobData,
@@ -26,11 +29,7 @@ from ..data.fields import (
     serialize_object,
 )
 from ..data.sobject import SObject, SObjectDescribe, SObjectList
-from ..data.bulk import BulkApiIngestJob
-
 from ..logger import getLogger
-from ..client import AsyncSalesforceClient, SalesforceClient
-
 
 _logger = getLogger(__name__)
 _sObject = TypeVar("_sObject", bound=SObject)

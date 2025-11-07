@@ -302,7 +302,6 @@ async def test_bulk_ingest_job_monitor_until_complete_async_success(mocker):
     def advance_state_async(*_, **_kw):
         try:
             job.state = next(next_states)
-            # breakpoint()
         except StopIteration:
             pass
         return job

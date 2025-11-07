@@ -3,18 +3,19 @@ Module for basic field and field-configurable object scaffolding
 """
 # pyright: basic
 
+import datetime
+import io
+import typing
+import warnings
 from collections import defaultdict
 from collections.abc import Mapping
-import datetime
 from enum import Flag, auto
-import typing
-import io
 from pathlib import Path
-from sf_toolkit.logger import getLogger
-from typing_extensions import override
-import warnings
 
 from httpx._types import FileContent  # type: ignore
+from typing_extensions import override
+
+from sf_toolkit.logger import getLogger
 
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
@@ -129,9 +130,17 @@ class FieldConfigurableObject:
             raise KeyError(f"Undefined field {name} on object {type(self)}")
         if name in self._values:
             del self._values[name]
+            dirty_fields(self).add(name)
 
     def __delitem__(self, name: str):
         self.__delattr__(name)
+
+    def __str__(self):
+        return (
+            f"<{type(self).__name__} "
+            + ", ".join(f"{name}={repr(value)}" for name, value in self._values.items())
+            + ">"
+        )
 
 
 _field_map: dict[type[FieldConfigurableObject], dict[str, "Field[typing.Any]"]] = (
@@ -183,7 +192,7 @@ def query_fields(cls: type[FieldConfigurableObject]) -> list[str]:
 def dirty_fields(rec: FieldConfigurableObject) -> set[str]:
     """
     Returns the set of fields that have been modified since the last
-    time this object was `.save()`-d to Salesforce
+    time this object was initialized or `save()`-d to Salesforce
     """
     _dirty: set[str] | None = getattr(rec, "_dirty_fields", None)
     if _dirty is None:
@@ -205,8 +214,9 @@ def serialize_object(
     assert not (only_changes and all_fields), (
         "Cannot serialize both only changes and all fields."
     )
-    values = object_values(record)
+    values = record._values
     fields = object_fields(type(record))
+    dirty = dirty_fields(record)
     if all_fields:
         return {
             name: field.format(values.get(name, None)) for name, field in fields.items()
@@ -214,17 +224,15 @@ def serialize_object(
 
     if only_changes:
         return {
-            name: field.format(value)
-            for name, value in values.items()
-            if (field := fields[name])
-            and name in dirty_fields(record)
-            and FieldFlag.readonly not in field.flags
+            name: field.format(values.get(name, None))
+            for name, field in fields.items()
+            if name in dirty and FieldFlag.readonly not in field.flags
         }
 
     return {
-        name: field.format(value)
-        for name, value in record._values.items()
-        if (field := fields[name]) and FieldFlag.readonly not in field.flags
+        name: field.format(values.get(name, None))
+        for name, field in fields.items()
+        if FieldFlag.readonly not in field.flags and (name in values or name in dirty)
     }
 
 
@@ -601,7 +609,7 @@ class ListField(Field[list[_FCO_Type]]):
             # at the time of SObject type/class definition
             _ = SObjectList
         except NameError:
-            from .sobject import SObjectList, SObject
+            from .sobject import SObject, SObjectList
 
     def revive(
         self,
