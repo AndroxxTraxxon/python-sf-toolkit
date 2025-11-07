@@ -1,7 +1,6 @@
 # pyright: reportAny=false, reportExplicitAny=false
 import asyncio
 import json
-import warnings
 from collections.abc import Callable, Container, Coroutine
 from contextlib import ExitStack
 from pathlib import Path
