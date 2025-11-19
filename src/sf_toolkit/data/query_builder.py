@@ -1,16 +1,11 @@
 from asyncio import Task, create_task
-from pydoc import resolve
-from typing import Any, AsyncIterator, Iterator, Literal, NamedTuple, TypeVar, Generic
-from datetime import datetime, date
+from typing import Any, AsyncIterator, Generic, Iterator, Literal, NamedTuple, TypeVar
 
-
+from .._models import QueryResultJSON, SObjectRecordJSON
 from ..client import AsyncSalesforceClient, SalesforceClient
+from ..formatting import QueryValue, quote_soql_value
 from .fields import ListField, object_fields, query_fields
 from .sobject import SObject, SObjectList
-
-from ..formatting import quote_soql_value
-from .._models import QueryResultJSON, SObjectRecordJSON
-
 
 BooleanOperator = Literal["AND", "OR", "NOT"]
 Comparator = Literal[
@@ -22,13 +17,13 @@ AGGREGATE_FUNCTIONS = ["AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "SUM"]
 class Comparison:
     prop: str
     comparator: Comparator
-    value: "SoqlQuery[Any] | str | bool | datetime | date | None"
+    value: "SoqlQuery[Any] | QueryValue"
 
     def __init__(
         self,
         prop: str,
         cmp: Comparator,
-        value: "SoqlQuery[Any] | str | bool | datetime | date | None",
+        value: "SoqlQuery[Any] | QueryValue",
     ):
         self.prop = prop
         self.comparator = cmp
@@ -42,43 +37,43 @@ class Comparison:
         return f"{self.prop} {self.comparator} {quote_soql_value(self.value)}"
 
 
-def EQ(prop: str, value):
+def EQ(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "=", value)
 
 
-def NE(prop: str, value):
+def NE(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "!=", value)
 
 
-def GT(prop: str, value):
+def GT(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, ">", value)
 
 
-def GE(prop: str, value):
+def GE(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, ">=", value)
 
 
-def LT(prop: str, value):
+def LT(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "<", value)
 
 
-def LE(prop: str, value):
+def LE(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "<=", value)
 
 
-def LIKE(prop: str, value):
+def LIKE(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "LIKE", value)
 
 
-def INCLUDES(prop: str, value):
+def INCLUDES(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "INCLUDES", value)
 
 
-def IN(prop: str, value):
+def IN(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "IN", value)
 
 
-def NOT_IN(prop: str, value):
+def NOT_IN(prop: str, value: "SoqlQuery[Any] | QueryValue"):
     return Comparison(prop, "NOT IN", value)
 
 

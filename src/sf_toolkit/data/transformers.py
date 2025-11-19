@@ -1,8 +1,7 @@
-from typing import Any, Mapping, TypeVar
 from collections import defaultdict
 from collections.abc import Iterable
-
 from itertools import islice
+from typing import Mapping, TypeVar
 
 _T = TypeVar("_T")
 

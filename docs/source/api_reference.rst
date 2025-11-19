@@ -50,6 +50,20 @@ SObject Fields
    :undoc-members:
    :show-inheritance:
 
+Salesforce API Calls
+--------------------
+.. automodule:: sf_toolkit.io.api
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Local Data Storage
+------------------
+.. automodule:: sf_toolkit.io.file
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Query Builder
 -------------
 

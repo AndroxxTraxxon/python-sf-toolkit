@@ -50,8 +50,24 @@ def format_soql(query, *args, **kwargs):
     return SoqlFormatter().vformat(query, args, kwargs)
 
 
+QueryValue = (
+    str
+    | bool
+    | datetime
+    | date
+    | int
+    | float
+    | None
+    | list[str]
+    | list[int]
+    | list[float]
+    | list[datetime]
+    | list[date]
+)
+
+
 # pylint: disable=too-many-return-statements
-def quote_soql_value(value):
+def quote_soql_value(value: QueryValue):
     """Quote/escape either an individual value or a list of values
     for a SOQL value expression"""
     if isinstance(value, str):
