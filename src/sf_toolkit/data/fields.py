@@ -574,6 +574,7 @@ class ReferenceField(Field[_FCO_Type]):
             return value
         if isinstance(value, dict):
             return self._py_type(**value)
+        return value
 
     @override
     def format(self, value: _FCO_Type) -> dict[str, typing.Any] | _FCO_Type:
