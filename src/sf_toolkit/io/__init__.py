@@ -37,9 +37,11 @@ from .file import (
     from_csv_file,
     from_file,
     from_json_file,
+    from_sqlite_file,
     to_csv_file,
     to_file,
     to_json_file,
+    to_sqlite_file,
 )
 
 __all__ = [
@@ -79,8 +81,10 @@ __all__ = [
     "from_csv_file",
     "from_json_file",
     "from_file",
+    "from_sqlite_file",
     "to_csv_file",
     "to_json_file",
+    "to_sqlite_file",
     "to_file",
     "select",
 ]

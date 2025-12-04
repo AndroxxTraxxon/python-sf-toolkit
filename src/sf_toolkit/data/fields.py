@@ -553,10 +553,12 @@ class DateTimeField(Field[datetime.datetime]):
         return datetime.datetime.fromisoformat(str(value))
 
     @override
-    def format(self, value: datetime.datetime) -> str:
-        if value.tzinfo is None:
-            value = value.astimezone()
-        return value.isoformat(timespec="milliseconds")
+    def format(self, value: datetime.datetime | None) -> str | None:
+        if value:
+            if value.tzinfo is None:
+                value = value.astimezone()
+            return value.isoformat(timespec="milliseconds")
+        return None
 
 
 class ReferenceField(Field[_FCO_Type]):
@@ -625,7 +627,7 @@ class ListField(Field[list[_FCO_Type]]):
                 return SObjectList(  # type: ignore
                     (
                         self._nested_type(**object_values(item))
-                        if isinstance(item, SObject)
+                        if isinstance(item, FieldConfigurableObject)
                         else self._nested_type(**item)
                         for item in value
                     )
