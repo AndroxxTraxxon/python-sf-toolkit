@@ -1,4 +1,5 @@
 import csv
+import re
 from asyncio import Task
 from asyncio import sleep as sleep_async
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
@@ -726,6 +727,7 @@ class BulkApiIngestJob(FieldConfigurableObject):
         self,
         poll_interval: float = 5.0,
         connection: SalesforceClient | str | None = None,
+        log_options: dict[str, Any] | None = None,
     ):
         _ = self.refresh(connection=connection)
         _LOGGER.info(
@@ -750,6 +752,37 @@ class BulkApiIngestJob(FieldConfigurableObject):
                 self.numberRecordsProcessed,
                 self.numberRecordsFailed,
             )
+        log_record_failures = log_options and log_options.get("log_failures", False)
+        _LOGGER.info(
+            f"{self.object} {self.operation} Job completed {self.state}",
+            extra=self._values,
+        )
+        if self.state == "Failed":
+            _LOGGER.error("Upload job failed with message %s", self.errorMessage)
+        if (self.numberRecordsFailed or 0) > 0 and log_record_failures:
+            _LOGGER.error("%d records failed to process", self.numberRecordsFailed)
+            failed_records = self.failed_results()
+            if isinstance(log_record_failures, int) and log_record_failures is not True:
+                failed_records = failed_records[:log_record_failures]
+            exclude_log_expressions: list[re.Pattern[Any]] = [
+                re.compile(expr)
+                for expr in (log_options or {}).get("exclude_log_patterns", [])
+            ]
+            for record in failed_records:
+                skip_log = False
+                for expr in exclude_log_expressions:
+                    if expr.search(record.sf__Error):
+                        skip_log = True
+                        break
+                if skip_log:
+                    continue
+                _LOGGER.error(
+                    "Failed Record: %s, Employee ID: %s, Pay_Location_ID__c: %s",
+                    record.sf__Error,
+                    record.data["Employee_ID__c"],
+                    record.data["Pay_Location_ID__c"],
+                )
+
         return self
 
     async def monitor_until_complete_async(

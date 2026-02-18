@@ -3,20 +3,20 @@ from enum import Enum
 from functools import cached_property
 from types import TracebackType
 from typing import Any, ClassVar, Protocol, TypeVar
-from typing_extensions import override
 
 from httpx import URL, AsyncClient, Client, Request, Response
+from typing_extensions import override
 
-from .logger import getLogger
-from .metrics import ApiUsage, parse_api_usage
-from .exceptions import raise_for_status
+from .apimodels import ApiVersion, OrgLimits, UserInfo
 from .auth import (
     SalesforceAuth,
     SalesforceLogin,
     SalesforceToken,
     TokenRefreshCallback,
 )
-from .apimodels import ApiVersion, UserInfo, OrgLimits
+from .exceptions import raise_for_status
+from .logger import getLogger
+from .metrics import ApiUsage, parse_api_usage
 
 LOGGER = getLogger("client")
 
@@ -262,6 +262,8 @@ class SalesforceClient(Client, SalesforceClientBase):
             "Both are permitted simultaneously."
         )
         auth = SalesforceAuth(login, token, self.handle_token_refresh)
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = 60  # apply generous default timeout
         super().__init__(auth=auth, **kwargs)
         self.register(connection_name=connection_name, api_version=api_version)
         if token:

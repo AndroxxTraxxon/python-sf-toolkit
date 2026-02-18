@@ -772,6 +772,7 @@ def sobject_from_description(
     sobject: str,
     connection: str = "",
     ignore_fields: Container[str] | None = None,
+    include_fields: Container[str] | None = None,
     base_class: type[_sObject] = SObject,
 ) -> type[_sObject]:
     """
@@ -784,6 +785,8 @@ def sobject_from_description(
     Returns:
         type[SObject]: A dynamically created SObject subclass with fields matching the describe result
     """
+    if ignore_fields and include_fields:
+        raise ValueError("Cannot specify both ignore_fields and include_fields")
     sf_client = SalesforceClient.get_connection(connection)
 
     # Get the describe metadata for this SObject
@@ -794,6 +797,8 @@ def sobject_from_description(
     fields = {}
     for field in describe_data.fields:
         if ignore_fields and field.name in ignore_fields:
+            continue
+        if include_fields and field.name not in include_fields:
             continue
         if field.type == "reference":
             field_cls = IdField
@@ -885,13 +890,7 @@ def _generate_record_batches(
     for idx, record in enumerate(self):
         if only_changes and not dirty_fields(record):
             continue
-        s_record = serialize_object(record, only_changes)
-        if include_fields:
-            rec_fields = object_fields(type(record))
-            for fieldname in include_fields:
-                s_record[fieldname] = rec_fields[fieldname].format(
-                    getattr(record, fieldname)
-                )
+        s_record = serialize_object(record, only_changes, include_fields=include_fields)
         s_record["attributes"] = {"type": record.attributes.type}
         if record.attributes.blob_field and (
             blob_value := getattr(record, record.attributes.blob_field)
@@ -1490,8 +1489,9 @@ def save_update_list(
             )
 
     # Prepare records for update
+    id_field = self[0].attributes.id_field
     record_chunks, emitted_records = _generate_record_batches(
-        self, batch_size, only_changes
+        self, batch_size, only_changes, include_fields=[id_field]
     )
     headers = {"Content-Type": "application/json"}
     if headers_option := callout_options.pop("headers", None):
@@ -1558,8 +1558,9 @@ async def save_update_list_async(
             )
 
     # Prepare records for update
+    id_field = self[0].attributes.id_field
     record_chunks, emitted_records = _generate_record_batches(
-        self, batch_size, only_changes
+        self, batch_size, only_changes, include_fields=[id_field]
     )
     headers = {"Content-Type": "application/json"}
     if headers_option := callout_options.pop("headers", None):
@@ -1672,11 +1673,10 @@ def save_upsert_list(
     )
     results: list[SObjectSaveResult]
     if concurrency > 1 and len(record_batches) > 1:
-        sf_client = resolve_async_client(object_type, None)
         # execute async
         results = asyncio.run(
             _save_upsert_list_chunks_async(
-                sf_client,
+                resolve_async_client(object_type, None),
                 url,
                 [batch[0] for batch in record_batches],
                 headers,

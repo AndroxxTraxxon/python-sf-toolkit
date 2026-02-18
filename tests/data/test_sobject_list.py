@@ -1,13 +1,13 @@
 from typing import ClassVar
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
-from sf_toolkit.data.transformers import chunked
-
-from sf_toolkit.data.sobject import SObject, SObjectList
-from sf_toolkit.data.fields import IdField, TextField, NumberField, dirty_fields
-from sf_toolkit.client import SalesforceClient
 from sf_toolkit._models import SObjectSaveResult
+from sf_toolkit.client import SalesforceClient
+from sf_toolkit.data.fields import IdField, NumberField, TextField, dirty_fields
+from sf_toolkit.data.sobject import SObject, SObjectList
+from sf_toolkit.data.transformers import chunked
 from sf_toolkit.io import api
 
 
@@ -873,3 +873,157 @@ def test_save_error_on_update_only_without_id_or_external_id(
         match="Cannot perform update_only operation when no records have IDs",
     ):
         api.save_list(account_list, update_only=True)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: only_changes=True must preserve reference fields
+# ---------------------------------------------------------------------------
+
+
+def test_save_update_list_only_changes_preserves_id(
+    mock_sf_client, test_accounts_with_ids
+):
+    """Regression: save_update_list with only_changes=True must always include
+    the Id field in the payload so Salesforce knows which records to update."""
+    account_list = SObjectList(test_accounts_with_ids)
+    for account in account_list:
+        dirty_fields(account).clear()
+
+    # Modify a single field on two records
+    account_list[0].Name = "Updated Name"
+    account_list[1].Industry = "Healthcare"
+
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account.Id, "success": True, "errors": []}
+        for account in account_list[:2]
+    ]
+    mock_sf_client.patch.return_value = mock_response
+
+    api.save_update_list(account_list, only_changes=True)
+
+    args, kwargs = mock_sf_client.patch.call_args
+    records_payload = kwargs["json"]["records"]
+
+    assert len(records_payload) == 2
+    # Both records MUST carry their Id
+    assert records_payload[0]["Id"] == account_list[0].Id, (
+        "Id field was stripped from the first record in the update payload"
+    )
+    assert records_payload[1]["Id"] == account_list[1].Id, (
+        "Id field was stripped from the second record in the update payload"
+    )
+    # The changed fields should still be present
+    assert records_payload[0]["Name"] == "Updated Name"
+    assert records_payload[1]["Industry"] == "Healthcare"
+    # Non-changed fields should still be absent
+    assert "Industry" not in records_payload[0]
+    assert "Name" not in records_payload[1]
+
+
+@pytest.mark.asyncio
+async def test_save_update_list_async_only_changes_preserves_id(
+    mock_async_client, test_accounts_with_ids
+):
+    """Regression (async): save_update_list_async with only_changes=True must
+    always include the Id field in the payload."""
+    account_list = SObjectList(test_accounts_with_ids)
+    for account in account_list:
+        dirty_fields(account).clear()
+
+    account_list[0].Name = "Updated Name"
+
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account_list[0].Id, "success": True, "errors": []}
+    ]
+    # _list_save_update_async uses sf_client.post, not patch
+    mock_async_client.post = AsyncMock(return_value=mock_response)
+
+    await api.save_update_list_async(account_list, only_changes=True)
+
+    args, kwargs = mock_async_client.post.call_args
+    records_payload = kwargs["json"]["records"]
+
+    assert len(records_payload) == 1
+    assert records_payload[0]["Id"] == account_list[0].Id, (
+        "Id field was stripped from the async update payload"
+    )
+    assert records_payload[0]["Name"] == "Updated Name"
+
+
+def test_save_upsert_list_only_changes_preserves_external_id(mock_sf_client):
+    """Regression: save_upsert_list with only_changes=True must always include
+    the external ID field in the payload so Salesforce can match records."""
+    custom_objects = [
+        _TestAccount(
+            Name=f"Account {i}", Industry="Technology", ExternalId__c=f"EXT-{i}"
+        )
+        for i in range(3)
+    ]
+    for obj in custom_objects:
+        dirty_fields(obj).clear()
+
+    # Modify one field on two records
+    custom_objects[0].Name = "Updated Name"
+    custom_objects[1].Industry = "Healthcare"
+
+    object_list = SObjectList(custom_objects)
+    object_list.connection = SalesforceClient.DEFAULT_CONNECTION_NAME
+
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": f"001XX000{i}ABCDEFGHI", "success": True, "errors": []} for i in range(2)
+    ]
+    mock_sf_client.patch.return_value = mock_response
+
+    api.save_upsert_list(
+        object_list, external_id_field="ExternalId__c", only_changes=True
+    )
+
+    args, kwargs = mock_sf_client.patch.call_args
+    records_payload = kwargs["json"]["records"]
+
+    assert len(records_payload) == 2
+    # Both records MUST carry their ExternalId__c
+    assert records_payload[0]["ExternalId__c"] == "EXT-0", (
+        "External ID field was stripped from the first record in the upsert payload"
+    )
+    assert records_payload[1]["ExternalId__c"] == "EXT-1", (
+        "External ID field was stripped from the second record in the upsert payload"
+    )
+    # Changed fields present, unchanged fields absent
+    assert records_payload[0]["Name"] == "Updated Name"
+    assert "Industry" not in records_payload[0]
+    assert records_payload[1]["Industry"] == "Healthcare"
+    assert "Name" not in records_payload[1]
+
+
+def test_save_list_update_path_only_changes_preserves_id(
+    mock_sf_client, test_accounts_with_ids
+):
+    """Regression: the high-level save_list function (which delegates to
+    save_update_list for records with Ids) must also preserve Id when
+    only_changes=True."""
+    account_list = SObjectList(test_accounts_with_ids)
+    for account in account_list:
+        dirty_fields(account).clear()
+
+    account_list[0].Name = "Updated via save_list"
+
+    mock_response = Mock()
+    mock_response.json.return_value = [
+        {"id": account_list[0].Id, "success": True, "errors": []}
+    ]
+    mock_sf_client.patch.return_value = mock_response
+
+    api.save_list(account_list, only_changes=True)
+
+    args, kwargs = mock_sf_client.patch.call_args
+    records_payload = kwargs["json"]["records"]
+
+    assert len(records_payload) == 1
+    assert records_payload[0]["Id"] == account_list[0].Id, (
+        "Id field was stripped when save_list delegates to update path"
+    )
+    assert records_payload[0]["Name"] == "Updated via save_list"

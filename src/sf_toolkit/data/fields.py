@@ -205,15 +205,25 @@ def serialize_object(
     record: FieldConfigurableObject,
     only_changes: bool = False,
     all_fields: bool = False,
+    include_fields: list[str] | None = None,
 ):
     """
     Serialize this record to standard python types (dict, list, str, etc.)
     for easier transport
     with file formats like JSON, YAML
+
+    Args:
+        record: The record to serialize
+        only_changes: If True, only include fields that have been modified
+        all_fields: If True, include all fields regardless of value or flags
+        include_fields: A list of field names that should always be included
+            in the output, regardless of readonly or dirty status. Useful for
+            preserving reference fields like Id or external ID fields.
     """
     assert not (only_changes and all_fields), (
         "Cannot serialize both only changes and all fields."
     )
+    _include = set(include_fields) if include_fields else set()
     values = record._values
     fields = object_fields(type(record))
     dirty = dirty_fields(record)
@@ -226,13 +236,15 @@ def serialize_object(
         return {
             name: field.format(values.get(name, None))
             for name, field in fields.items()
-            if name in dirty and FieldFlag.readonly not in field.flags
+            if name in _include
+            or (name in dirty and FieldFlag.readonly not in field.flags)
         }
 
     return {
         name: field.format(values.get(name, None))
         for name, field in fields.items()
-        if FieldFlag.readonly not in field.flags and (name in values or name in dirty)
+        if name in _include
+        or (FieldFlag.readonly not in field.flags and (name in values or name in dirty))
     }
 
 
@@ -357,16 +369,22 @@ class IdField(TextField):
     """
 
     @override
-    def validate(self, value: str):
+    def validate(self, value: str | None):
         if value is None:
-            return
+            return None
         message = f" '{value}' is not a valid Salesforce Id. "
-        assert isinstance(value, str), message + "Expected a string."
-        assert len(value) in (
+        if not isinstance(value, str):
+            raise TypeError(message + "Expected a string.")
+        if len(value) not in (
             15,
             18,
-        ), message + f"Expected a string of length 15 or 18, found {len(value)}"
-        assert value.isalnum(), message + "Expected strictly alphanumeric characters."
+        ):
+            raise ValueError(
+                message + f"Expected a string of length 15 or 18, found {len(value)}"
+            )
+
+        if not value.isalnum():
+            raise ValueError(message + "Expected strictly alphanumeric characters.")
 
 
 class PicklistField(TextField):
@@ -482,12 +500,18 @@ class CheckboxField(Field[bool]):
     A field to contain a boolean value.
     """
 
+    _truthy_values = frozenset(("true", "1", "yes"))
+
     def __init__(self, *flags: FieldFlag, **props: typing.Unpack[FieldProps[bool]]):
         super().__init__(*flags, py_type=bool, **props)
 
     @override
     def revive(self, value: typing.Any):
-        return None if value is None else bool(value)
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value.lower() in self._truthy_values
+        return bool(value)
 
 
 class DateField(Field[datetime.date]):
@@ -566,6 +590,19 @@ class ReferenceField(Field[_FCO_Type]):
     A field to contain a nested field configurable object,
     typically represented in Salesforce as a lookup or master-detail relationship
     """
+
+    @override
+    def __set_name__(self, cls: type[FieldConfigurableObject], name: str):
+        """Lifecycle hook implicitly called"""
+        _folded = name.casefold()
+        if _folded.endswith("id") or _folded.endswith("__c"):
+            _LOGGER.warning(
+                f"Reference Field {cls.__qualname__}.{name} likely pointing at ID value. "
+            )
+
+        self._owner = cls
+        self._name = name
+        object_fields(cls)[name] = self
 
     @override
     def revive(self, value: typing.Any):  # pyright: ignore[reportIncompatibleMethodOverride]
