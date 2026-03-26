@@ -55,17 +55,25 @@ class SalesforceAuth(httpx.Auth):
 
         request.headers["Authorization"] = f"Bearer {self.token.token}"
         response = yield request
-
         if (
             response.status_code == 401
             and self.login
             and response.json()[0]["errorDetails"] == "INVALID_SESSION_ID"
+        ) or (
+            response.status_code == 403
+            and self.login
+            and response.read()
+            and response.text == "Bad_OAuth_Token"
         ):
             try:
-                for login_request in (login_flow := self.login()):
+                login_flow = self.login()
+                login_request = next(login_flow)
+                while True:
                     if login_request is not None:
                         login_response = yield login_request
-                        login_flow.send(login_response)
+                        login_request = login_flow.send(login_response)
+                    else:
+                        login_request = next(login_flow)
 
             except StopIteration as login_result:
                 new_token = login_result.value
