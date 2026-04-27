@@ -4,9 +4,18 @@ from functools import cached_property
 from types import TracebackType
 from typing import Any, ClassVar, Protocol, TypeVar
 
-from httpx import URL, AsyncClient, Client, Request, Response
+from httpx import (
+    URL,
+    AsyncBaseTransport,
+    AsyncClient,
+    BaseTransport,
+    Client,
+    Request,
+    Response,
+)
 from typing_extensions import override
 
+from ._retry import AsyncRetryTransport, RetryTransport
 from .apimodels import ApiVersion, OrgLimits, UserInfo
 from .auth import (
     SalesforceAuth,
@@ -160,14 +169,22 @@ class AsyncSalesforceClient(AsyncClient, SalesforceClientBase):
         token_refresh_callback: TokenRefreshCallback | None = None,
         api_version: ApiVersion | int | float | str | None = None,
         connection_name: str = SalesforceClientBase.DEFAULT_CONNECTION_NAME,
+        max_retries: int = 3,
+        backoff_factor: float = 0.5,
+        transport: AsyncBaseTransport | None = None,
     ):
         assert login or token, (
             "Either auth or session parameters are required.\n"
             "Both are permitted simultaneously."
         )
+        if transport is None:
+            transport = AsyncRetryTransport(
+                max_retries=max_retries, backoff_factor=backoff_factor
+            )
         super().__init__(
             auth=SalesforceAuth(login, token, self.handle_token_refresh),
             headers={"Accept": "application/json"},
+            transport=transport,
         )
         self.register(api_version, connection_name)
         if token:
@@ -255,6 +272,9 @@ class SalesforceClient(Client, SalesforceClientBase):
         token: SalesforceToken | None = None,
         token_refresh_callback: TokenRefreshCallback | None = None,
         api_version: ApiVersion | int | float | str | None = None,
+        max_retries: int = 3,
+        backoff_factor: float = 0.5,
+        transport: BaseTransport | None = None,
         **kwargs: Any,
     ):
         assert login or token, (
@@ -264,7 +284,11 @@ class SalesforceClient(Client, SalesforceClientBase):
         auth = SalesforceAuth(login, token, self.handle_token_refresh)
         if "timeout" not in kwargs:
             kwargs["timeout"] = 60  # apply generous default timeout
-        super().__init__(auth=auth, **kwargs)
+        if transport is None:
+            transport = RetryTransport(
+                max_retries=max_retries, backoff_factor=backoff_factor
+            )
+        super().__init__(auth=auth, transport=transport, **kwargs)
         self.register(connection_name=connection_name, api_version=api_version)
         if token:
             self._derive_base_url(token)

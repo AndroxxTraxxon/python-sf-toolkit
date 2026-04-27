@@ -417,7 +417,7 @@ class PicklistField(TextField):
 
     @override
     def validate(self, value: str):
-        if self._options_ and value not in self._options_:
+        if self._options_ and value and value not in self._options_:
             raise ValueError(
                 (
                     f"Selection '{value}' is not in "
