@@ -1,13 +1,13 @@
 Quickstart
-=========
+==========
 
 Basic Usage
-----------
+-----------
 
 This guide will help you get started with Salesforce Toolkit quickly.
 
 Authentication
--------------
+--------------
 
 First, import the necessary modules and authenticate:
 
@@ -21,7 +21,7 @@ First, import the necessary modules and authenticate:
        print(sf.versions)
 
 Working with SObjects
--------------------
+---------------------
 
 Define a Salesforce object:
 
@@ -38,7 +38,7 @@ Define a Salesforce object:
        CreatedDate = DateTimeField(FieldFlag.readonly)
 
 Querying Records
---------------
+----------------
 
 .. code-block:: python
 
@@ -54,29 +54,33 @@ Querying Records
        print(f"{contact.FirstName} {contact.LastName}: {contact.Email}")
 
 Creating Records
---------------
+----------------
 
 .. code-block:: python
+
+   from sf_toolkit.io import save, save_insert
 
    # Create a new contact
    new_contact = Contact(
        FirstName="John",
        LastName="Doe",
-       Email="john.doe@example.com"
+       Email="john.doe@example.com",
    )
 
-   # Save to Salesforce
+   # Save to Salesforce (auto-selects insert vs. update)
    save(new_contact)
    # OR specifically insert a new record
    save_insert(new_contact)
 
 Updating Records
---------------
+----------------
 
 .. code-block:: python
 
-   # Update an existing contact
-   contact = read(Contact, "003xxxxxxxxxxxx")
+   from sf_toolkit.io import fetch, save, save_update
+
+   # Fetch an existing contact
+   contact = fetch(Contact, "003xxxxxxxxxxxx")
    contact.LastName = "Smith"
 
    # Use the generic save function
@@ -85,6 +89,6 @@ Updating Records
    save_update(contact)
 
 Next Steps
----------
+----------
 
 For more advanced usage, see the :doc:`client` and :doc:`sobjects` sections.

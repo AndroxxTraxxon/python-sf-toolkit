@@ -268,32 +268,27 @@ def from_sqlite_file(
     """
     Load SObject records of the specified type from a SQLite database table.
 
-    Parameters
-    ----------
-    cls : type[SObject]
-        The SObject subclass to instantiate for each row.
-    filepath : Path | str
-        Path to the SQLite database file.
-    table_name : str | None
-        Name of the table to read from. Defaults to the Salesforce API name
-        for the SObject (cls.attributes.type).
-    where : str | None
-        Optional SQL WHERE clause (without the leading 'WHERE' keyword, although
-        supplying it is tolerated). Example: "IsActive = 1 AND Region = 'EMEA'".
-        IMPORTANT: This string is interpolated directly into the query; do not
-        pass untrusted user input (SQL injection risk).
-    order : list[tuple[str, Literal['ASC','DESC']]] | None
-        Optional ordering specification. Each tuple is (field_name, direction),
-        where field_name must be one of the SObject's queryable fields and
-        direction is 'ASC' or 'DESC'. Example:
-            order=[('CreatedDate','DESC'), ('Name','ASC')]
-    limit : int | None
-        Optional maximum number of rows to return (LIMIT clause). Must be a
-        positive integer.
+    Args:
+        cls: The SObject subclass to instantiate for each row.
+        filepath: Path to the SQLite database file.
+        table_name: Name of the table to read from. Defaults to the Salesforce
+            API name for the SObject (``cls.attributes.type``).
+        where: Optional SQL WHERE clause (without the leading ``WHERE``
+            keyword, although supplying it is tolerated). For example,
+            ``IsActive = 1 AND Region = 'EMEA'``.
 
-    Returns
-    -------
-    SObjectList[cls]
+            .. warning::
+               This string is interpolated directly into the query; do not
+               pass untrusted user input (SQL injection risk).
+        order: Optional ordering specification. Each tuple is
+            ``(field_name, direction)``, where ``field_name`` must be one of
+            the SObject's queryable fields and ``direction`` is ``"ASC"``
+            or ``"DESC"``. For example,
+            ``[("CreatedDate", "DESC"), ("Name", "ASC")]``.
+        limit: Optional maximum number of rows to return (LIMIT clause).
+            Must be a positive integer.
+
+    Returns:
         A list-like collection of instantiated SObject records.
     """
     import sqlite3

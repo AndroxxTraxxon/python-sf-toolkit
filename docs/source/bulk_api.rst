@@ -12,7 +12,7 @@ The Bulk API in Salesforce Toolkit consists of two main components:
 2. **SObjectList** bulk methods - Methods to efficiently process large collections of records
 
 When to Use Bulk API
-------------------
+--------------------
 
 Use the Bulk API when:
 
@@ -22,16 +22,18 @@ Use the Bulk API when:
 - Needing better performance for large datasets
 
 Basic Usage
----------
+-----------
 
 The simplest way to use Bulk API is through the ``SObjectList`` bulk methods:
 
 .. code-block:: python
 
-   from sf_toolkit.data import SObject
+   from sf_toolkit.data.sobject import SObjectList
+   from sf_toolkit.io import save_insert_bulk
+   from sf_toolkit import SObject
    from sf_toolkit.data.fields import IdField, TextField
 
-   class Account(SObject):
+   class Account(SObject, api_name="Account"):
        Id = IdField()
        Name = TextField()
        Industry = TextField()
@@ -52,11 +54,13 @@ The simplest way to use Bulk API is through the ``SObjectList`` bulk methods:
    print(f"Failed to insert {results.numberRecordsFailed} records")
 
 Bulk Insert
----------
+-----------
 
 To insert large sets of records:
 
 .. code-block:: python
+
+   from sf_toolkit.io import save_insert_bulk
 
    # Create SObjectList with many records
    contacts = SObjectList([
@@ -76,17 +80,19 @@ To insert large sets of records:
    print(f"Updated status: {updated_job.state}")
 
 Bulk Update
----------
+-----------
 
 To update large sets of records:
 
 .. code-block:: python
 
+   from sf_toolkit.io import save_update_bulk
+
    # Get existing records
    contacts = select(Contact).where(LastName="Bulk").execute()
 
-   # Convert to SObjectList
-   contact_list = contacts.to_list()
+   # Materialize as an SObjectList
+   contact_list = contacts.as_list()
 
    # Update all records
    for contact in contact_list:
@@ -94,16 +100,18 @@ To update large sets of records:
 
    # Update using bulk API
    bulk_job = save_update_bulk(contact_list)
-   bulk_job.monitor_until_complete()
+   bulk_job = bulk_job.monitor_until_complete()
 
    print(f"Records processed: {bulk_job.numberRecordsProcessed}")
 
 Bulk Upsert
----------
+-----------
 
 To upsert (insert or update) records based on an external ID:
 
 .. code-block:: python
+
+   from sf_toolkit.io import save_upsert_bulk
 
    # Create or update records with external ID
    accounts = SObjectList([
@@ -119,9 +127,9 @@ To upsert (insert or update) records based on an external ID:
    print(f"Records failed: {bulk_job.numberRecordsFailed}")
 
 Working with BulkApiIngestJob Directly
------------------------------------
+--------------------------------------
 
-For more control, you can work with the BulkApiIngestJob class directly:
+For more control, you can work with the ``BulkApiIngestJob`` class directly:
 
 .. code-block:: python
 
@@ -133,7 +141,7 @@ For more control, you can work with the BulkApiIngestJob class directly:
        operation="insert",
        column_delimiter="COMMA",
        line_ending="LF",
-       connection=client  # Your SalesforceClient instance
+       connection=client,  # Your SalesforceClient instance, or its connection name
    )
 
    # Create a list of records
@@ -158,7 +166,7 @@ For more control, you can work with the BulkApiIngestJob class directly:
        print(f"Failed records: {updated_job.numberRecordsFailed}")
 
 Bulk Job States
-------------
+---------------
 
 A Bulk API job can be in one of these states:
 
@@ -169,7 +177,7 @@ A Bulk API job can be in one of these states:
 - **Failed** - Job has failed
 
 Monitoring Job Status
-------------------
+---------------------
 
 You can monitor the status of a bulk job:
 
@@ -191,7 +199,7 @@ You can monitor the status of a bulk job:
    print(f"Error message: {job.errorMessage}")
 
 Performance Considerations
------------------------
+--------------------------
 
 When using the Bulk API:
 
@@ -201,13 +209,13 @@ When using the Bulk API:
 4. **API limits** - Bulk API operations don't count against your regular API limits
 
 Error Handling
-------------
+--------------
 
 For bulk operations, errors are tracked at the job level:
 
 .. code-block:: python
 
-   bulk_job = accounts.save_insert_bulk()
+   bulk_job = save_insert_bulk(accounts)
 
    # Check for errors
    if bulk_job.state == "Failed":
@@ -220,7 +228,7 @@ For bulk operations, errors are tracked at the job level:
        print(f"{bulk_job.numberRecordsProcessed} records processed successfully")
 
 Advanced Configuration
--------------------
+----------------------
 
 You can configure various aspects of the bulk job:
 
@@ -242,7 +250,7 @@ You can configure various aspects of the bulk job:
    )
 
 Limitations
----------
+-----------
 
 - Bulk API 2.0 only supports CSV format (not JSON or XML)
 - Maximum file size for a single batch is 100MB (base64 encoded size up to 150MB)
@@ -336,8 +344,8 @@ For full control (custom SOQL string, manual monitoring) use BulkApiQueryJob:
 
    # Initialize (creates job on Salesforce)
    query_job = BulkApiQueryJob.init_job(
-       query=soql,
-       connection=client  # SalesforceClient or AsyncSalesforceClient
+       query=select(Account).where(Industry="Technology"),
+       connection=client,  # SalesforceClient or AsyncSalesforceClient
    )
 
    # Monitor until completed
@@ -355,8 +363,8 @@ Async direct usage:
 .. code-block:: python
 
    async_query_job = await BulkApiQueryJob.init_job_async(
-       query=soql,
-       connection=async_client
+       query=select(Account).where(Industry="Technology"),
+       connection=async_client,
    )
 
    async_query_job = await async_query_job.monitor_until_complete_async()

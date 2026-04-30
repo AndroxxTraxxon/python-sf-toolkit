@@ -4,7 +4,7 @@ Authentication
 Salesforce Toolkit supports multiple authentication methods to connect to Salesforce. This guide will help you choose the right authentication method for your use case.
 
 Quick Reference
---------------
+---------------
 
 Here's a quick reference table of available authentication methods:
 
@@ -58,7 +58,7 @@ For most use cases, you can use the ``lazy_login`` function which automatically 
    )
 
 CLI-based Authentication
------------------------
+------------------------
 
 If you're using the Salesforce CLI (sf or sfdx), this is the simplest method for local development:
 
@@ -83,7 +83,7 @@ This method:
 - Automatically handles token refresh
 
 OAuth 2.0 Authentication
------------------------
+------------------------
 
 Salesforce Toolkit supports several OAuth 2.0 flows for different use cases:
 
@@ -94,8 +94,9 @@ For simple scripting and personal applications:
 
 .. code-block:: python
 
-   from sf_toolkit import SalesforceClient, password_login
+   from sf_toolkit import SalesforceClient
    from sf_toolkit.auth import password_login
+
    client = SalesforceClient(
        login=password_login(
            username="user@example.com",
@@ -111,14 +112,15 @@ For simple scripting and personal applications:
    Consider using other methods for production applications.
 
 JWT Bearer Flow
-^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
 
 For secure server-to-server integration:
 
 .. code-block:: python
 
    import pathlib
-   from sf_toolkit import SalesforceClient, public_key_auth_login
+   from sf_toolkit import SalesforceClient
+   from sf_toolkit.auth import public_key_auth_login
 
    # Load private key
    private_key_path = pathlib.Path("path/to/private_key.key")
@@ -141,7 +143,7 @@ This method:
 - Requires a connected app with a digital certificate
 
 Client Credentials Flow
-^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 
 For service-to-service integration without a specific user context:
 
@@ -164,12 +166,12 @@ This method:
 - Is useful for background service integrations
 
 SOAP Authentication
-------------------
+-------------------
 
 Salesforce Toolkit supports various SOAP-based authentication methods for compatibility with different security configurations:
 
 Security Token Authentication
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 For orgs that require a security token with the password:
 
@@ -190,7 +192,7 @@ For orgs that require a security token with the password:
    )
 
 IP Filtering Authentication
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 For orgs with IP filtering enabled that allow specific IPs to skip the security token:
 
@@ -210,7 +212,7 @@ For orgs with IP filtering enabled that allow specific IPs to skip the security 
    )
 
 Organization-Scoped Login
-^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 For logging in to a specific organization within a multi-org setup:
 
@@ -231,7 +233,7 @@ For logging in to a specific organization within a multi-org setup:
    )
 
 Using Tokens Directly
--------------------
+---------------------
 
 If you already have a Salesforce access token and instance URL:
 
@@ -251,7 +253,7 @@ If you already have a Salesforce access token and instance URL:
    client = SalesforceClient(token=token)
 
 Token Refresh and Callbacks
--------------------------
+---------------------------
 
 You can register a callback function to be executed when a token is refreshed:
 
@@ -269,7 +271,7 @@ You can register a callback function to be executed when a token is refreshed:
    )
 
 Best Practices
-------------
+--------------
 
 1. **Don't hardcode credentials**: Store secrets in environment variables or a secure credential store.
 
@@ -335,7 +337,7 @@ Best Practices
    Salesforce Toolkit automatically attempts to refresh tokens when they expire during a request.
 
 Authentication Classes
---------------------
+----------------------
 
 Under the hood, these authentication methods use these core classes:
 

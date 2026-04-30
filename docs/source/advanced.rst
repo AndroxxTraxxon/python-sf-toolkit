@@ -1,8 +1,8 @@
 Advanced Topics
-=============
+===============
 
 Async Operations
---------------
+----------------
 
 For high-performance applications, you can use the async client:
 
@@ -20,16 +20,19 @@ For high-performance applications, you can use the async client:
    asyncio.run(main())
 
 Batch Operations
---------------
+----------------
 
 When working with large numbers of records:
 
 .. code-block:: python
 
+   from sf_toolkit.io import fetch_list_async
+
    # Fetch many records efficiently
-   accounts = Account.list(
-       "001xx", "001yy", "001zz", ...,  # Many IDs
-       concurrency=5  # Process in parallel
+   accounts = await fetch_list_async(
+       Account,
+       "001xx", "001yy", "001zz",  # Many IDs
+       concurrency=5,  # Process in parallel
    )
 
    # Callback for progress tracking
@@ -43,20 +46,21 @@ When working with large numbers of records:
    )
 
 Error Handling
-------------
+--------------
 
 Salesforce Toolkit provides specialized exceptions for different error scenarios:
 
 .. code-block:: python
 
+   from sf_toolkit.io import fetch
    from sf_toolkit.exceptions import (
        SalesforceError,
        SalesforceResourceNotFound,
-       SalesforceRefusedRequest
+       SalesforceRefusedRequest,
    )
 
    try:
-       account = read(Account, "001xxxxxxxxxxxxxxx")
+       account = fetch(Account, "001xxxxxxxxxxxxxxx")
    except SalesforceResourceNotFound:
        print("Account not found")
    except SalesforceRefusedRequest:
@@ -65,7 +69,7 @@ Salesforce Toolkit provides specialized exceptions for different error scenarios
        print(f"Error: {e}")
 
 API Limits & Usage Monitoring
----------------------------
+-----------------------------
 
 Monitor your API usage:
 
@@ -73,7 +77,7 @@ Monitor your API usage:
 
    with SalesforceClient(login=cli_login()) as client:
        # Make some requests
-       response = client.get("/services/data/v57.0/sobjects/Account/describe")
+       response = client.get(f"{client.sobjects_url}/Account/describe")
 
        # Check API usage
        if client.api_usage:
@@ -81,18 +85,18 @@ Monitor your API usage:
            print(f"API Usage: {used}/{total} ({used/total*100:.1f}%)")
 
 Custom Field Types
-----------------
+------------------
 
 You can create custom field types for specialized behavior:
 
 .. code-block:: python
 
-   from sf_toolkit.data.fields import Field, FieldFlag
    import decimal
+   from sf_toolkit.data.fields import Field, FieldFlag
 
    class DecimalField(Field[decimal.Decimal]):
-       def __init__(self, *flags, precision=2):
-           super().__init__(decimal.Decimal, *flags)
+       def __init__(self, *flags: FieldFlag, precision: int = 2, **props):
+           super().__init__(*flags, py_type=decimal.Decimal, **props)
            self.precision = precision
 
        def format(self, value):

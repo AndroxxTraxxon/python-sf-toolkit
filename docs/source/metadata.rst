@@ -1,3 +1,6 @@
+Metadata API
+============
+
 .. contents::
    :local:
    :depth: 2
@@ -29,12 +32,12 @@ DeployOptions
 The `DeployOptions` class specifies the various configuration options available for a deployment. These options include flag settings such as `allowMissingFiles`, `checkOnly`, `ignoreWarnings`, and many others configured at initiation.
 
 DeployResult and DeployDetails
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 `DeployResult` and `DeployDetails` classes store and manage the results of a deployment operation, providing access to the statuses, counts of successes and failures, and individual component statuses derived from the deployment process.
 
 RetrieveResult
-^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 Leverage the `RetrieveResult` class to handle results from retrieve operations, which contain metadata file properties, the retrieve status, and messages related to the process.
 
@@ -44,7 +47,7 @@ RunTestsResult
 Use the `RunTestsResult` class to manage results from running tests as part of the deployment. This includes test successes, failures, and code coverage details.
 
 CodeCoverageResult and CodeCoverageWarning
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 These classes provide interfaces to manage and retrieve information about code coverage following Apex tests, including uncovered code locations and coverage-related warnings.
 

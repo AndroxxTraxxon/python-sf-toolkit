@@ -23,12 +23,12 @@ class ApiUsage(NamedTuple):
 
 def parse_api_usage(sforce_limit_info: str):
     """
-    Parse API usage and limits out of the Sforce-Limit-Info header
-    Arguments:
-    * sforce_limit_info: The value of response header 'Sforce-Limit-Info'
-        Example 1: 'api-usage=18/5000'
-        Example 2: 'api-usage=25/5000;
-            per-app-api-usage=17/250(appName=sample-connected-app)'
+    Parse API usage and limits out of the ``Sforce-Limit-Info`` header.
+
+    Args:
+        sforce_limit_info: The value of response header ``Sforce-Limit-Info``.
+            Example 1: ``api-usage=18/5000``.
+            Example 2: ``api-usage=25/5000;per-app-api-usage=17/250(appName=sample-connected-app)``.
     """
     app_usage, per_app_usage = None, None
     for item in sforce_limit_info.split(";"):

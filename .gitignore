@@ -13,4 +13,5 @@ htmlcov/
 coverage.xml
 .reports/
 docs/build
+docs/_build
 dist

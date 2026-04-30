@@ -1,12 +1,12 @@
 Querying Records
-==============
+================
 
 Salesforce Toolkit provides a powerful query builder for creating and executing SOQL queries.
 
 Basic Queries
------------
+-------------
 
-The simplest way to create a query is using the ``query()`` method on your SObject class:
+The simplest way to create a query is to pass an SObject class to :func:`~sf_toolkit.data.query_builder.select`:
 
 .. code-block:: python
 
@@ -14,7 +14,7 @@ The simplest way to create a query is using the ``query()`` method on your SObje
    from sf_toolkit.data.query_builder import select
    from sf_toolkit.data.fields import IdField, TextField
 
-   class Account(SObject):
+   class Account(SObject, api_name="Account"):
        Id = IdField()
        Name = TextField()
        Industry = TextField()
@@ -29,6 +29,9 @@ The simplest way to create a query is using the ``query()`` method on your SObje
    for account in results:
        print(account.Name)
 
+.. note::
+   When ``api_name`` is omitted, the class name is used as the Salesforce object name.
+
 
 Implicit Query Execution
 ------------------------
@@ -42,7 +45,7 @@ to generate a QueryResult, which serves as the iterable object.
    from sf_toolkit.data.query_builder import select
    from sf_toolkit.data.fields import IdField, TextField
 
-   class Account(SObject):
+   class Account(SObject, api_name="Account"):
        Id = IdField()
        Name = TextField()
        Industry = TextField()
@@ -64,8 +67,8 @@ to generate a QueryResult, which serves as the iterable object.
            print(account.Name)
 
 
-Multiple Iterations of `QueryResult`s
--------------------------------------
+Multiple Iterations of QueryResults
+-----------------------------------
 
 Iterating over a QueryResult (the product of an `SoqlQuery.execute()`)
 multiple times generates multiple QueryResult instances with the same
@@ -86,7 +89,7 @@ first `SoqlQuery.execute()` call
         assert original is copy  # This should also always be true
 
 Filtering Records
---------------
+-----------------
 
 You can filter records using the ``where()`` method with field conditions:
 
@@ -106,7 +109,7 @@ You can filter records using the ``where()`` method with field conditions:
 
 
 Combining Conditions
---------------
+--------------------
 
 Use ``and_where()`` and ``or_where()`` to build complex conditions incrementally:
 
@@ -145,7 +148,7 @@ Use ``and_where()`` and ``or_where()`` to build complex conditions incrementally
         query = query.and_where(Name__like=f"%{search_term}%")
 
 Complex Conditions
----------------
+------------------
 
 For more complex conditions, use the logical operators ``AND`` and ``OR``. This example would generate a query with nested boolean logic:
 ``SELECT ... FROM Account WHERE (Industry = 'Technology' OR (AnnualRevenue > 1000000 AND NumberOfEmployees > 100))``
@@ -166,7 +169,7 @@ For more complex conditions, use the logical operators ``AND`` and ``OR``. This 
    )
 
 Raw WHERE Clauses
---------------
+-----------------
 
 You can also use raw SOQL WHERE clauses for advanced filtering:
 
@@ -177,7 +180,7 @@ You can also use raw SOQL WHERE clauses for advanced filtering:
    )
 
 Grouping and Aggregates
---------------------
+-----------------------
 
 Support for GROUP BY and HAVING clauses:
 
@@ -201,7 +204,7 @@ Support for GROUP BY and HAVING clauses:
    )
 
 Sorting Results
-------------
+---------------
 
 Order results using the ``order_by()`` method:
 
@@ -216,7 +219,7 @@ Order results using the ``order_by()`` method:
    query = select(Account).order_by(Name="DESC", CreatedDate="ASC")
 
 Pagination
---------
+----------
 
 Control result pagination using ``limit()`` and ``offset()``:
 
@@ -225,7 +228,7 @@ Control result pagination using ``limit()`` and ``offset()``:
    query = select(Account).limit(10).offset(20)
 
 Handling Results
--------------
+----------------
 
 Query results are returned as a ``QueryResult`` object which is an iterator over SObject records:
 
@@ -240,7 +243,7 @@ Query results are returned as a ``QueryResult`` object which is an iterator over
    # Get total record count
    total = len(results)
 
-   # Access all records as a list
+   # Access all records as an SObjectList
    all_records = results.as_list()
 
    # Iterate through records automatically handling pagination
@@ -251,7 +254,7 @@ Query results are returned as a ``QueryResult`` object which is an iterator over
    account_list = list(results)
 
 Counting Records
--------------
+----------------
 
 Execute a COUNT() query to get the total number of matching records without retrieving all records:
 
@@ -262,13 +265,13 @@ Execute a COUNT() query to get the total number of matching records without retr
    print(f"Found {count} Technology accounts")
 
 Tooling API Queries
-----------------
+-------------------
 
 Query Tooling API objects by setting the ``tooling=True`` flag on your SObject class:
 
 .. code-block:: python
 
-   class CustomObject(SObject, tooling=True):
+   class CustomObject(SObject, api_name="CustomObject__c", tooling=True):
        Id = IdField()
        Name = TextField()
 
@@ -276,7 +279,7 @@ Query Tooling API objects by setting the ``tooling=True`` flag on your SObject c
    results = select(CustomObject).execute()
 
 Date and DateTime Values
---------------------
+------------------------
 
 Handle date and datetime values in queries:
 

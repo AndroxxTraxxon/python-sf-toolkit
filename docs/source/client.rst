@@ -1,10 +1,10 @@
 Salesforce Client
-===============
+=================
 
 The Salesforce Client is the main interface for interacting with the Salesforce API.
 
 Client Types
------------
+------------
 
 There are two main client types:
 
@@ -12,7 +12,7 @@ There are two main client types:
 * ``AsyncSalesforceClient`` - Asynchronous client for use with ``async/await``
 
 Basic Usage
-----------
+-----------
 
 .. code-block:: python
 
@@ -31,8 +31,8 @@ Basic Usage
         print("Available API versions:", sf.versions)
         print("Current user Id:", sf._userinfo.user_id)
 
-        # Raw API GET request (immediate response as dict/json)
-        account_describe = sf.get("/services/data/v57.0/sobjects/Account/describe")
+        # Raw API GET request (uses the auto-discovered data URL)
+        account_describe = sf.get(f"{sf.sobjects_url}/Account/describe")
         print("Account label:", account_describe["label"])
 
         # Build a SOQL query using the query builder (returns an iterator)
@@ -43,7 +43,7 @@ Basic Usage
             print("Got account:", acct.Id, acct.Name)
 
         # You can also perform other CRUD operations, bulk operations, etc.
-        # e.g. sf.post("/services/data/v57.0/sobjects/Account", data={...})
+        # e.g. sf.post(sf.sobjects_url + "/Account", data={...})
 
    # Client session is automatically closed when exiting the context manager
 
@@ -67,7 +67,7 @@ Minimal example:
            print("User Id:", sf._userinfo.user_id)
 
            # Raw async GET request
-           account_describe = await sf.get("/services/data/v57.0/sobjects/Account/describe")
+           account_describe = await sf.get(f"{sf.sobjects_url}/Account/describe")
            print("Account label:", account_describe["label"])
 
            # Example SOQL query using the high-level query builder (returns an async iterator)
@@ -93,27 +93,29 @@ Common async operations:
 
 * Raw requests: await sf.get(path), await sf.post(path, data=...)
 * SOQL via builder: await select(MyObject).where(...).execute_async()
-* Bulk / batch helpers expose *_async variants
+* Bulk / batch helpers expose ``*_async`` variants
 * Use async for to iterate result sets without loading all rows into memory
 
 Tip: Keep long-running org interactions inside the async with block so the underlying HTTP session can be reused efficiently.
 
 
 Authentication Methods
---------------------
+----------------------
 
 The client supports several authentication methods:
 
-* SF CLI authentication (using the SF CLI or SFDX CLI)
-* Username/Password flow (planned)
-* JWT flow (planned)
-* Refresh token flow (planned)
-* OAuth web flow (planned)
+* SF CLI authentication (``cli_login``)
+* OAuth Username/Password flow (``password_login``)
+* OAuth JWT Bearer flow (``public_key_auth_login``)
+* OAuth Client Credentials flow (``client_credentials_flow_login``)
+* SOAP Security Token authentication (``security_token_login``)
+* SOAP IP Filtering authentication (``ip_filtering_non_service_login`` / ``ip_filtering_org_login``)
+* Auto-selection via ``lazy_login``
 
-See the :doc:`auth` section for more details.
+See the :doc:`auth` section for full details and examples.
 
 Working with multiple connections
--------------------------------
+---------------------------------
 
 You can register and manage multiple connections to different Salesforce orgs:
 

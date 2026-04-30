@@ -1,5 +1,5 @@
 Welcome to Salesforce Toolkit documentation!
-===========================================
+============================================
 
 **Salesforce Toolkit** is a Python library designed to simplify interactions with the Salesforce API.
 It provides a clean, object-oriented interface for connecting to Salesforce instances and working with Salesforce data through native Python data structures.
@@ -14,9 +14,10 @@ It provides a clean, object-oriented interface for connecting to Salesforce inst
    auth
    sobjects
    query
-   file_upload
+   async
    blobfield
    bulk_api
+   metadata
    advanced
    api_reference
 

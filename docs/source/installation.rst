@@ -1,8 +1,8 @@
 Installation
-===========
+============
 
 Requirements
------------
+------------
 
 * Python 3.11 or higher
 * Installing this package also installs the following dependencies:
@@ -12,14 +12,14 @@ Requirements
   * more-itertools
 
 Installing with pip
-------------------
+-------------------
 
 .. code-block:: bash
 
    pip install sf-toolkit
 
 Installing from source
---------------------
+----------------------
 
 You can install the package from source:
 

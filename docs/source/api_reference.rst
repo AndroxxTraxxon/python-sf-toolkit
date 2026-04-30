@@ -1,5 +1,5 @@
 API Reference
-============
+=============
 
 This section contains detailed API documentation for all modules and classes in Salesforce Toolkit.
 
@@ -92,11 +92,6 @@ Utilities
 ---------
 
 .. automodule:: sf_toolkit.formatting
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: sf_toolkit.concurrency
    :members:
    :undoc-members:
    :show-inheritance:

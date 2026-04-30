@@ -154,12 +154,6 @@ def resolve_async_client(
 class QueryResultBatch(Generic[_SObject]):
     """
     A generic class to represent results returned by the Salesforce SOQL Query API.
-
-    Attributes:
-        done (bool):
-        totalSize (int):
-        records (list[T]):
-        nextRecordsUrl (str, optional):
     """
 
     done: bool

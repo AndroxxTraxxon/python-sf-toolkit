@@ -61,7 +61,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 
 [project.urls]
 Homepage = "https://github.com/AndroxxTraxxon/python-sf-toolkit"

@@ -20,9 +20,15 @@ Basic Usage
 .. code-block:: python
 
     # Synchronous client
-    from sf_toolkit import SalesforceClient, SalesforceLogin
+    from sf_toolkit import SalesforceClient
+    from sf_toolkit.auth import password_login
 
-    login = SalesforceLogin(username="user@example.com", password="password")
+    login = password_login(
+        username="user@example.com",
+        password="password",
+        consumer_key="your_consumer_key",
+        consumer_secret="your_consumer_secret",
+    )
     with SalesforceClient(login=login) as client:
         # Synchronous operations here
         pass
@@ -238,7 +244,7 @@ Best Practices
 5. **Error Handling**: Implement proper error handling for network and API errors
 
 Performance Comparison
----------------------
+----------------------
 
 Async operations provide significant performance benefits when working with multiple records:
 
