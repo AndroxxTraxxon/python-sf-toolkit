@@ -1,15 +1,15 @@
+import json
+import os
 from pathlib import Path
 from shutil import which
 from subprocess import run as subprocess_run
-import os
-import json
 
 from httpx import URL
 
-from ..logger import getLogger
-
-from .types import SalesforceLogin, SalesforceToken
 from sf_toolkit.auth.types import SalesforceTokenGenerator
+
+from ..logger import getLogger
+from .types import SalesforceLogin, SalesforceToken
 
 LOGGER = getLogger("auth.cli")
 
@@ -28,7 +28,7 @@ def cli_login(
         """Fetches the authentication credentials from sf or sfdx command line tools."""
         LOGGER.info("Logging in via SF CLI at %s", sf_exec_path)
         command: list[str] = [sf_exec_path, "org", "display", "--json"]
-        if alias_or_username and isinstance(alias_or_username, str):
+        if alias_or_username:
             command.extend(["-o", alias_or_username])
 
         # the color shell configs can mess with JSON parsing, so just get rid of them.
@@ -68,6 +68,37 @@ def cli_login(
             )
         session_id = token_result["accessToken"]
         instance_url = token_result["instanceUrl"]
+
+        # Newer versions of the SF CLI redact the access token from `org display`
+        # and require a separate command to reveal it.
+        if isinstance(session_id, str) and session_id.startswith("[REDACTED]"):
+            token_command: list[str] = [
+                sf_exec_path,
+                "org",
+                "auth",
+                "show-access-token",
+                "-p",
+                "--json",
+            ]
+            if alias_or_username:
+                token_command.extend(["-o", alias_or_username])
+
+            token_output_result = subprocess_run(
+                token_command, check=False, capture_output=True, env=cmd_env
+            )
+            token_output = json.loads(token_output_result.stdout)
+            if token_output["status"] != 0:
+                exception = type(token_output["name"], (Exception,), {})
+                raise exception(
+                    "Failed to get access token for org "
+                    + (alias_or_username or "[default]")
+                    + ":\n"
+                    + token_output["message"]
+                    .encode("raw_unicode_escape")
+                    .decode("unicode_escape")
+                )
+            session_id = token_output["result"]["accessToken"]
+
         return SalesforceToken(URL(instance_url), session_id)
         yield  # yield to make this a generator
 
